@@ -15,6 +15,7 @@ export const AppState = {
   cellSize: 5,        // metres
   kNeighbors: 5,
   idwPower: 2,
+  interpMethod: 'idw',
   rawBoreholes: [],   // BHLog[] from parser
   geoUnits: [],       // GeoUnit[] after AI classification
   classifiedBH: [],   // classified BHLog[]
@@ -99,6 +100,10 @@ function initInterpolationSettings() {
     AppState.idwPower = parseFloat(pSlider.value);
     pVal.textContent = parseFloat(pSlider.value).toFixed(1);
   });
+
+  document.querySelectorAll('input[name="interp-method"]').forEach(radio => {
+    radio.addEventListener('change', () => { AppState.interpMethod = radio.value; });
+  });
 }
 
 // ── Reset ──────────────────────────────────────────────────────────────────────
@@ -182,7 +187,8 @@ function initBuildModel() {
       await new Promise(r => setTimeout(r, 0)); // allow UI repaint
       AppState.voxelGrid = buildVoxelGrid(
         AppState.classifiedBH, AppState.geoUnits, AppState.cellSize,
-        { kNeighbors: AppState.kNeighbors, idwPower: AppState.idwPower }
+        { kNeighbors: AppState.kNeighbors, idwPower: AppState.idwPower,
+          method: AppState.interpMethod }
       );
       updateInfoPanel();
       goToStep(4);

@@ -98,8 +98,8 @@ export class VoxelBuilder {
       counts[u.code] = (counts[u.code] ?? 0) + 1;
     }
 
-    // Box geometry — slightly inset so unit boundaries are visible as gaps
-    const geom = new THREE.BoxGeometry(cs * 0.90, ch * 0.90, cs * 0.90);
+    // Box geometry — full cell size so voxels touch with no gaps
+    const geom = new THREE.BoxGeometry(cs, ch, cs);
 
     // Create one InstancedMesh + custom attribute buffers per unit
     for (const [code, count] of Object.entries(counts)) {
@@ -150,13 +150,16 @@ export class VoxelBuilder {
           this._dummy.updateMatrix();
           mesh.setMatrixAt(i, this._dummy.matrix);
 
-          // Colour — blend toward second-best unit at geological contacts
+          // Colour — blend toward second-best unit at geological contacts.
+          // convertSRGBToLinear: Three.js Color.set(hexString) stores sRGB values;
+          // the custom ShaderMaterial outputs to a linear framebuffer, so we must
+          // supply linear-space values or colours will appear too dark / desaturated.
           const cert  = certainty[flat];
-          c1.set(unit.color);
+          c1.set(unit.color).convertSRGBToLinear();
           const bu    = unitById[blendUnitIds[flat]];
           const blend = blendRatios[flat] ?? 0;
           if (bu && bu.code !== code && blend > 0.05) {
-            c2.set(bu.color);
+            c2.set(bu.color).convertSRGBToLinear();
             const t = Math.min(blend * 0.7, 0.5);
             cx.r = c1.r + (c2.r - c1.r) * t;
             cx.g = c1.g + (c2.g - c1.g) * t;
