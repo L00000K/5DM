@@ -310,13 +310,15 @@ export function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options = {})
 
   // ── 2. Grid dimensions ─────────────────────────────────────────────────────
   const MAX_VOXELS = 500_000;
-  let cellSize = cellSizeParam, cellH = cellSize / 5;
+  const userCellH = options.cellSizeZ;
+  let cellSize = cellSizeParam, cellH = userCellH ?? cellSize / 5;
   let nx = Math.ceil((maxX + marginX - ox) / cellSize);
   let ny = Math.ceil((maxY + marginY - oy) / cellSize);
   let nz = Math.ceil((topZ - botZ) / cellH);
 
   while (nx * ny * nz > MAX_VOXELS) {
-    cellSize += 1; cellH = cellSize / 5;
+    cellSize += 1;
+    if (!userCellH) cellH = cellSize / 5;
     nx = Math.ceil((maxX + marginX - ox) / cellSize);
     ny = Math.ceil((maxY + marginY - oy) / cellSize);
     nz = Math.ceil((topZ - botZ) / cellH);

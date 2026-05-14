@@ -53,8 +53,8 @@ function makeMaterial() {
   return new THREE.ShaderMaterial({
     vertexShader:   VERT,
     fragmentShader: FRAG,
-    transparent:    true,
-    depthWrite:     true,   // correct depth for solid-body exploration
+    transparent:    false,
+    depthWrite:     true,
     side:           THREE.FrontSide,
   });
 }
@@ -229,6 +229,11 @@ export class VoxelBuilder {
   setTransparencyMode(enabled, amount) {
     this.transparencyEnabled = enabled;
     this.transparencyAmount  = amount;
+    for (const mesh of Object.values(this.meshes)) {
+      mesh.material.transparent = enabled;
+      mesh.material.depthWrite  = !enabled;
+      mesh.material.needsUpdate = true;
+    }
     this._updateAlphas();
   }
 

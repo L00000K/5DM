@@ -594,50 +594,176 @@ input[type="range"] {
   display: block;
 }
 
-#slice-controls {
+/* ── Slicer ── */
+.slicer-overlay {
   position: absolute;
-  bottom: 12px;
-  left: 12px;
-  background: rgba(255,255,255,0.92);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 10px 14px;
-  backdrop-filter: blur(8px);
-  min-width: 200px;
-  box-shadow: var(--shadow);
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 5;
 }
 
-.slice-header {
+.slicer-panel {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 244px;
+  background: rgba(255,255,255,0.97);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-lg);
+  padding: 12px 14px;
+  z-index: 10;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.slicer-panel-hdr {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-dim);
-  margin-bottom: 8px;
 }
 
-.slice-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 5px;
+.slicer-close-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.slicer-close-btn:hover { color: var(--text-primary); }
+
+.slicer-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.4;
 }
 
-.slice-row label {
+.slicer-modes {
   display: flex;
-  align-items: center;
   gap: 4px;
+}
+
+.slicer-mode-btn {
+  flex: 1;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-mid);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 5px 3px;
+  transition: all 0.15s;
+  text-align: center;
+}
+.slicer-mode-btn:hover { border-color: var(--accent-dim); color: var(--accent); }
+.slicer-mode-btn.active {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.slicer-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.slicer-field label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   text-transform: none;
   letter-spacing: 0;
   font-weight: 600;
   font-size: 11px;
   color: var(--text-mid);
-  min-width: 36px;
-  cursor: pointer;
 }
 
-.slice-row input[type="checkbox"] { accent-color: var(--accent); }
-.slice-range { flex: 1; }
+.slicer-hint-sm {
+  font-weight: 400;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.slicer-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.btn-open-slicer {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 12px;
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow);
+  transition: all 0.15s;
+  z-index: 6;
+}
+.btn-open-slicer:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(255,255,255,0.97);
+}
+
+/* ── Cell size inputs ── */
+.cell-size-row {
+  display: flex;
+  gap: 8px;
+}
+
+.cell-size-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+}
+
+.cell-size-lbl {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cell-size-input {
+  width: 100%;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 6px 4px;
+  text-align: center;
+  transition: border-color 0.15s;
+}
+.cell-size-input:focus {
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
 
 /* ── Right panel sections ── */
 .panel-section {
