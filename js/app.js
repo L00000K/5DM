@@ -252,6 +252,8 @@ async function init() {
   initApiKeyModal();
   initStepNav();
   initCertaintySlider();
+  initRunAI();
+  initBuildModel();
 
   // Listen for API key updates
   window.addEventListener('geomodel:api-key-set', e => {

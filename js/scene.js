@@ -11,7 +11,7 @@ class SceneManager {
   constructor(canvasId) {
     this._canvas   = document.getElementById(canvasId);
     this._scene    = new THREE.Scene();
-    this._scene.background = new THREE.Color(0x0d1520);
+    this._scene.background = new THREE.Color(0xf0f2f5);
 
     this._renderer = new THREE.WebGLRenderer({
       canvas: this._canvas,
