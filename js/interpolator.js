@@ -87,9 +87,12 @@ export function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options = {})
           // Find which layer covers this depth; extrapolate beyond top/base if needed
           let layer = null;
           if (bh.layers.length) {
-            if (depth < bh.layers[0].top) {
-              // Above first logged layer — not expected in a typical model, skip
+            if (depth < 0) {
+              // Voxel is above this BH's ground surface — skip this BH
               continue;
+            } else if (depth < bh.layers[0].top) {
+              // Between ground surface and first logged layer — use shallowest unit
+              layer = bh.layers[0];
             } else if (depth > bh.layers[bh.layers.length - 1].base) {
               // Below last logged layer — extrapolate using deepest unit
               layer = bh.layers[bh.layers.length - 1];
@@ -111,9 +114,15 @@ export function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options = {})
         const neighbours = candidates.slice(0, kNeighbors);
 
         if (!neighbours.length) {
-          unitIds[idx]      = unknownId;
-          certainty[idx]    = 0;
-          blendUnitIds[idx] = unknownId;
+          // Fall back to nearest BH's shallowest layer so every voxel gets a unit
+          const fallback = boreholes
+            .filter(b => b.layers.length)
+            .map(b => ({ dist: Math.hypot(b.x - x, b.y - y), b }))
+            .sort((a, b) => a.dist - b.dist)[0];
+          const fbCode = fallback?.b.layers[0].unitCode;
+          unitIds[idx]      = fbCode ? (unitIndex[fbCode] ?? unknownId) : unknownId;
+          certainty[idx]    = 0.05;
+          blendUnitIds[idx] = unitIds[idx];
           blendRatios[idx]  = 0;
           continue;
         }
