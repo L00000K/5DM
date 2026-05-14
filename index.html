@@ -56,12 +56,22 @@
         <div id="bh-file-list" class="file-list"></div>
 
         <div class="field-group">
-          <label for="cell-size">Cell Size <span class="unit-hint">(metres)</span></label>
-          <div class="range-row">
-            <input type="range" id="cell-size" min="1" max="20" value="5" step="1">
-            <span id="cell-size-val" class="range-readout">5 m</span>
+          <label>Cell Size <span class="unit-hint">(metres)</span></label>
+          <div class="cell-size-row">
+            <div class="cell-size-field">
+              <span class="cell-size-lbl">X</span>
+              <input type="number" id="cell-size-x" value="1" min="0.1" max="50" step="0.5" class="cell-size-input">
+            </div>
+            <div class="cell-size-field">
+              <span class="cell-size-lbl">Y</span>
+              <input type="number" id="cell-size-y" value="1" min="0.1" max="50" step="0.5" class="cell-size-input">
+            </div>
+            <div class="cell-size-field">
+              <span class="cell-size-lbl">Z</span>
+              <input type="number" id="cell-size-z" value="0.25" min="0.05" max="20" step="0.05" class="cell-size-input">
+            </div>
           </div>
-          <p class="hint">Smaller = finer model, more compute</p>
+          <p class="hint">X/Y horizontal · Z vertical · smaller = finer</p>
         </div>
 
         <button id="btn-parse" class="btn-primary" disabled>Parse Data →</button>
@@ -198,21 +208,35 @@
       <!-- Step 3/4: Three.js 3D viewer -->
       <div id="view-model" class="view">
         <canvas id="three-canvas"></canvas>
-        <div id="slice-controls">
-          <div class="slice-header">Cross-section</div>
-          <div class="slice-row">
-            <label><input type="checkbox" id="slice-x-en"> X</label>
-            <input type="range" id="slice-x" min="0" max="100" value="100" class="slice-range">
+        <canvas id="slicer-overlay" class="slicer-overlay" hidden></canvas>
+
+        <!-- Slicer panel (floating, bottom-right) -->
+        <div id="slicer-panel" class="slicer-panel" hidden>
+          <div class="slicer-panel-hdr">
+            <span>Section Slice</span>
+            <button id="slicer-close" class="slicer-close-btn">✕</button>
           </div>
-          <div class="slice-row">
-            <label><input type="checkbox" id="slice-y-en"> Y</label>
-            <input type="range" id="slice-y" min="0" max="100" value="100" class="slice-range">
+          <div class="slicer-hint" id="slicer-hint">Press D for plan view, then click Draw Line</div>
+          <div class="slicer-modes">
+            <button class="slicer-mode-btn active" data-mode="slab">Slab</button>
+            <button class="slicer-mode-btn" data-mode="removeFront">Remove Front</button>
+            <button class="slicer-mode-btn" data-mode="removeBack">Remove Back</button>
           </div>
-          <div class="slice-row">
-            <label><input type="checkbox" id="slice-z-en"> Z</label>
-            <input type="range" id="slice-z" min="0" max="100" value="0" class="slice-range">
+          <div class="slicer-field">
+            <label>Thickness <span id="slicer-thickness-val">20 m</span></label>
+            <input type="range" id="slicer-thickness" min="1" max="200" value="20">
+          </div>
+          <div class="slicer-field">
+            <label>Position <span class="slicer-hint-sm">Ctrl+scroll</span></label>
+            <input type="range" id="slicer-position" min="-200" max="200" value="0">
+          </div>
+          <div class="slicer-actions">
+            <button id="slicer-draw-btn" class="btn-secondary btn-sm">✎ Draw Line</button>
+            <button id="slicer-clear-btn" class="btn-secondary btn-sm">✕ Clear</button>
           </div>
         </div>
+
+        <button id="btn-open-slicer" class="btn-open-slicer">✂ Section</button>
         <div id="voxel-tooltip" class="tooltip" hidden></div>
       </div>
     </section>

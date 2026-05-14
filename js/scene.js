@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { VoxelBuilder } from './voxel-builder.js';
+import { SlicerTool } from './slicer.js';
 import { log } from './app.js';
 
 export async function initScene(canvasId) {
@@ -32,19 +33,13 @@ class SceneManager {
     this._grid   = this._addGrid();
     this._axes   = this._addAxes();
     this._builder = new VoxelBuilder(this._scene);
-
-    // Clipping planes (X, Y, Z) — disabled by default
-    this._clipX = new THREE.Plane(new THREE.Vector3(-1, 0,  0), Infinity);
-    this._clipY = new THREE.Plane(new THREE.Vector3( 0, 0, -1), Infinity);
-    this._clipZ = new THREE.Plane(new THREE.Vector3( 0,-1,  0), Infinity);
-    this._renderer.clippingPlanes = [];
+    this._slicer  = new SlicerTool(this._scene, this._camera, this._controls, this._renderer);
 
     this._resizeObserver = new ResizeObserver(() => this._onResize());
     this._resizeObserver.observe(this._canvas.parentElement);
     this._onResize();
 
     this._animate();
-    this._initSliceControls();
     this._initTooltip();
   }
 
@@ -104,7 +99,6 @@ class SceneManager {
 
     this._builder.build(grid, geoUnits);
     if (classifiedBH?.length) this.addBoreholeSticks(classifiedBH, geoUnits);
-    this._applyClipping();
 
     // Frame camera on model
     const cx = grid.origin.x + grid.worldWidth  * 0.5;
@@ -117,9 +111,8 @@ class SceneManager {
     this._camera.lookAt(cx, cy, cz);
     this._controls.update();
 
-    // Update clipping plane constants to model bounds
     this._modelBounds = { cx, cy, cz, size, grid };
-    this._syncClipPlanes();
+    this._slicer.setModelBounds(grid);
 
     log('3D scene updated', 'ok');
   }
@@ -191,50 +184,6 @@ class SceneManager {
     }
   }
 
-  // ── Clipping plane sync ───────────────────────────────────────────────────
-  _syncClipPlanes() {
-    if (!this._modelBounds) return;
-    const { grid } = this._modelBounds;
-    const maxX = grid.origin.x + grid.worldWidth;
-    const maxY = grid.origin.y + grid.worldHeight;
-    const maxZ = grid.origin.z + grid.worldDepth;
-
-    this._clipX.constant = maxX * (this._clipXPct ?? 1.0);
-    this._clipY.constant = maxZ * (this._clipYPct ?? 1.0);
-    this._clipZ.constant = maxY * (this._clipZPct ?? 1.0);
-  }
-
-  _applyClipping() {
-    const planes = [];
-    if (this._clipXEnabled) planes.push(this._clipX);
-    if (this._clipYEnabled) planes.push(this._clipY);
-    if (this._clipZEnabled) planes.push(this._clipZ);
-    this._renderer.clippingPlanes = planes;
-  }
-
-  // ── Slice controls wiring ─────────────────────────────────────────────────
-  _initSliceControls() {
-    const wire = (id, enableId, pctProp, enableProp, planeProp) => {
-      const slider = document.getElementById(id);
-      const chk    = document.getElementById(enableId);
-      if (!slider || !chk) return;
-
-      slider.addEventListener('input', () => {
-        this[pctProp] = parseInt(slider.value) / 100;
-        this._syncClipPlanes();
-      });
-
-      chk.addEventListener('change', () => {
-        this[enableProp] = chk.checked;
-        this._applyClipping();
-      });
-    };
-
-    wire('slice-x', 'slice-x-en', '_clipXPct', '_clipXEnabled', '_clipX');
-    wire('slice-y', 'slice-y-en', '_clipYPct', '_clipYEnabled', '_clipY');
-    wire('slice-z', 'slice-z-en', '_clipZPct', '_clipZEnabled', '_clipZ');
-  }
-
   // ── Voxel hover tooltip ───────────────────────────────────────────────────
   _initTooltip() {
     const tooltip  = document.getElementById('voxel-tooltip');
@@ -295,8 +244,9 @@ class SceneManager {
     });
   }
 
-  // ── Getters for exporter ──────────────────────────────────────────────────
+  // ── Getters ───────────────────────────────────────────────────────────────
   get threeScene()  { return this._scene; }
   get threeCamera() { return this._camera; }
   get voxelGroup()  { return this._builder.group; }
+  get slicer()      { return this._slicer; }
 }

@@ -12,7 +12,8 @@ export const AppState = {
   apiKey: null,
   step: 1,
   demoMode: false,
-  cellSize: 5,        // metres
+  cellSizeH: 1,       // horizontal cell size (X & Y), metres
+  cellSizeZ: 0.25,    // vertical cell size, metres
   kNeighbors: 5,
   idwPower: 2,
   interpMethod: 'idw',
@@ -76,13 +77,22 @@ function initTabs() {
   });
 }
 
-// ── Cell size control ──────────────────────────────────────────────────────────
-function initCellSize() {
-  const slider = document.getElementById('cell-size');
-  const readout = document.getElementById('cell-size-val');
-  slider.addEventListener('input', () => {
-    AppState.cellSize = parseInt(slider.value);
-    readout.textContent = `${slider.value} m`;
+// ── Cell size inputs ───────────────────────────────────────────────────────────
+function initCellSizeInputs() {
+  const inX = document.getElementById('cell-size-x');
+  const inY = document.getElementById('cell-size-y');
+  const inZ = document.getElementById('cell-size-z');
+
+  inX?.addEventListener('input', () => {
+    AppState.cellSizeH = parseFloat(inX.value) || 1;
+    if (inY) inY.value = inX.value;
+  });
+  inY?.addEventListener('input', () => {
+    AppState.cellSizeH = parseFloat(inY.value) || 1;
+    if (inX) inX.value = inY.value;
+  });
+  inZ?.addEventListener('input', () => {
+    AppState.cellSizeZ = parseFloat(inZ.value) || 0.25;
   });
 }
 
@@ -186,9 +196,9 @@ function initBuildModel() {
     try {
       await new Promise(r => setTimeout(r, 0)); // allow UI repaint
       AppState.voxelGrid = buildVoxelGrid(
-        AppState.classifiedBH, AppState.geoUnits, AppState.cellSize,
+        AppState.classifiedBH, AppState.geoUnits, AppState.cellSizeH,
         { kNeighbors: AppState.kNeighbors, idwPower: AppState.idwPower,
-          method: AppState.interpMethod }
+          method: AppState.interpMethod, cellSizeZ: AppState.cellSizeZ }
       );
       updateInfoPanel();
       goToStep(4);
@@ -217,7 +227,7 @@ export function updateInfoPanel() {
     document.getElementById('info-grid-size').textContent =
       `${g.nx}×${g.ny}×${g.nz}`;
     document.getElementById('info-cell-size').textContent =
-      `${g.cellSize} m`;
+      `${g.cellSize} × ${g.cellHeight.toFixed(2)} m`;
   } else {
     document.getElementById('info-voxel-count').textContent = '—';
     document.getElementById('info-grid-size').textContent = '—';
@@ -301,7 +311,7 @@ function initStepNav() {
 // ── Main init ──────────────────────────────────────────────────────────────────
 async function init() {
   initTabs();
-  initCellSize();
+  initCellSizeInputs();
   initInterpolationSettings();
   initReset();
   initApiKeyModal();
