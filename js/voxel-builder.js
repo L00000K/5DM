@@ -98,14 +98,16 @@ export class VoxelBuilder {
       counts[u.code] = (counts[u.code] ?? 0) + 1;
     }
 
-    // Box geometry — full cell size so voxels touch with no gaps
-    const geom = new THREE.BoxGeometry(cs, ch, cs);
-
-    // Create one InstancedMesh + custom attribute buffers per unit
+    // Create one InstancedMesh + custom attribute buffers per unit.
+    // Each unit needs its OWN geometry instance — if a single BoxGeometry
+    // were shared, every setAttribute call would overwrite the previous unit's
+    // voxelColor/voxelAlpha buffers on the shared object (they all point to
+    // the same BufferGeometry), so only the last unit's colours would survive.
     for (const [code, count] of Object.entries(counts)) {
       const unit = geoUnits.find(u => u.code === code);
       if (!unit) continue;
 
+      const geom = new THREE.BoxGeometry(cs, ch, cs); // own geometry per unit
       const mesh = new THREE.InstancedMesh(geom, makeMaterial(), count);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.userData = { unitCode: code, unitId: unit.id };

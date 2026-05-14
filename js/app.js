@@ -439,7 +439,7 @@ export function drawPlanView(boreholes) {
   function ty(y) { return pad + (maxY - y) * scale; }
 
   // Grid
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.strokeStyle = 'rgba(0,0,0,0.08)';
   ctx.lineWidth = 1;
   for (let gx = minX; gx <= maxX + 1; gx += 50) {
     ctx.beginPath();
@@ -475,7 +475,7 @@ export function drawPlanView(boreholes) {
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    ctx.fillStyle = '#d8e4f0';
+    ctx.fillStyle = '#2c4060';
     ctx.font = '10px Inter, sans-serif';
     ctx.fillText(bh.id, cx + 7, cy - 5);
   });
