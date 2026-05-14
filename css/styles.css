@@ -275,6 +275,17 @@ input[type="range"] {
 
 .hint { font-size: 11px; color: var(--text-dim); }
 
+.settings-divider {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 6px 0 2px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+
 /* ── Desc list ── */
 .desc-list { display: flex; flex-direction: column; gap: 4px; }
 .desc-item {

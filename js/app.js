@@ -13,6 +13,8 @@ export const AppState = {
   step: 1,
   demoMode: false,
   cellSize: 5,        // metres
+  kNeighbors: 5,
+  idwPower: 2,
   rawBoreholes: [],   // BHLog[] from parser
   geoUnits: [],       // GeoUnit[] after AI classification
   classifiedBH: [],   // classified BHLog[]
@@ -80,6 +82,22 @@ function initCellSize() {
   slider.addEventListener('input', () => {
     AppState.cellSize = parseInt(slider.value);
     readout.textContent = `${slider.value} m`;
+  });
+}
+
+function initInterpolationSettings() {
+  const kSlider  = document.getElementById('k-neighbors');
+  const kVal     = document.getElementById('k-neighbors-val');
+  const pSlider  = document.getElementById('idw-power');
+  const pVal     = document.getElementById('idw-power-val');
+
+  kSlider?.addEventListener('input', () => {
+    AppState.kNeighbors = parseInt(kSlider.value);
+    kVal.textContent = kSlider.value;
+  });
+  pSlider?.addEventListener('input', () => {
+    AppState.idwPower = parseFloat(pSlider.value);
+    pVal.textContent = parseFloat(pSlider.value).toFixed(1);
   });
 }
 
@@ -162,7 +180,10 @@ function initBuildModel() {
     log('Building voxel grid…', 'info');
     try {
       await new Promise(r => setTimeout(r, 0)); // allow UI repaint
-      AppState.voxelGrid = buildVoxelGrid(AppState.classifiedBH, AppState.geoUnits, AppState.cellSize);
+      AppState.voxelGrid = buildVoxelGrid(
+        AppState.classifiedBH, AppState.geoUnits, AppState.cellSize,
+        { kNeighbors: AppState.kNeighbors, idwPower: AppState.idwPower }
+      );
       updateInfoPanel();
       goToStep(4);
       AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits);
@@ -248,6 +269,7 @@ function initStepNav() {
 async function init() {
   initTabs();
   initCellSize();
+  initInterpolationSettings();
   initReset();
   initApiKeyModal();
   initStepNav();
