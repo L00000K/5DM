@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GeoModel AI — Geotechnical Voxel Model</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header id="app-header">
+    <div class="header-brand">
+      <span class="brand-icon">⬡</span>
+      <h1>GeoModel AI</h1>
+      <span class="brand-sub">Geotechnical Voxel Model PoC</span>
+    </div>
+    <nav class="step-indicator" id="step-indicator" aria-label="Progress">
+      <button class="step active" data-step="1">1 · Data</button>
+      <span class="step-arrow">›</span>
+      <button class="step" data-step="2">2 · Analyse</button>
+      <span class="step-arrow">›</span>
+      <button class="step" data-step="3">3 · Model</button>
+      <span class="step-arrow">›</span>
+      <button class="step" data-step="4">4 · View</button>
+    </nav>
+    <div class="header-actions">
+      <button id="btn-api-key" class="btn-ghost" title="Configure Anthropic API Key">⚙ API Key</button>
+      <button id="btn-reset" class="btn-ghost" title="Reset all data">↺ Reset</button>
+    </div>
+  </header>
+
+  <main id="app-main">
+    <!-- ── LEFT PANEL ── -->
+    <aside id="left-panel">
+      <div class="panel-tabs" role="tablist">
+        <button class="tab-btn active" data-tab="upload" role="tab">Upload</button>
+        <button class="tab-btn" data-tab="text" role="tab">Text</button>
+        <button class="tab-btn" data-tab="demo" role="tab">Demo</button>
+      </div>
+
+      <!-- Upload tab -->
+      <div class="tab-content active" id="tab-upload" role="tabpanel">
+        <div class="drop-zone" id="drop-bh" tabindex="0" role="button" aria-label="Drop borehole files here">
+          <div class="drop-icon">⬇</div>
+          <div class="drop-label">Borehole Logs</div>
+          <div class="drop-hint">AGS 4.x · CSV · TXT</div>
+          <input type="file" id="file-bh" accept=".ags,.csv,.txt" hidden multiple>
+        </div>
+        <div id="bh-file-list" class="file-list"></div>
+
+        <div class="field-group">
+          <label for="cell-size">Cell Size <span class="unit-hint">(metres)</span></label>
+          <div class="range-row">
+            <input type="range" id="cell-size" min="1" max="20" value="5" step="1">
+            <span id="cell-size-val" class="range-readout">5 m</span>
+          </div>
+          <p class="hint">Smaller = finer model, more compute</p>
+        </div>
+
+        <button id="btn-parse" class="btn-primary" disabled>Parse Data →</button>
+      </div>
+
+      <!-- Text tab -->
+      <div class="tab-content" id="tab-text" role="tabpanel">
+        <div class="field-group">
+          <label for="input-unit-desc">Unit Descriptions</label>
+          <textarea id="input-unit-desc" rows="5"
+            placeholder="e.g. 'Alluvial Clay: soft to firm, dark grey, silty CLAY, high plasticity, Cu ~25 kPa, Holocene river deposit...'"></textarea>
+          <button id="btn-add-desc" class="btn-secondary btn-sm">+ Add Description</button>
+        </div>
+        <div id="desc-list" class="desc-list"></div>
+
+        <div class="field-group">
+          <label for="input-site-history">Site History</label>
+          <textarea id="input-site-history" rows="4"
+            placeholder="Historical land use, known hazards, previous structures, local geology notes..."></textarea>
+        </div>
+      </div>
+
+      <!-- Demo tab -->
+      <div class="tab-content" id="tab-demo" role="tabpanel">
+        <div class="demo-card">
+          <div class="demo-title">Riverside Development, Millbrook</div>
+          <div class="demo-meta">16 boreholes · 250 × 200 m · 4 units</div>
+          <div class="demo-units">
+            <span class="unit-chip" style="background:#8B6914">MG</span>
+            <span class="unit-chip" style="background:#D4A843;color:#222">RTD</span>
+            <span class="unit-chip" style="background:#4A7C59">AC</span>
+            <span class="unit-chip" style="background:#EDE8D8;color:#333">CH</span>
+          </div>
+          <p class="demo-desc">Fictional mixed-use site showing Made Ground, River Terrace Deposits, Alluvial Clay lens, and Chalk bedrock. No API key required.</p>
+        </div>
+        <button id="btn-load-demo" class="btn-primary">Load Demo Site →</button>
+      </div>
+
+      <!-- Action buttons (always visible) -->
+      <div class="panel-actions">
+        <button id="btn-run-ai" class="btn-primary" disabled>Run AI Analysis →</button>
+        <button id="btn-build-model" class="btn-primary" disabled>Build 3D Model →</button>
+      </div>
+
+      <div id="status-log" class="status-log" aria-live="polite">
+        <div class="log-entry log-info">Ready — load data or use Demo mode.</div>
+      </div>
+    </aside>
+
+    <!-- ── CENTER PANEL ── -->
+    <section id="center-panel">
+
+      <!-- Step 1: Data view -->
+      <div id="view-data" class="view active">
+        <div class="view-split">
+          <div id="plan-view-wrap">
+            <div class="view-label">Borehole Plan View</div>
+            <canvas id="plan-canvas"></canvas>
+            <div id="plan-tooltip" class="tooltip" hidden></div>
+          </div>
+          <div id="data-table-wrap">
+            <div class="view-label">Data Summary</div>
+            <div class="table-scroll">
+              <table id="data-table">
+                <thead>
+                  <tr>
+                    <th>BH ID</th><th>X (m)</th><th>Y (m)</th>
+                    <th>GL (mAOD)</th><th>Depth (m)</th><th>Layers</th>
+                  </tr>
+                </thead>
+                <tbody id="data-table-body">
+                  <tr><td colspan="6" class="table-empty">No data loaded</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: AI analysis log -->
+      <div id="view-analysis" class="view">
+        <div class="view-label">AI Analysis</div>
+        <div id="analysis-log" class="analysis-log">
+          <div class="log-entry log-info">Waiting for analysis to start…</div>
+        </div>
+      </div>
+
+      <!-- Step 3/4: Three.js 3D viewer -->
+      <div id="view-model" class="view">
+        <canvas id="three-canvas"></canvas>
+        <div id="slice-controls">
+          <div class="slice-header">Cross-section</div>
+          <div class="slice-row">
+            <label><input type="checkbox" id="slice-x-en"> X</label>
+            <input type="range" id="slice-x" min="0" max="100" value="100" class="slice-range">
+          </div>
+          <div class="slice-row">
+            <label><input type="checkbox" id="slice-y-en"> Y</label>
+            <input type="range" id="slice-y" min="0" max="100" value="100" class="slice-range">
+          </div>
+          <div class="slice-row">
+            <label><input type="checkbox" id="slice-z-en"> Z</label>
+            <input type="range" id="slice-z" min="0" max="100" value="0" class="slice-range">
+          </div>
+        </div>
+        <div id="voxel-tooltip" class="tooltip" hidden></div>
+      </div>
+    </section>
+
+    <!-- ── RIGHT PANEL ── -->
+    <aside id="right-panel">
+      <div class="panel-section">
+        <h3>Unit Legend</h3>
+        <div id="unit-legend" class="unit-legend">
+          <p class="hint">Units appear after analysis</p>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3>Certainty Filter</h3>
+        <div class="range-row">
+          <input type="range" id="certainty-threshold" min="0" max="95" value="0" step="5">
+          <span id="certainty-val" class="range-readout">0%</span>
+        </div>
+        <p class="hint">Hide voxels below this certainty</p>
+      </div>
+
+      <div class="panel-section">
+        <h3>Model Info</h3>
+        <dl id="model-info" class="model-info">
+          <dt>Boreholes</dt><dd id="info-bh-count">—</dd>
+          <dt>Voxels</dt><dd id="info-voxel-count">—</dd>
+          <dt>Grid (nx×ny×nz)</dt><dd id="info-grid-size">—</dd>
+          <dt>Cell size</dt><dd id="info-cell-size">—</dd>
+        </dl>
+      </div>
+
+      <div class="panel-section export-section">
+        <h3>Export</h3>
+        <button id="btn-export-gltf" class="btn-secondary" disabled>⬇ GLTF</button>
+        <button id="btn-export-obj"  class="btn-secondary" disabled>⬇ OBJ</button>
+        <button id="btn-export-json" class="btn-secondary" disabled>⬇ JSON</button>
+      </div>
+    </aside>
+  </main>
+
+  <!-- ── API KEY MODAL ── -->
+  <div id="modal-api-key" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-api-title">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+      <h2 id="modal-api-title">Anthropic API Key</h2>
+      <p>Enter your API key to enable live AI geological analysis. It is stored only in this browser session and sent exclusively to <code>api.anthropic.com</code>.</p>
+      <input type="password" id="input-api-key" placeholder="sk-ant-api03-…"
+             autocomplete="off" spellcheck="false">
+      <div id="api-key-status" class="api-key-status"></div>
+      <div class="modal-actions">
+        <button id="btn-save-key" class="btn-primary">Save for Session</button>
+        <button id="btn-demo-mode" class="btn-ghost">Use Demo Mode</button>
+      </div>
+      <p class="modal-note">Demo mode uses pre-classified data — no key needed.</p>
+    </div>
+  </div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

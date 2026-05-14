@@ -1,0 +1,209 @@
+{
+  "site": {
+    "name": "Riverside Mixed Development, Millbrook",
+    "description": "Fictional site investigation for a mixed-use riverside development. 16 boreholes drilled to 15-20m depth across a 250×200m area.",
+    "coordinate_system": "local",
+    "units": "m",
+    "ground_level_datum": "AOD"
+  },
+  "geological_units": [
+    {
+      "id": 1,
+      "code": "MG",
+      "name": "Made Ground",
+      "color": "#8B6914",
+      "description": "Variable fill material including demolition rubble, ash, and reworked natural soils. Loose to medium dense. Encountered across most of the site reflecting historical industrial use.",
+      "age": "20th century",
+      "engineering_notes": "Variable compressibility. Not suitable as founding stratum without treatment."
+    },
+    {
+      "id": 2,
+      "code": "RTD",
+      "name": "River Terrace Deposits",
+      "color": "#D4A843",
+      "description": "Medium dense to dense, sub-angular to sub-rounded flint GRAVEL with coarse sand. Occasional cobbles. Thickness increases toward the eastern boundary.",
+      "age": "Pleistocene",
+      "engineering_notes": "Good founding stratum. SPT N values typically 25-45."
+    },
+    {
+      "id": 3,
+      "code": "AC",
+      "name": "Alluvial Clay",
+      "color": "#4A7C59",
+      "description": "Soft to firm, dark grey, silty CLAY with occasional organic laminae and shell fragments. High plasticity. Lens-like geometry controlled by former river channel.",
+      "age": "Holocene",
+      "engineering_notes": "Consolidation settlement risk. Cu typically 20-40 kPa. Su(rem) low."
+    },
+    {
+      "id": 4,
+      "code": "CH",
+      "name": "Chalk",
+      "color": "#EDE8D8",
+      "description": "Soft to medium hard, white to light grey CHALK, Grade B/C (structurally weak to medium). Fractured in upper 2m. Slight flint bands at depth. Consistent across site.",
+      "age": "Upper Cretaceous",
+      "engineering_notes": "Check for solution features. SPT refusal common below 1.5m. Good long-term founding stratum."
+    }
+  ],
+  "boreholes": [
+    {
+      "id": "BH-01", "x": 15.0, "y": 18.0, "ground_level": 11.8,
+      "depth": 15.0,
+      "layers": [
+        {"top": 0.0, "base": 1.8, "unit_code": "MG",  "description": "Loose to medium dense reddish brown sandy GRAVEL fill with brick fragments", "certainty": 0.92},
+        {"top": 1.8, "base": 5.5, "unit_code": "RTD", "description": "Medium dense brown sub-rounded flint GRAVEL with coarse sand, SPT N=28", "certainty": 0.88},
+        {"top": 5.5, "base": 8.2, "unit_code": "AC",  "description": "Soft, dark grey silty CLAY with occasional shell fragments, Cu=22 kPa", "certainty": 0.85},
+        {"top": 8.2, "base": 15.0,"unit_code": "CH",  "description": "Soft to medium hard white CHALK, Grade C, fractured, SPT refusal at 9.5m", "certainty": 0.95}
+      ]
+    },
+    {
+      "id": "BH-02", "x": 85.0, "y": 18.0, "ground_level": 11.5,
+      "depth": 18.0,
+      "layers": [
+        {"top": 0.0, "base": 2.1, "unit_code": "MG",  "description": "Medium dense brown silty SAND and GRAVEL fill with ash layers", "certainty": 0.90},
+        {"top": 2.1, "base": 6.8, "unit_code": "RTD", "description": "Dense brown flint GRAVEL with coarse to medium sand, SPT N=38", "certainty": 0.91},
+        {"top": 6.8, "base": 10.5,"unit_code": "AC",  "description": "Soft, grey silty CLAY, high plasticity, organic laminae at 8.2m, Cu=18 kPa", "certainty": 0.82},
+        {"top": 10.5,"base": 18.0,"unit_code": "CH",  "description": "Medium hard white CHALK, Grade B/C, flint bands at 13.5 and 16.0m", "certainty": 0.94}
+      ]
+    },
+    {
+      "id": "BH-03", "x": 155.0, "y": 18.0, "ground_level": 11.2,
+      "depth": 16.0,
+      "layers": [
+        {"top": 0.0, "base": 1.5, "unit_code": "MG",  "description": "Loose brownish grey sandy CLAY fill with occasional gravel", "certainty": 0.88},
+        {"top": 1.5, "base": 7.2, "unit_code": "RTD", "description": "Medium dense to dense brown sub-angular flint GRAVEL, SPT N=32-41", "certainty": 0.90},
+        {"top": 7.2, "base": 9.8, "unit_code": "AC",  "description": "Firm dark grey silty CLAY, Cu=35 kPa, thin sand laminae", "certainty": 0.80},
+        {"top": 9.8, "base": 16.0,"unit_code": "CH",  "description": "Soft white CHALK, Grade C, heavily fractured upper 1m", "certainty": 0.93}
+      ]
+    },
+    {
+      "id": "BH-04", "x": 225.0, "y": 18.0, "ground_level": 10.9,
+      "depth": 15.0,
+      "layers": [
+        {"top": 0.0, "base": 1.2, "unit_code": "MG",  "description": "Loose reddish brown sandy GRAVEL fill", "certainty": 0.90},
+        {"top": 1.2, "base": 7.8, "unit_code": "RTD", "description": "Dense brown flint GRAVEL with cobbles, SPT N=44, thickness greatest here", "certainty": 0.92},
+        {"top": 7.8, "base": 9.5, "unit_code": "AC",  "description": "Soft grey silty CLAY, thin lens, Cu=25 kPa", "certainty": 0.75},
+        {"top": 9.5, "base": 15.0,"unit_code": "CH",  "description": "Soft to medium hard CHALK, Grade B/C", "certainty": 0.93}
+      ]
+    },
+    {
+      "id": "BH-05", "x": 15.0, "y": 78.0, "ground_level": 12.1,
+      "depth": 17.0,
+      "layers": [
+        {"top": 0.0, "base": 2.5, "unit_code": "MG",  "description": "Medium dense brownish grey GRAVEL and SAND fill with brick and concrete rubble", "certainty": 0.91},
+        {"top": 2.5, "base": 4.8, "unit_code": "RTD", "description": "Medium dense brown flint GRAVEL, SPT N=24", "certainty": 0.85},
+        {"top": 4.8, "base": 9.5, "unit_code": "AC",  "description": "Soft to firm dark grey silty CLAY, thick alluvial deposit, Cu=28 kPa", "certainty": 0.87},
+        {"top": 9.5, "base": 17.0,"unit_code": "CH",  "description": "Soft CHALK, Grade C, upper 2m highly fractured", "certainty": 0.94}
+      ]
+    },
+    {
+      "id": "BH-06", "x": 85.0, "y": 78.0, "ground_level": 11.7,
+      "depth": 18.0,
+      "layers": [
+        {"top": 0.0, "base": 2.0, "unit_code": "MG",  "description": "Variable fill, dark grey silty CLAY and SAND with organic content, possible made ground", "certainty": 0.88},
+        {"top": 2.0, "base": 5.5, "unit_code": "RTD", "description": "Medium dense brown GRAVEL with fine to coarse sand, SPT N=30", "certainty": 0.86},
+        {"top": 5.5, "base": 11.0,"unit_code": "AC",  "description": "Soft, dark grey, silty organic CLAY, peat layer at 7.5-8.2m, Cu=15 kPa", "certainty": 0.83},
+        {"top": 11.0,"base": 18.0,"unit_code": "CH",  "description": "Soft to medium hard CHALK, Grade B/C, flint band at 14.0m", "certainty": 0.92}
+      ]
+    },
+    {
+      "id": "BH-07", "x": 155.0, "y": 78.0, "ground_level": 11.4,
+      "depth": 16.5,
+      "layers": [
+        {"top": 0.0, "base": 1.8, "unit_code": "MG",  "description": "Loose reddish brown sandy GRAVEL fill with glass and tile fragments", "certainty": 0.89},
+        {"top": 1.8, "base": 6.5, "unit_code": "RTD", "description": "Dense brown sub-rounded flint GRAVEL, SPT N=39", "certainty": 0.91},
+        {"top": 6.5, "base": 9.8, "unit_code": "AC",  "description": "Firm grey silty CLAY, Cu=38 kPa, occasional sand partings", "certainty": 0.81},
+        {"top": 9.8, "base": 16.5,"unit_code": "CH",  "description": "Medium hard white CHALK, Grade B, less fractured, flint nodules", "certainty": 0.95}
+      ]
+    },
+    {
+      "id": "BH-08", "x": 225.0, "y": 78.0, "ground_level": 11.0,
+      "depth": 15.5,
+      "layers": [
+        {"top": 0.0, "base": 1.4, "unit_code": "MG",  "description": "Loose brown sandy GRAVEL fill", "certainty": 0.90},
+        {"top": 1.4, "base": 8.2, "unit_code": "RTD", "description": "Dense to very dense flint GRAVEL, SPT N=46, cobbles at 6m", "certainty": 0.93},
+        {"top": 8.2, "base": 9.5, "unit_code": "AC",  "description": "Soft grey CLAY, thin wedge, Cu=22 kPa", "certainty": 0.72},
+        {"top": 9.5, "base": 15.5,"unit_code": "CH",  "description": "Soft to medium hard CHALK, Grade B/C", "certainty": 0.93}
+      ]
+    },
+    {
+      "id": "BH-09", "x": 15.0, "y": 138.0, "ground_level": 12.4,
+      "depth": 17.5,
+      "layers": [
+        {"top": 0.0, "base": 3.0, "unit_code": "MG",  "description": "Loose to medium dense brownish grey sandy CLAY fill, possible former ground surface at 1.5m", "certainty": 0.87},
+        {"top": 3.0, "base": 5.2, "unit_code": "RTD", "description": "Medium dense brown GRAVEL and SAND, SPT N=22", "certainty": 0.83},
+        {"top": 5.2, "base": 10.8,"unit_code": "AC",  "description": "Soft dark grey silty CLAY, thick channel deposit, Cu=20 kPa, wood fragment at 7.5m", "certainty": 0.88},
+        {"top": 10.8,"base": 17.5,"unit_code": "CH",  "description": "Soft CHALK, Grade C, fractured, possible solution feature zone 12-13m", "certainty": 0.89}
+      ]
+    },
+    {
+      "id": "BH-10", "x": 85.0, "y": 138.0, "ground_level": 12.0,
+      "depth": 18.0,
+      "layers": [
+        {"top": 0.0, "base": 2.8, "unit_code": "MG",  "description": "Medium dense brown sandy GRAVEL fill with demolition rubble", "certainty": 0.91},
+        {"top": 2.8, "base": 5.0, "unit_code": "RTD", "description": "Medium dense brown flint GRAVEL, SPT N=26", "certainty": 0.84},
+        {"top": 5.0, "base": 11.5,"unit_code": "AC",  "description": "Soft to firm grey silty organic CLAY, Cu=25-35 kPa, prominent organic layer 8.5-9.0m", "certainty": 0.86},
+        {"top": 11.5,"base": 18.0,"unit_code": "CH",  "description": "Soft to medium hard CHALK, Grade B/C, flint band at 15.5m", "certainty": 0.92}
+      ]
+    },
+    {
+      "id": "BH-11", "x": 155.0, "y": 138.0, "ground_level": 11.6,
+      "depth": 16.0,
+      "layers": [
+        {"top": 0.0, "base": 2.0, "unit_code": "MG",  "description": "Loose brown sandy GRAVEL and silty SAND fill", "certainty": 0.89},
+        {"top": 2.0, "base": 7.0, "unit_code": "RTD", "description": "Dense brown sub-angular flint GRAVEL, SPT N=36-42", "certainty": 0.92},
+        {"top": 7.0, "base": 10.0,"unit_code": "AC",  "description": "Firm grey silty CLAY, Cu=36 kPa, decreasing thickness eastward", "certainty": 0.80},
+        {"top": 10.0,"base": 16.0,"unit_code": "CH",  "description": "Medium hard white CHALK, Grade B, flint nodules, less fractured", "certainty": 0.95}
+      ]
+    },
+    {
+      "id": "BH-12", "x": 225.0, "y": 138.0, "ground_level": 11.1,
+      "depth": 15.0,
+      "layers": [
+        {"top": 0.0, "base": 1.5, "unit_code": "MG",  "description": "Loose greyish brown sandy GRAVEL fill", "certainty": 0.90},
+        {"top": 1.5, "base": 8.5, "unit_code": "RTD", "description": "Dense to very dense flint GRAVEL, SPT N=44, thickest RTD on site", "certainty": 0.93},
+        {"top": 8.5, "base": 9.5, "unit_code": "AC",  "description": "Soft grey CLAY, thin discontinuous lens, Cu=24 kPa", "certainty": 0.65},
+        {"top": 9.5, "base": 15.0,"unit_code": "CH",  "description": "Soft to medium hard CHALK, Grade B/C", "certainty": 0.92}
+      ]
+    },
+    {
+      "id": "BH-13", "x": 50.0, "y": 108.0, "ground_level": 11.9,
+      "depth": 17.0,
+      "layers": [
+        {"top": 0.0, "base": 2.2, "unit_code": "MG",  "description": "Medium dense reddish brown sandy GRAVEL fill with brick and tile", "certainty": 0.90},
+        {"top": 2.2, "base": 5.8, "unit_code": "RTD", "description": "Medium dense to dense brown flint GRAVEL, SPT N=31", "certainty": 0.87},
+        {"top": 5.8, "base": 10.2,"unit_code": "AC",  "description": "Soft dark grey silty CLAY, organic content, Cu=22 kPa", "certainty": 0.85},
+        {"top": 10.2,"base": 17.0,"unit_code": "CH",  "description": "Soft CHALK, Grade C, fractured throughout", "certainty": 0.91}
+      ]
+    },
+    {
+      "id": "BH-14", "x": 120.0, "y": 48.0, "ground_level": 11.3,
+      "depth": 16.0,
+      "layers": [
+        {"top": 0.0, "base": 1.7, "unit_code": "MG",  "description": "Loose brown GRAVEL and SAND fill", "certainty": 0.88},
+        {"top": 1.7, "base": 6.0, "unit_code": "RTD", "description": "Dense brown sub-angular flint GRAVEL, SPT N=37", "certainty": 0.90},
+        {"top": 6.0, "base": 9.0, "unit_code": "AC",  "description": "Soft to firm grey silty CLAY, Cu=30 kPa", "certainty": 0.83},
+        {"top": 9.0, "base": 16.0,"unit_code": "CH",  "description": "Medium hard CHALK, Grade B, flint band at 12.0m", "certainty": 0.94}
+      ]
+    },
+    {
+      "id": "BH-15", "x": 190.0, "y": 108.0, "ground_level": 11.2,
+      "depth": 15.5,
+      "layers": [
+        {"top": 0.0, "base": 1.6, "unit_code": "MG",  "description": "Loose brownish grey sandy GRAVEL fill", "certainty": 0.89},
+        {"top": 1.6, "base": 7.5, "unit_code": "RTD", "description": "Dense flint GRAVEL, SPT N=40, fines content low", "certainty": 0.92},
+        {"top": 7.5, "base": 9.5, "unit_code": "AC",  "description": "Soft grey silty CLAY, discontinuous, Cu=26 kPa", "certainty": 0.73},
+        {"top": 9.5, "base": 15.5,"unit_code": "CH",  "description": "Soft to medium hard CHALK, Grade B/C", "certainty": 0.93}
+      ]
+    },
+    {
+      "id": "BH-16", "x": 120.0, "y": 168.0, "ground_level": 12.2,
+      "depth": 18.0,
+      "layers": [
+        {"top": 0.0, "base": 2.8, "unit_code": "MG",  "description": "Loose to medium dense dark grey silty CLAY fill with gravel, high organic content, possible former pond fill", "certainty": 0.86},
+        {"top": 2.8, "base": 4.5, "unit_code": "RTD", "description": "Medium dense brown GRAVEL, thin, SPT N=20", "certainty": 0.79},
+        {"top": 4.5, "base": 11.8,"unit_code": "AC",  "description": "Soft to very soft dark grey silty organic CLAY, peat layers at 6.0-6.5m and 9.0-9.5m, Cu=12-25 kPa", "certainty": 0.90},
+        {"top": 11.8,"base": 18.0,"unit_code": "CH",  "description": "Soft CHALK, Grade C, fractured, possible dissolution pipe at 13.0m", "certainty": 0.88}
+      ]
+    }
+  ]
+}
