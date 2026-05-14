@@ -1,31 +1,34 @@
-import { computeCertainty, dataDensity, unitConsistency } from './semantic-engine.js';
 import { log } from './app.js';
 
-const MAX_VOXELS   = 500_000;
-const IDW_POWER    = 2;
-const MIN_BH_DIST  = 0.1; // avoid division by zero
+const MIN_BH_DIST = 0.1;
 
-// ── Build the voxel grid from classified boreholes ─────────────────────────────
-export function buildVoxelGrid(boreholes, geoUnits, cellSizeParam) {
+// ── Build the voxel grid using K-nearest-neighbour IDW ─────────────────────────
+//   options: { kNeighbors=5, idwPower=2 }
+export function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options = {}) {
   if (!boreholes.length) throw new Error('No borehole data to interpolate');
 
+  const kNeighbors = Math.max(1, options.kNeighbors ?? 5);
+  const idwPower   = Math.max(0.5, options.idwPower ?? 2);
+
   // ── 1. Bounding box ────────────────────────────────────────────────────────
-  const xs = boreholes.map(b => b.x);
-  const ys = boreholes.map(b => b.y);
+  const xs  = boreholes.map(b => b.x);
+  const ys  = boreholes.map(b => b.y);
   const gls = boreholes.map(b => b.groundLevel ?? 0);
-  const maxDepths = boreholes.map(b => b.depth ?? Math.max(...b.layers.map(l => l.base)));
+  const maxDepths = boreholes.map(b =>
+    b.depth ?? (b.layers.length ? Math.max(...b.layers.map(l => l.base)) : 10));
 
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
+  const minX = Math.min(...xs),  maxX = Math.max(...xs);
+  const minY = Math.min(...ys),  maxY = Math.max(...ys);
+  const maxGL  = Math.max(...gls);
+  const maxDep = Math.max(...maxDepths);
+  const topZ   = maxGL;
+  const botZ   = maxGL - maxDep;
 
-  const maxGL   = Math.max(...gls);
-  const maxDep  = Math.max(...maxDepths);
-  const topZ    = maxGL;
-  const botZ    = maxGL - maxDep;
+  // Typical inter-borehole spacing — drives certainty decay with distance
+  const siteDiag      = Math.hypot(maxX - minX + 1, maxY - minY + 1);
+  const typicalSpacing = siteDiag / Math.sqrt(boreholes.length);
 
-  // Add 20% margin around BH extents
+  // 20 % margin
   const marginX = Math.max((maxX - minX) * 0.15, cellSizeParam * 2);
   const marginY = Math.max((maxY - minY) * 0.15, cellSizeParam * 2);
 
@@ -34,117 +37,142 @@ export function buildVoxelGrid(boreholes, geoUnits, cellSizeParam) {
   const oz = botZ;
 
   // ── 2. Grid dimensions ─────────────────────────────────────────────────────
+  const MAX_VOXELS = 500_000;
   let cellSize = cellSizeParam;
-  const cellH  = cellSize / 5;   // vertical cell is 1/5 of horizontal
-
+  let cellH    = cellSize / 5;
   let nx = Math.ceil((maxX + marginX - ox) / cellSize);
   let ny = Math.ceil((maxY + marginY - oy) / cellSize);
   let nz = Math.ceil((topZ - botZ)         / cellH);
 
-  // Cap voxel count, auto-increase cell size if needed
   while (nx * ny * nz > MAX_VOXELS) {
     cellSize += 1;
+    cellH = cellSize / 5;
     nx = Math.ceil((maxX + marginX - ox) / cellSize);
     ny = Math.ceil((maxY + marginY - oy) / cellSize);
-    nz = Math.ceil((topZ - botZ)         / (cellSize / 5));
-    log(`Cell size increased to ${cellSize}m to stay under 500K voxels`, 'warn');
+    nz = Math.ceil((topZ - botZ)         / cellH);
+    log(`Cell size auto-increased to ${cellSize} m to stay under 500 K voxels`, 'warn');
   }
 
-  log(`Grid: ${nx}×${ny}×${nz} = ${(nx*ny*nz).toLocaleString()} voxels at ${cellSize}m cells`, 'info');
+  log(`Grid ${nx}×${ny}×${nz} = ${(nx*ny*nz).toLocaleString()} voxels @ ${cellSize} m cells | K=${kNeighbors} p=${idwPower}`, 'info');
 
   const total = nx * ny * nz;
-  const unitIds   = new Uint8Array(total);     // unit index (0 = unknown)
-  const certainty = new Float32Array(total);   // 0–1
+  const unitIds     = new Uint8Array(total);    // winning unit id
+  const certainty   = new Float32Array(total);  // 0–1
+  const blendUnitIds = new Uint8Array(total);   // second-best unit id (for colour mixing)
+  const blendRatios  = new Float32Array(total); // fraction of weight going to second-best
 
-  // ── 3. Build unit code → id lookup ────────────────────────────────────────
+  // ── 3. Lookups ─────────────────────────────────────────────────────────────
   const unitIndex = {};
   geoUnits.forEach(u => { unitIndex[u.code] = u.id; });
   const unknownId = geoUnits.find(u => u.code === 'UNKN')?.id ?? 0;
 
-  const searchR = cellSize * 3.5;
-
-  // ── 4. Interpolate each voxel ─────────────────────────────────────────────
+  // ── 4. Interpolate ─────────────────────────────────────────────────────────
   for (let iz = 0; iz < nz; iz++) {
-    const z = oz + iz * (cellSize / 5) + (cellSize / 5) * 0.5;
+    const z = oz + iz * cellH + cellH * 0.5;
 
     for (let iy = 0; iy < ny; iy++) {
       const y = oy + iy * cellSize + cellSize * 0.5;
 
       for (let ix = 0; ix < nx; ix++) {
-        const x = ox + ix * cellSize + cellSize * 0.5;
+        const x   = ox + ix * cellSize + cellSize * 0.5;
         const idx = ix + iy * nx + iz * nx * ny;
 
-        // Find boreholes within search radius
-        const neighbours = [];
+        // Build candidate list: all BHs sorted by 2-D distance
+        const candidates = [];
         for (const bh of boreholes) {
           const dist2d = Math.hypot(bh.x - x, bh.y - y);
-          if (dist2d > searchR) continue;
-          const depth = (bh.groundLevel ?? maxGL) - z;
-          if (depth < 0) continue; // above ground surface
-          const layer = bh.layers.find(l => depth >= l.top && depth <= l.base);
-          if (!layer || !layer.unitCode) continue;
-          neighbours.push({
-            bh, layer, dist: Math.max(dist2d, MIN_BH_DIST),
+          const bhGL   = bh.groundLevel ?? maxGL;
+          const depth  = bhGL - z;        // depth of this voxel relative to this BH
+
+          // Find which layer covers this depth; extrapolate beyond top/base if needed
+          let layer = null;
+          if (bh.layers.length) {
+            if (depth < bh.layers[0].top) {
+              // Above first logged layer — not expected in a typical model, skip
+              continue;
+            } else if (depth > bh.layers[bh.layers.length - 1].base) {
+              // Below last logged layer — extrapolate using deepest unit
+              layer = bh.layers[bh.layers.length - 1];
+            } else {
+              layer = bh.layers.find(l => depth >= l.top && depth <= l.base);
+            }
+          }
+          if (!layer?.unitCode) continue;
+
+          candidates.push({
+            dist: Math.max(dist2d, MIN_BH_DIST),
             unitCode: layer.unitCode,
-            certainty: layer.certainty ?? 0.8,
+            layerCert: layer.certainty ?? 0.8,
           });
         }
 
+        // Sort by distance, take K nearest
+        candidates.sort((a, b) => a.dist - b.dist);
+        const neighbours = candidates.slice(0, kNeighbors);
+
         if (!neighbours.length) {
-          unitIds[idx]   = unknownId;
-          certainty[idx] = 0;
+          unitIds[idx]      = unknownId;
+          certainty[idx]    = 0;
+          blendUnitIds[idx] = unknownId;
+          blendRatios[idx]  = 0;
           continue;
         }
 
-        // IDW vote: accumulate weight per unit code
+        // IDW vote
         const votes = {};
-        let totalW = 0;
-
+        let totalW  = 0;
         for (const n of neighbours) {
-          const w = (1 / Math.pow(n.dist, IDW_POWER)) * n.certainty;
-          votes[n.unitCode] = (votes[n.unitCode] || 0) + w;
+          const w = (1 / Math.pow(n.dist, idwPower)) * n.layerCert;
+          votes[n.unitCode] = (votes[n.unitCode] ?? 0) + w;
           totalW += w;
         }
 
-        // Winning unit
-        let bestCode = 'UNKN', bestW = 0;
-        for (const [code, w] of Object.entries(votes)) {
-          if (w > bestW) { bestW = w; bestCode = code; }
-        }
+        // Sort votes descending
+        const sorted = Object.entries(votes).sort((a, b) => b[1] - a[1]);
+        const [bestCode, bestW]         = sorted[0];
+        const [secondCode, secondW = 0] = sorted[1] ?? [];
 
-        const idwConf  = bestW / totalW;
-        const density  = dataDensity(x, y, boreholes, searchR);
-        const consist  = unitConsistency(x, y, z, boreholes, searchR, bestCode);
+        const bestShare   = bestW / totalW;
+        const blendRatio  = secondW / totalW;  // fraction going to second-best unit
 
-        unitIds[idx]   = unitIndex[bestCode] ?? unknownId;
-        certainty[idx] = computeCertainty(idwConf, density, consist);
+        // Certainty: agreement × distance decay × mean layer confidence
+        const nearestDist   = neighbours[0].dist;
+        const distDecay     = Math.exp(-nearestDist / typicalSpacing);
+        const meanLayerCert = neighbours.reduce((s, n) => s + n.layerCert, 0) / neighbours.length;
+        const cert = Math.min(1,
+          bestShare   * 0.55 +
+          distDecay   * 0.30 +
+          meanLayerCert * 0.15
+        );
+
+        unitIds[idx]      = unitIndex[bestCode]   ?? unknownId;
+        certainty[idx]    = cert;
+        blendUnitIds[idx] = secondCode ? (unitIndex[secondCode] ?? unknownId) : (unitIndex[bestCode] ?? unknownId);
+        blendRatios[idx]  = blendRatio;
       }
     }
   }
 
   return {
     nx, ny, nz,
-    cellSize,
-    cellHeight: cellSize / 5,
-    origin: { x: ox, y: oz, z: oy },  // Three.js: x=East, y=Up(elevation), z=North
+    cellSize, cellHeight: cellH,
+    origin: { x: ox, y: oz, z: oy },
     worldWidth:  nx * cellSize,
-    worldHeight: nz * (cellSize / 5),
+    worldHeight: nz * cellH,
     worldDepth:  ny * cellSize,
-    unitIds,
-    certainty,
+    unitIds, certainty,
+    blendUnitIds, blendRatios,
   };
 }
 
-// ── Voxel index helper ─────────────────────────────────────────────────────────
 export function voxelIndex(ix, iy, iz, grid) {
   return ix + iy * grid.nx + iz * grid.nx * grid.ny;
 }
 
-// ── World position of voxel centre ────────────────────────────────────────────
 export function voxelWorldPos(ix, iy, iz, grid) {
   return {
-    x: grid.origin.x + ix * grid.cellSize    + grid.cellSize    * 0.5,
-    y: grid.origin.y + iz * grid.cellHeight  + grid.cellHeight  * 0.5,  // y=elevation
-    z: grid.origin.z + iy * grid.cellSize    + grid.cellSize    * 0.5,
+    x: grid.origin.x + ix * grid.cellSize   + grid.cellSize   * 0.5,
+    y: grid.origin.y + iz * grid.cellHeight + grid.cellHeight * 0.5,
+    z: grid.origin.z + iy * grid.cellSize   + grid.cellSize   * 0.5,
   };
 }

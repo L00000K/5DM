@@ -65,6 +65,26 @@
         </div>
 
         <button id="btn-parse" class="btn-primary" disabled>Parse Data →</button>
+
+        <div class="settings-divider">Interpolation</div>
+
+        <div class="field-group">
+          <label for="k-neighbors">K Neighbours</label>
+          <div class="range-row">
+            <input type="range" id="k-neighbors" min="2" max="10" value="5" step="1">
+            <span id="k-neighbors-val" class="range-readout">5</span>
+          </div>
+          <p class="hint">BHs used per voxel — higher = smoother but slower</p>
+        </div>
+
+        <div class="field-group">
+          <label for="idw-power">IDW Power</label>
+          <div class="range-row">
+            <input type="range" id="idw-power" min="0.5" max="5" value="2" step="0.5">
+            <span id="idw-power-val" class="range-readout">2.0</span>
+          </div>
+          <p class="hint">Higher = stronger local influence, sharper contacts</p>
+        </div>
       </div>
 
       <!-- Text tab -->
