@@ -64,7 +64,7 @@ class SceneManager {
 
   // ── Ground grid ───────────────────────────────────────────────────────────
   _addGrid() {
-    const grid = new THREE.GridHelper(500, 50, 0x243548, 0x1a2840);
+    const grid = new THREE.GridHelper(500, 50, 0x9aaabb, 0xc4d0d8);
     grid.position.y = -0.5;
     this._scene.add(grid);
     return grid;
@@ -97,12 +97,13 @@ class SceneManager {
   }
 
   // ── Build voxel model ─────────────────────────────────────────────────────
-  buildVoxels(grid, geoUnits) {
+  buildVoxels(grid, geoUnits, classifiedBH) {
     this._grid.position.y   = grid.origin.y - 1;
     this._grid.scale.setScalar(Math.max(grid.worldWidth, grid.worldDepth) / 500);
     this._axes.position.set(grid.origin.x - 20, grid.origin.y, grid.origin.z - 20);
 
     this._builder.build(grid, geoUnits);
+    if (classifiedBH?.length) this.addBoreholeSticks(classifiedBH, geoUnits);
     this._applyClipping();
 
     // Frame camera on model
@@ -133,8 +134,62 @@ class SceneManager {
     this._builder.setCertaintyThreshold(t);
   }
 
+  // ── Transparency mode ─────────────────────────────────────────────────────
+  setTransparencyMode(enabled, amount) {
+    this._builder.setTransparencyMode(enabled, amount);
+  }
+
+  // ── Borehole sticks ───────────────────────────────────────────────────────
+  addBoreholeSticks(classifiedBH, geoUnits) {
+    if (this._bhSticks) {
+      this._scene.remove(this._bhSticks);
+      this._bhSticks.traverse(obj => {
+        obj.geometry?.dispose();
+        obj.material?.dispose();
+      });
+    }
+
+    const group = new THREE.Group();
+    const unitByCode = {};
+    geoUnits.forEach(u => { unitByCode[u.code] = u; });
+
+    const radius = 0.6;
+    classifiedBH.forEach(bh => {
+      if (!bh.layers?.length) return;
+      const gl = bh.groundLevel ?? 0;
+      bh.layers.forEach(layer => {
+        const unit = unitByCode[layer.unitCode];
+        if (!unit) return;
+        const height = Math.max(layer.base - layer.top, 0.01);
+        const midElev = gl - (layer.top + layer.base) * 0.5;
+        const geom = new THREE.CylinderGeometry(radius, radius, height, 8);
+        const mat  = new THREE.MeshLambertMaterial({ color: unit.color });
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.position.set(bh.x, midElev, bh.y);
+        group.add(mesh);
+      });
+    });
+
+    this._bhSticks = group;
+    this._scene.add(group);
+  }
+
+  toggleBoreholeSticks(visible) {
+    if (this._bhSticks) this._bhSticks.visible = visible;
+  }
+
   // ── Clear scene ───────────────────────────────────────────────────────────
-  clear() { this._builder.clear(); }
+  clear() {
+    this._builder.clear();
+    if (this._bhSticks) {
+      this._scene.remove(this._bhSticks);
+      this._bhSticks.traverse(obj => {
+        obj.geometry?.dispose();
+        obj.material?.dispose();
+      });
+      this._bhSticks = null;
+    }
+  }
 
   // ── Clipping plane sync ───────────────────────────────────────────────────
   _syncClipPlanes() {

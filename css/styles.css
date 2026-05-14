@@ -275,6 +275,29 @@ input[type="range"] {
 
 .hint { font-size: 11px; color: var(--text-dim); }
 
+.inline-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+  user-select: none;
+  margin-bottom: 6px;
+}
+.inline-check input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.transp-slider-row {
+  margin-top: 6px;
+  transition: opacity 0.2s;
+}
+
 .settings-divider {
   font-size: 10px;
   font-weight: 700;

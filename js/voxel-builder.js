@@ -1,53 +1,81 @@
 import * as THREE from 'three';
 import { voxelIndex } from './interpolator.js';
 
-// ── Shader injection: adds per-instance alpha to MeshLambertMaterial ──────────
-function makeAlphaMaterial(color) {
-  const mat = new THREE.MeshLambertMaterial({
-    color,
-    vertexColors: true,
-    transparent: true,
-    depthWrite: false,
-    side: THREE.FrontSide,
-  });
+// ── Shared ShaderMaterial: per-instance colour + alpha, Lambert lighting ──────
+// Uses custom voxelColor + voxelAlpha attributes to avoid Three.js colour-
+// multiplication bug (MeshLambertMaterial multiplies diffuse × instanceColor,
+// squaring the RGB values and producing near-black output).
+const VERT = `
+  attribute vec3  voxelColor;
+  attribute float voxelAlpha;
+  varying   vec3  vCol;
+  varying   float vAlph;
+  varying   vec3  vNorm;
 
-  mat.onBeforeCompile = shader => {
-    shader.vertexShader = shader.vertexShader
-      .replace(
-        '#include <color_pars_vertex>',
-        `#include <color_pars_vertex>
-         attribute float instanceAlpha;
-         varying float vInstanceAlpha;`
-      )
-      .replace(
-        '#include <color_vertex>',
-        `#include <color_vertex>
-         vInstanceAlpha = instanceAlpha;`
-      );
-    shader.fragmentShader = shader.fragmentShader
-      .replace(
-        '#include <color_pars_fragment>',
-        `#include <color_pars_fragment>
-         varying float vInstanceAlpha;`
-      )
-      .replace(
-        'gl_FragColor = vec4( outgoingLight, diffuseColor.a );',
-        'gl_FragColor = vec4( outgoingLight, diffuseColor.a * vInstanceAlpha );'
-      );
-  };
-  return mat;
+  void main() {
+    vCol  = voxelColor;
+    vAlph = voxelAlpha;
+
+    #ifdef USE_INSTANCING
+      // instanceMatrix is injected by Three.js renderer prefix
+      gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+      // Voxels are pure translations — rotation part of instanceMatrix is identity
+      vNorm = normalMatrix * normal;
+    #else
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      vNorm = normalMatrix * normal;
+    #endif
+  }
+`;
+
+const FRAG = `
+  varying vec3  vCol;
+  varying float vAlph;
+  varying vec3  vNorm;
+
+  void main() {
+    if (vAlph < 0.01) discard;
+    vec3 n = normalize(vNorm);
+
+    // Match the two directional lights defined in scene.js
+    vec3 l1 = normalize(vec3( 300.0,  400.0,  200.0)); // key (warm)
+    vec3 l2 = normalize(vec3(-200.0,  100.0, -300.0)); // fill (cool)
+    float d1 = max(dot(n, l1), 0.0) * 0.80;
+    float d2 = max(dot(n, l2), 0.0) * 0.28;
+    float ambient = 0.45;
+
+    vec3 lit = vCol * (ambient + d1 + d2);
+    gl_FragColor = vec4(lit, vAlph);
+  }
+`;
+
+function makeMaterial() {
+  return new THREE.ShaderMaterial({
+    vertexShader:   VERT,
+    fragmentShader: FRAG,
+    transparent:    true,
+    depthWrite:     true,   // correct depth for solid-body exploration
+    side:           THREE.FrontSide,
+  });
 }
 
 // ── VoxelBuilder ──────────────────────────────────────────────────────────────
 export class VoxelBuilder {
   constructor(scene) {
     this.scene   = scene;
-    this.meshes  = {};        // unitCode → THREE.InstancedMesh
+    this.meshes  = {};    // unitCode → InstancedMesh
     this.grid    = null;
     this.units   = [];
     this._dummy  = new THREE.Object3D();
     this._group  = new THREE.Group();
     scene.add(this._group);
+
+    // Per-instance certainty buffers — used for fast alpha updates without rebuild
+    this._certBuffers = {};   // unitCode → Float32Array
+
+    this.certThreshold       = 0;
+    this.transparencyEnabled = false;
+    this.transparencyAmount  = 0.8;
   }
 
   // ── Build all voxel meshes ─────────────────────────────────────────────────
@@ -55,49 +83,46 @@ export class VoxelBuilder {
     this.clear();
     this.grid  = grid;
     this.units = geoUnits;
-    this._buildMeshes(grid, geoUnits, 0);
-    return this._group;
-  }
 
-  _buildMeshes(grid, geoUnits, certThreshold) {
     const { nx, ny, nz, cellSize: cs, cellHeight: ch,
             origin, unitIds, certainty, blendUnitIds, blendRatios } = grid;
 
     const unitById = {};
     geoUnits.forEach(u => { unitById[u.id] = u; });
 
-    // Count instances per unit above threshold
+    // Count instances per unit (all voxels, including unknown)
     const counts = {};
     for (let i = 0; i < unitIds.length; i++) {
-      if (certainty[i] < certThreshold) continue;
       const u = unitById[unitIds[i]];
       if (!u) continue;
       counts[u.code] = (counts[u.code] ?? 0) + 1;
     }
 
-    // One InstancedMesh + instanceAlpha buffer per unit
-    const geom = new THREE.BoxGeometry(cs * 0.88, ch * 0.88, cs * 0.88);
+    // Box geometry — slightly inset so unit boundaries are visible as gaps
+    const geom = new THREE.BoxGeometry(cs * 0.90, ch * 0.90, cs * 0.90);
 
+    // Create one InstancedMesh + custom attribute buffers per unit
     for (const [code, count] of Object.entries(counts)) {
       const unit = geoUnits.find(u => u.code === code);
       if (!unit) continue;
-      const mat  = makeAlphaMaterial(unit.color);
-      const mesh = new THREE.InstancedMesh(geom, mat, count);
+
+      const mesh = new THREE.InstancedMesh(geom, makeMaterial(), count);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-
-      // instanceColor (RGB) and instanceAlpha (scalar) per instance
-      mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3);
-      const alphaAttr    = new THREE.InstancedBufferAttribute(new Float32Array(count).fill(1), 1);
-      mesh.geometry.setAttribute('instanceAlpha', alphaAttr);
-
       mesh.userData = { unitCode: code, unitId: unit.id };
-      mesh.renderOrder = 1; // ensure transparent voxels sort correctly
+
+      // Custom per-instance colour + alpha (avoids Three.js colour-multiply bug)
+      mesh.geometry.setAttribute('voxelColor',
+        new THREE.InstancedBufferAttribute(new Float32Array(count * 3), 3));
+      mesh.geometry.setAttribute('voxelAlpha',
+        new THREE.InstancedBufferAttribute(new Float32Array(count).fill(1), 1));
+
+      this._certBuffers[code] = new Float32Array(count);
       this.meshes[code] = mesh;
       this._group.add(mesh);
     }
 
-    // Populate instances
-    const iCounters = {};
+    // Populate instance data
+    const counters = {};
     const c1 = new THREE.Color();
     const c2 = new THREE.Color();
     const cx = new THREE.Color();
@@ -105,16 +130,17 @@ export class VoxelBuilder {
     for (let iz = 0; iz < nz; iz++) {
       for (let iy = 0; iy < ny; iy++) {
         for (let ix = 0; ix < nx; ix++) {
-          const flat = voxelIndex(ix, iy, iz, grid);
-          const cert = certainty[flat];
-          if (cert < certThreshold) continue;
+          const flat  = voxelIndex(ix, iy, iz, grid);
+          const uid   = unitIds[flat];
+          const unit  = unitById[uid];
+          if (!unit) continue;
 
-          const uid  = unitIds[flat];
-          const unit = unitById[uid];
-          if (!unit || !this.meshes[unit.code]) continue;
+          const code  = unit.code;
+          const mesh  = this.meshes[code];
+          if (!mesh) continue;
 
-          const i = iCounters[unit.code] = (iCounters[unit.code] ?? 0);
-          iCounters[unit.code]++;
+          const i = counters[code] = (counters[code] ?? 0);
+          counters[code]++;
 
           // World position
           const wx = origin.x + ix * cs + cs * 0.5;
@@ -122,15 +148,15 @@ export class VoxelBuilder {
           const wz = origin.z + iy * cs + cs * 0.5;
           this._dummy.position.set(wx, wy, wz);
           this._dummy.updateMatrix();
-          this.meshes[unit.code].setMatrixAt(i, this._dummy.matrix);
+          mesh.setMatrixAt(i, this._dummy.matrix);
 
-          // Colour: blend winning unit colour toward second-best at contacts
+          // Colour — blend toward second-best unit at geological contacts
+          const cert  = certainty[flat];
           c1.set(unit.color);
-          const blendUnit = unitById[blendUnitIds[flat]];
-          const blend     = blendRatios[flat] ?? 0;
-          if (blendUnit && blendUnit.code !== unit.code && blend > 0.05) {
-            c2.set(blendUnit.color);
-            // max 50 % blend so winning unit stays dominant
+          const bu    = unitById[blendUnitIds[flat]];
+          const blend = blendRatios[flat] ?? 0;
+          if (bu && bu.code !== code && blend > 0.05) {
+            c2.set(bu.color);
             const t = Math.min(blend * 0.7, 0.5);
             cx.r = c1.r + (c2.r - c1.r) * t;
             cx.g = c1.g + (c2.g - c1.g) * t;
@@ -138,45 +164,78 @@ export class VoxelBuilder {
           } else {
             cx.copy(c1);
           }
-          this.meshes[unit.code].setColorAt(i, cx);
+          const colAttr = mesh.geometry.getAttribute('voxelColor');
+          colAttr.setXYZ(i, cx.r, cx.g, cx.b);
 
-          // Alpha: certainty → transparency (clamp to 0.08 floor so low-cert voxels remain barely visible)
-          const alpha = Math.max(0.08, cert);
-          this.meshes[unit.code].geometry.getAttribute('instanceAlpha').setX(i, alpha);
+          // Store certainty for later alpha updates
+          this._certBuffers[code][i] = cert;
         }
       }
     }
 
+    // Mark buffers dirty and compute bounding spheres
     for (const mesh of Object.values(this.meshes)) {
       mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      const a = mesh.geometry.getAttribute('instanceAlpha');
-      if (a) a.needsUpdate = true;
+      mesh.geometry.getAttribute('voxelColor').needsUpdate = true;
       mesh.computeBoundingSphere();
+    }
+
+    // Apply initial alphas
+    this._updateAlphas();
+    return this._group;
+  }
+
+  // ── Alpha update — called on threshold or transparency changes (no rebuild) ─
+  _updateAlphas() {
+    const { certThreshold, transparencyEnabled, transparencyAmount } = this;
+
+    for (const [code, mesh] of Object.entries(this.meshes)) {
+      const certs    = this._certBuffers[code];
+      const alphaAttr = mesh.geometry.getAttribute('voxelAlpha');
+      if (!certs || !alphaAttr) continue;
+
+      for (let i = 0; i < certs.length; i++) {
+        const cert = certs[i];
+        if (cert < certThreshold) {
+          alphaAttr.setX(i, 0);
+        } else if (transparencyEnabled) {
+          // alpha = 1 - amount × (1 - certainty)
+          const alpha = Math.max(0.04, 1.0 - transparencyAmount * (1.0 - cert));
+          alphaAttr.setX(i, alpha);
+        } else {
+          alphaAttr.setX(i, 1.0);
+        }
+      }
+      alphaAttr.needsUpdate = true;
     }
   }
 
-  // ── Show/hide unit ────────────────────────────────────────────────────────
+  // ── Public controls ───────────────────────────────────────────────────────
   setUnitVisibility(code, visible) {
     const mesh = this.meshes[code];
     if (mesh) mesh.visible = visible;
   }
 
-  // ── Certainty threshold: rebuild with new floor ───────────────────────────
   setCertaintyThreshold(threshold) {
-    if (!this.grid) return;
-    this.clear();
-    this._buildMeshes(this.grid, this.units, threshold);
+    this.certThreshold = threshold;
+    this._updateAlphas();
   }
 
-  // ── Clear ─────────────────────────────────────────────────────────────────
+  setTransparencyMode(enabled, amount) {
+    this.transparencyEnabled = enabled;
+    this.transparencyAmount  = amount;
+    this._updateAlphas();
+  }
+
   clear() {
     for (const mesh of Object.values(this.meshes)) {
       this._group.remove(mesh);
       mesh.geometry.dispose();
       mesh.material.dispose();
     }
-    this.meshes = {};
+    this.meshes        = {};
+    this._certBuffers  = {};
+    this.grid          = null;
   }
 
   get group() { return this._group; }

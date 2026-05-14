@@ -186,7 +186,7 @@ function initBuildModel() {
       );
       updateInfoPanel();
       goToStep(4);
-      AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits);
+      AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
       log(`Voxel model ready — ${AppState.voxelGrid.nx}×${AppState.voxelGrid.ny}×${AppState.voxelGrid.nz} grid.`, 'ok');
       setEnabled('btn-export-gltf', true);
       setEnabled('btn-export-obj', true);
@@ -244,6 +244,33 @@ export function updateLegend() {
   });
 }
 
+// ── Transparency controls ──────────────────────────────────────────────────────
+function initTransparencyControls() {
+  const chk    = document.getElementById('transp-enable');
+  const slider = document.getElementById('transp-amount');
+  const val    = document.getElementById('transp-val');
+  const row    = document.getElementById('transp-slider-row');
+
+  const update = () => {
+    const enabled = chk.checked;
+    const amount  = parseInt(slider.value) / 100;
+    val.textContent = `${slider.value}%`;
+    if (row) row.style.opacity = enabled ? '1' : '0.4';
+    if (AppState.scene) AppState.scene.setTransparencyMode(enabled, amount);
+  };
+  chk?.addEventListener('change', update);
+  slider?.addEventListener('input', update);
+  if (row) row.style.opacity = '0.4'; // starts disabled
+}
+
+// ── BH sticks toggle ──────────────────────────────────────────────────────────
+function initBHSticksToggle() {
+  const chk = document.getElementById('show-bh-sticks');
+  chk?.addEventListener('change', () => {
+    if (AppState.scene) AppState.scene.toggleBoreholeSticks(chk.checked);
+  });
+}
+
 // ── Certainty threshold ────────────────────────────────────────────────────────
 function initCertaintySlider() {
   const slider = document.getElementById('certainty-threshold');
@@ -274,6 +301,8 @@ async function init() {
   initApiKeyModal();
   initStepNav();
   initCertaintySlider();
+  initTransparencyControls();
+  initBHSticksToggle();
   initRunAI();
   initBuildModel();
 

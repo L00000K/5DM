@@ -210,6 +210,26 @@
       </div>
 
       <div class="panel-section">
+        <h3>Transparency</h3>
+        <label class="inline-check">
+          <input type="checkbox" id="transp-enable">
+          <span>Certainty-based opacity</span>
+        </label>
+        <div class="range-row transp-slider-row" id="transp-slider-row">
+          <input type="range" id="transp-amount" min="0" max="100" value="80">
+          <span id="transp-val" class="range-readout">80%</span>
+        </div>
+        <p class="hint">Low-certainty voxels become translucent</p>
+      </div>
+
+      <div class="panel-section">
+        <label class="inline-check">
+          <input type="checkbox" id="show-bh-sticks" checked>
+          <span>Show BH Log Sticks</span>
+        </label>
+      </div>
+
+      <div class="panel-section">
         <h3>Model Info</h3>
         <dl id="model-info" class="model-info">
           <dt>Boreholes</dt><dd id="info-bh-count">—</dd>
