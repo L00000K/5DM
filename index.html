@@ -236,7 +236,14 @@
           </div>
         </div>
 
-        <button id="btn-open-slicer" class="btn-open-slicer">✂ Section</button>
+        <div class="viewer-controls">
+          <button id="btn-open-slicer" class="btn-open-slicer">✂ Section</button>
+          <div class="vert-exag-ctrl">
+            <span class="vert-exag-lbl">VE</span>
+            <input type="number" id="vert-exag" value="1" min="0.1" max="20" step="0.5" class="vert-exag-input">
+            <span class="vert-exag-x">×</span>
+          </div>
+        </div>
         <div id="voxel-tooltip" class="tooltip" hidden></div>
       </div>
     </section>

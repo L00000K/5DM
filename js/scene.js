@@ -33,7 +33,10 @@ class SceneManager {
     this._grid   = this._addGrid();
     this._axes   = this._addAxes();
     this._builder = new VoxelBuilder(this._scene);
-    this._slicer  = new SlicerTool(this._scene, this._camera, this._controls, this._renderer);
+    this._slicer  = new SlicerTool(
+      this._scene, this._camera, this._controls, this._renderer,
+      planes => this._builder.setClippingPlanes(planes)
+    );
 
     this._resizeObserver = new ResizeObserver(() => this._onResize());
     this._resizeObserver.observe(this._canvas.parentElement);
@@ -41,6 +44,7 @@ class SceneManager {
 
     this._animate();
     this._initTooltip();
+    this._initMiddleMouse();
   }
 
   // ── Lights ────────────────────────────────────────────────────────────────
@@ -138,6 +142,22 @@ class SceneManager {
 
   setGlobalAlpha(alpha) {
     this._builder.setGlobalAlpha(alpha);
+  }
+
+  // ── Vertical exaggeration ─────────────────────────────────────────────────
+  setVerticalExaggeration(ve) {
+    this._builder.group.scale.y = ve;
+    if (this._bhSticks) this._bhSticks.scale.y = ve;
+  }
+
+  // ── Centre view on model (middle-mouse or button) ─────────────────────────
+  centreView() {
+    if (!this._modelBounds) return;
+    const { cx, cy, cz, size } = this._modelBounds;
+    this._controls.target.set(cx, cy, cz);
+    this._camera.position.set(cx + size * 0.8, cy + size * 0.5, cz + size * 0.8);
+    this._camera.lookAt(cx, cy, cz);
+    this._controls.update();
   }
 
   // ── Borehole sticks ───────────────────────────────────────────────────────
@@ -249,6 +269,17 @@ class SceneManager {
 
     this._canvas.addEventListener('mouseleave', () => {
       if (tooltip) tooltip.hidden = true;
+    });
+  }
+
+  // ── Middle-mouse centres view on model ────────────────────────────────────
+  _initMiddleMouse() {
+    this._canvas.addEventListener('mousedown', e => {
+      if (e.button === 1) { e.preventDefault(); this.centreView(); }
+    });
+    // Suppress the default scroll-on-middle-drag browser behaviour
+    this._canvas.addEventListener('auxclick', e => {
+      if (e.button === 1) e.preventDefault();
     });
   }
 

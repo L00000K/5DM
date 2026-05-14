@@ -306,6 +306,14 @@ function initTransparencyControls() {
   if (fadeRow) fadeRow.style.opacity = '0.4';
 }
 
+// ── Vertical exaggeration ──────────────────────────────────────────────────────
+function initVerticalExaggeration() {
+  document.getElementById('vert-exag')?.addEventListener('input', e => {
+    const ve = Math.max(0.1, parseFloat(e.target.value) || 1);
+    if (AppState.scene) AppState.scene.setVerticalExaggeration(ve);
+  });
+}
+
 // ── BH sticks toggle ──────────────────────────────────────────────────────────
 function initBHSticksToggle() {
   const chk = document.getElementById('show-bh-sticks');
@@ -345,6 +353,7 @@ async function init() {
   initStepNav();
   initCertaintySlider();
   initTransparencyControls();
+  initVerticalExaggeration();
   initBHSticksToggle();
   initRunAI();
   initBuildModel();

@@ -701,10 +701,17 @@ input[type="range"] {
   gap: 6px;
 }
 
-.btn-open-slicer {
+.viewer-controls {
   position: absolute;
   bottom: 16px;
   left: 16px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  z-index: 6;
+}
+
+.btn-open-slicer {
   background: rgba(255,255,255,0.92);
   border: 1px solid var(--border-mid);
   border-radius: var(--radius);
@@ -716,12 +723,51 @@ input[type="range"] {
   backdrop-filter: blur(8px);
   box-shadow: var(--shadow);
   transition: all 0.15s;
-  z-index: 6;
 }
 .btn-open-slicer:hover {
   border-color: var(--accent);
   color: var(--accent);
   background: rgba(255,255,255,0.97);
+}
+
+.vert-exag-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius);
+  padding: 5px 8px;
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow);
+}
+
+.vert-exag-lbl {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.vert-exag-input {
+  width: 46px;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  padding: 0 2px;
+}
+.vert-exag-input:focus { outline: none; }
+.vert-exag-input::-webkit-inner-spin-button { opacity: 0.4; }
+
+.vert-exag-x {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 600;
 }
 
 /* ── Cell size inputs ── */

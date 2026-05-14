@@ -6,13 +6,16 @@ import * as THREE from 'three';
 //   Ctrl + scroll  — slide slab forward / backward
 //   "Draw Line"    — click-drag on the canvas to define orientation
 export class SlicerTool {
-  constructor(scene, camera, controls, renderer) {
+  constructor(scene, camera, controls, renderer, onPlanesChange) {
     this._scene    = scene;
     this._camera   = camera;
     this._controls = controls;
     this._renderer = renderer;
     this._canvas   = renderer.domElement;
     this._overlay  = document.getElementById('slicer-overlay');
+    // Per-material clipping is more reliable than renderer.clippingPlanes for
+    // custom ShaderMaterials (avoids compile-time NUM_CLIPPING_PLANES=0 trap)
+    this._onPlanesChange = onPlanesChange ?? (p => { renderer.clippingPlanes = p; });
 
     this._mode      = 'slab';       // 'slab' | 'removeFront' | 'removeBack'
     this._thickness = 20;
@@ -215,15 +218,15 @@ export class SlicerTool {
       // Keep: d - t  ≤  n·x  ≤  d + t
       this._pA.set(n.clone().negate(), d + t); // clips n·x > d+t
       this._pB.set(n.clone(), t - d);           // clips n·x < d-t
-      this._renderer.clippingPlanes = [this._pA, this._pB];
+      this._onPlanesChange([this._pA, this._pB]);
     } else if (this._mode === 'removeFront') {
       // Keep: n·x ≤ d  (remove viewer-side)
       this._pA.set(n.clone().negate(), d);
-      this._renderer.clippingPlanes = [this._pA];
+      this._onPlanesChange([this._pA]);
     } else {
       // Keep: n·x ≥ d  (remove back)
       this._pA.set(n.clone(), -d);
-      this._renderer.clippingPlanes = [this._pA];
+      this._onPlanesChange([this._pA]);
     }
   }
 
@@ -268,7 +271,7 @@ export class SlicerTool {
   // ── Clear all clipping ────────────────────────────────────────────────────
   clear() {
     this._hasSlice = false;
-    this._renderer.clippingPlanes = [];
+    this._onPlanesChange([]);
     if (this._visual) {
       this._scene.remove(this._visual);
       this._visual.traverse(o => { o.geometry?.dispose(); o.material?.dispose(); });

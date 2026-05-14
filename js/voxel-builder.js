@@ -48,23 +48,20 @@ const FRAG = `
     #include <clipping_planes_fragment>
 
     if (vAlph < 0.01) discard;
+
+    // Flat-ish shading: top faces get full colour, sides/bottom 80%.
+    // Strong directional lights cause visible colour jumps at each voxel
+    // step; this keeps the unit colour consistent across all face orientations.
     vec3 n = normalize(vNorm);
+    float shade = 0.80 + 0.20 * max(n.y, 0.0);
+    vec3 col = vCol * shade;
 
-    // Match the two directional lights defined in scene.js
-    vec3 l1 = normalize(vec3( 300.0,  400.0,  200.0));
-    vec3 l2 = normalize(vec3(-200.0,  100.0, -300.0));
-    float d1 = max(dot(n, l1), 0.0) * 0.80;
-    float d2 = max(dot(n, l2), 0.0) * 0.28;
-    float ambient = 0.45;
-
-    vec3 lit = vCol * (ambient + d1 + d2);
-
-    // Certainty colour fade: blend lit colour toward white as certainty drops
-    lit = mix(lit, vec3(1.0), (1.0 - vCert) * uColorFade);
+    // Certainty colour fade: blend toward white as certainty drops
+    col = mix(col, vec3(1.0), (1.0 - vCert) * uColorFade);
 
     float alpha = vAlph * uGlobalAlpha;
     if (alpha < 0.01) discard;
-    gl_FragColor = vec4(lit, alpha);
+    gl_FragColor = vec4(col, alpha);
   }
 `;
 
@@ -292,6 +289,13 @@ export class VoxelBuilder {
     this._globalAlpha = alpha;
     this._applyGlobalAlphaUniforms();
     this._applyMaterialState();
+  }
+
+  setClippingPlanes(planes) {
+    for (const mesh of Object.values(this.meshes)) {
+      mesh.material.clippingPlanes = planes.length ? planes : null;
+      mesh.material.needsUpdate = true;
+    }
   }
 
   clear() {
