@@ -85,6 +85,32 @@
           </div>
           <p class="hint">Higher = stronger local influence, sharper contacts</p>
         </div>
+
+        <div class="settings-divider">Interpolation Method</div>
+        <div class="field-group">
+          <div class="method-options">
+            <label class="method-option">
+              <input type="radio" name="interp-method" value="idw" checked>
+              <span class="method-label">IDW</span>
+              <span class="method-desc">K-nearest inverse distance weighting</span>
+            </label>
+            <label class="method-option">
+              <input type="radio" name="interp-method" value="kriging">
+              <span class="method-label">Kriging</span>
+              <span class="method-desc">Ordinary Kriging — geostatistical optimal linear unbiased estimator</span>
+            </label>
+            <label class="method-option">
+              <input type="radio" name="interp-method" value="gp">
+              <span class="method-label">Gaussian Process</span>
+              <span class="method-desc">Probabilistic ML with RBF kernel and variance-based uncertainty</span>
+            </label>
+            <label class="method-option">
+              <input type="radio" name="interp-method" value="nn">
+              <span class="method-label">Neural Network</span>
+              <span class="method-desc">MLP trained on BH observations — learns non-linear spatial patterns</span>
+            </label>
+          </div>
+        </div>
       </div>
 
       <!-- Text tab -->
