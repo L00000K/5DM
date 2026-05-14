@@ -199,9 +199,74 @@ class SceneManager {
     if (this._bhSticks) this._bhSticks.visible = visible;
   }
 
+  // ── Topography surface ────────────────────────────────────────────────────
+  showTopography(points) {
+    this._clearTopo();
+    if (!points?.length) return;
+
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    points.forEach(p => {
+      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+      minZ = Math.min(minZ, p.y); maxZ = Math.max(maxZ, p.y);
+    });
+
+    const GRID = 48;
+    const gx = GRID, gz = GRID;
+    const vCount = (gx + 1) * (gz + 1);
+    const positions = new Float32Array(vCount * 3);
+    const indices   = [];
+
+    for (let iz = 0; iz <= gz; iz++) {
+      for (let ix = 0; ix <= gx; ix++) {
+        const wx = minX + (maxX - minX) * (ix / gx);
+        const wz = minZ + (maxZ - minZ) * (iz / gz);
+        let bestDist = Infinity, bestY = 0;
+        points.forEach(p => {
+          const d = (p.x - wx) ** 2 + (p.y - wz) ** 2;
+          if (d < bestDist) { bestDist = d; bestY = p.z; }
+        });
+        const i = (iz * (gx + 1) + ix) * 3;
+        positions[i] = wx; positions[i + 1] = bestY; positions[i + 2] = wz;
+      }
+    }
+    for (let iz = 0; iz < gz; iz++) {
+      for (let ix = 0; ix < gx; ix++) {
+        const a = iz * (gx + 1) + ix;
+        const b = a + 1, c = a + gx + 1, d = c + 1;
+        indices.push(a, c, b, b, c, d);
+      }
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+
+    const mat = new THREE.MeshLambertMaterial({
+      color: 0x7aaa88, transparent: true, opacity: 0.32,
+      side: THREE.DoubleSide, depthWrite: false,
+    });
+    this._topoMesh = new THREE.Mesh(geom, mat);
+    this._scene.add(this._topoMesh);
+  }
+
+  _clearTopo() {
+    if (this._topoMesh) {
+      this._scene.remove(this._topoMesh);
+      this._topoMesh.geometry.dispose();
+      this._topoMesh.material.dispose();
+      this._topoMesh = null;
+    }
+  }
+
+  toggleTopography(visible) {
+    if (this._topoMesh) this._topoMesh.visible = visible;
+  }
+
   // ── Clear scene ───────────────────────────────────────────────────────────
   clear() {
     this._builder.clear();
+    this._clearTopo();
     if (this._bhSticks) {
       this._scene.remove(this._bhSticks);
       this._bhSticks.traverse(obj => {

@@ -1,0 +1,486 @@
+{
+  "site": {
+    "name": "Former Gasworks, Millgate",
+    "description": "Urban brownfield redevelopment site, 120×80m, on the footprint of a former Victorian-era coal gasworks. Site includes remnant brick foundations, buried tanks, and highly variable made ground. Underlain by alluvium associated with a former tidal channel, over London Clay and Thames Gravel sequence.",
+    "constraints": "Made ground variable depth 0.5-4m. Alluvium soft and compressible. London Clay stiff below 8m. Thames Gravel dense, good bearing."
+  },
+  "geological_units": [
+    {
+      "id": 1,
+      "code": "MG",
+      "name": "Made Ground",
+      "color": "#7a6a42",
+      "description": "Highly variable industrial fill comprising ash, clinker, brick rubble, made soil, and localised contaminated material including tars and phenols. Loose to medium dense. Variable thickness reflecting former industrial structures and excavations."
+    },
+    {
+      "id": 2,
+      "code": "AL",
+      "name": "Alluvium",
+      "color": "#8faa72",
+      "description": "Soft to firm olive-grey silty clay with occasional peat laminae and organic inclusions. Estuarine origin, associated with former tidal channel. High moisture content, low undrained shear strength Cu 15–40 kPa. Compressible and consolidation-prone."
+    },
+    {
+      "id": 3,
+      "code": "LC",
+      "name": "London Clay",
+      "color": "#4a6fa5",
+      "description": "Stiff to very stiff fissured blue-grey silty clay. Becoming stiffer with depth. Cu 80–200 kPa below 8m. Slight swelling potential on unloading. SPT N typically 20–50+. Consistent across site."
+    },
+    {
+      "id": 4,
+      "code": "TG",
+      "name": "Thames Gravel",
+      "color": "#c8a855",
+      "description": "Dense to very dense sub-rounded to rounded flint gravel with coarse sand matrix. SPT N typically 40–60+. Excellent bearing capacity and drainage. Basal gravel of Quaternary river terrace sequence."
+    },
+    {
+      "id": 5,
+      "code": "CK",
+      "name": "Chalk",
+      "color": "#e8e4d8",
+      "description": "Cream to white moderately strong chalk, Grade III. Encountered at base of boreholes. SPT N 40–60+. Upper surface locally softened by groundwater dissolution."
+    }
+  ],
+  "boreholes": [
+    {
+      "id": "BH01",
+      "x": 15.0,
+      "y": 15.0,
+      "ground_level": 6.8,
+      "depth": 20.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 2.4,
+          "unit_code": "MG",
+          "description": "Dark brown to black ash and clinker fill with brick fragments and burnt material. Loose. Tar-stained below 1.5m. Former retort house footprint.",
+          "certainty": 0.92
+        },
+        {
+          "top": 2.4,
+          "base": 4.6,
+          "unit_code": "AL",
+          "description": "Soft olive-grey silty clay, high plasticity. Cu approx 18 kPa. Organic laminae at 3.2m, peat smell. Undisturbed sample taken at 3.0m.",
+          "certainty": 0.95
+        },
+        {
+          "top": 4.6,
+          "base": 16.8,
+          "unit_code": "LC",
+          "description": "Stiff fissured blue-grey London Clay. Cu 85 kPa at 5m increasing to 165 kPa at 15m. SPT N=24 at 6m, N=38 at 10m, N=48 at 14m. Fissures polished below 10m.",
+          "certainty": 0.97
+        },
+        {
+          "top": 16.8,
+          "base": 19.4,
+          "unit_code": "TG",
+          "description": "Dense flint gravel with coarse sand, sub-rounded. SPT N=52. Gravel size 10–50mm. Good core recovery.",
+          "certainty": 0.96
+        },
+        {
+          "top": 19.4,
+          "base": 20.0,
+          "unit_code": "CK",
+          "description": "Cream chalk Grade III encountered at base of borehole. Slightly softened upper surface. SPT N=45.",
+          "certainty": 0.88
+        }
+      ]
+    },
+    {
+      "id": "BH02",
+      "x": 55.0,
+      "y": 12.0,
+      "ground_level": 6.5,
+      "depth": 19.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.6,
+          "unit_code": "MG",
+          "description": "Brown sandy fill with brick fragments, glass and occasional metal. Loose to medium dense. Thinner fill consistent with open yard area rather than building footprint.",
+          "certainty": 0.93
+        },
+        {
+          "top": 1.6,
+          "base": 3.8,
+          "unit_code": "AL",
+          "description": "Soft grey-olive silty clay, high plasticity. Cu 22 kPa. Water content 68%. Thin peat layer 30mm at 2.8m depth.",
+          "certainty": 0.94
+        },
+        {
+          "top": 3.8,
+          "base": 15.9,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff London Clay, blue-grey. Cu 90 kPa at 4m, 155 kPa at 12m. SPT N=22 at 5m, N=36 at 9m, N=47 at 13m. Fissured throughout.",
+          "certainty": 0.97
+        },
+        {
+          "top": 15.9,
+          "base": 18.6,
+          "unit_code": "TG",
+          "description": "Dense flint gravel, coarse sandy matrix. SPT N=55. Well-graded. Slight artesian pressure noted on penetration.",
+          "certainty": 0.95
+        },
+        {
+          "top": 18.6,
+          "base": 19.0,
+          "unit_code": "CK",
+          "description": "Cream chalk at base of borehole, moderately strong. SPT N=48.",
+          "certainty": 0.87
+        }
+      ]
+    },
+    {
+      "id": "BH03",
+      "x": 95.0,
+      "y": 10.0,
+      "ground_level": 6.3,
+      "depth": 20.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 0.9,
+          "unit_code": "MG",
+          "description": "Thin brown sandy fill with gravel and brick fragments. Medium dense. Possible former roadway or hardstanding surface.",
+          "certainty": 0.94
+        },
+        {
+          "top": 0.9,
+          "base": 3.0,
+          "unit_code": "AL",
+          "description": "Soft olive silty clay, high plasticity. Cu 20 kPa. Organic inclusions, slight hydrogen sulphide odour. Water content 72%.",
+          "certainty": 0.95
+        },
+        {
+          "top": 3.0,
+          "base": 16.4,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff London Clay. Cu 92 kPa at 4m, 170 kPa at 14m. SPT N=25 at 6m, N=40 at 11m, N=52 at 15m. Polished fissures below 10m.",
+          "certainty": 0.97
+        },
+        {
+          "top": 16.4,
+          "base": 19.2,
+          "unit_code": "TG",
+          "description": "Very dense flint gravel, sandy matrix. SPT N=60+. Slight cementation noted. Good termination stratum for piles.",
+          "certainty": 0.96
+        },
+        {
+          "top": 19.2,
+          "base": 20.0,
+          "unit_code": "CK",
+          "description": "Cream to white chalk Grade III. SPT N=50. Encountered at base of borehole.",
+          "certainty": 0.88
+        }
+      ]
+    },
+    {
+      "id": "BH04",
+      "x": 20.0,
+      "y": 45.0,
+      "ground_level": 7.2,
+      "depth": 21.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 3.8,
+          "unit_code": "MG",
+          "description": "Very variable fill: black ash and clinker 0–1.2m, brick rubble and concrete 1.2–2.6m, brown sandy soil with tar inclusions 2.6–3.8m. Loose. Possible buried tank void at 2.0m (probe deflection noted).",
+          "certainty": 0.82
+        },
+        {
+          "top": 3.8,
+          "base": 6.0,
+          "unit_code": "AL",
+          "description": "Soft grey silty clay, very high plasticity. Cu 16 kPa. Water content 78%. Thin black peat lens 40mm at 4.8m. Settlement risk for shallow foundations.",
+          "certainty": 0.93
+        },
+        {
+          "top": 6.0,
+          "base": 18.2,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff London Clay. Cu 82 kPa at 7m rising to 180 kPa at 17m. SPT N=20 at 7m, N=35 at 11m, N=50 at 16m. Fissure density increases below 12m.",
+          "certainty": 0.96
+        },
+        {
+          "top": 18.2,
+          "base": 20.6,
+          "unit_code": "TG",
+          "description": "Dense flint gravel with coarse to medium sand. SPT N=52. Gravel clasts sub-angular to rounded, 5–40mm.",
+          "certainty": 0.95
+        },
+        {
+          "top": 20.6,
+          "base": 21.0,
+          "unit_code": "CK",
+          "description": "Cream chalk, moderately strong, SPT N=44. Base of borehole. Slightly weathered upper contact.",
+          "certainty": 0.87
+        }
+      ]
+    },
+    {
+      "id": "BH05",
+      "x": 60.0,
+      "y": 40.0,
+      "ground_level": 7.1,
+      "depth": 20.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 2.0,
+          "unit_code": "MG",
+          "description": "Brown to dark grey fill: ash, clinker, brick fragments and reworked sandy soil. Loose to medium dense. Moderately contaminated.",
+          "certainty": 0.91
+        },
+        {
+          "top": 2.0,
+          "base": 4.5,
+          "unit_code": "AL",
+          "description": "Soft olive-grey silty clay, high to very high plasticity. Cu 19 kPa. Vane shear test at 3.0m. Laminated in lower 0.5m.",
+          "certainty": 0.94
+        },
+        {
+          "top": 4.5,
+          "base": 17.0,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff London Clay. Cu 88 kPa at 5m, 160 kPa at 14m. SPT N=22 at 6m, N=38 at 10m, N=49 at 15m. Consistent with adjacent boreholes.",
+          "certainty": 0.97
+        },
+        {
+          "top": 17.0,
+          "base": 19.5,
+          "unit_code": "TG",
+          "description": "Dense sub-rounded flint gravel, coarse sandy matrix. SPT N=56. Artesian pressure 0.8m above rest level.",
+          "certainty": 0.95
+        },
+        {
+          "top": 19.5,
+          "base": 20.0,
+          "unit_code": "CK",
+          "description": "Cream chalk Grade III, SPT N=46. Encountered at base of borehole. Slightly softened upper 100mm.",
+          "certainty": 0.88
+        }
+      ]
+    },
+    {
+      "id": "BH06",
+      "x": 100.0,
+      "y": 42.0,
+      "ground_level": 6.9,
+      "depth": 19.5,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.2,
+          "unit_code": "MG",
+          "description": "Thin brown sandy fill with gravel, brick and glass fragments. Medium dense. Interpreted as former access road surface over less disturbed ground.",
+          "certainty": 0.93
+        },
+        {
+          "top": 1.2,
+          "base": 3.5,
+          "unit_code": "AL",
+          "description": "Soft olive silty clay, high plasticity. Cu 21 kPa. Organic matter common. Water content 65%. Slightly stiffer than alluvium in BH04 due to lesser overburden stress history.",
+          "certainty": 0.94
+        },
+        {
+          "top": 3.5,
+          "base": 16.3,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff London Clay. Cu 87 kPa at 4m, 168 kPa at 14m. SPT N=24 at 6m, N=40 at 12m, N=51 at 15m.",
+          "certainty": 0.97
+        },
+        {
+          "top": 16.3,
+          "base": 19.0,
+          "unit_code": "TG",
+          "description": "Dense to very dense flint gravel. SPT N=58. Coarse sandy matrix, excellent drainage. Good pile toe stratum.",
+          "certainty": 0.96
+        },
+        {
+          "top": 19.0,
+          "base": 19.5,
+          "unit_code": "CK",
+          "description": "Cream chalk, moderately strong. SPT N=47. Basal unit at this location.",
+          "certainty": 0.87
+        }
+      ]
+    },
+    {
+      "id": "BH07",
+      "x": 10.0,
+      "y": 68.0,
+      "ground_level": 7.5,
+      "depth": 22.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 4.0,
+          "unit_code": "MG",
+          "description": "Thickest made ground on site. Black ash and clinker 0–1.5m, dark brown reworked soil with rubble 1.5–3.0m, brown sandy fill with coal fragments 3.0–4.0m. Very loose in upper 1m. Former coal storage yard inferred.",
+          "certainty": 0.84
+        },
+        {
+          "top": 4.0,
+          "base": 6.5,
+          "unit_code": "AL",
+          "description": "Soft grey-olive silty clay, very high plasticity. Cu 14 kPa, lowest recorded on site. Water content 82%. Significant peat content 4.5–5.0m. Settlement-sensitive.",
+          "certainty": 0.92
+        },
+        {
+          "top": 6.5,
+          "base": 18.8,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff London Clay. Cu 80 kPa at 7m, 175 kPa at 17m. SPT N=19 at 8m, N=34 at 13m, N=48 at 17m. Shear surface at 14.2m, sub-horizontal.",
+          "certainty": 0.96
+        },
+        {
+          "top": 18.8,
+          "base": 21.4,
+          "unit_code": "TG",
+          "description": "Dense flint gravel with coarse sand. SPT N=50. Gravel slightly finer than eastern boreholes. Artesian head.",
+          "certainty": 0.94
+        },
+        {
+          "top": 21.4,
+          "base": 22.0,
+          "unit_code": "CK",
+          "description": "Cream chalk, moderately strong, Grade III. SPT N=42. Base of borehole. Gravel-chalk contact sharp.",
+          "certainty": 0.88
+        }
+      ]
+    },
+    {
+      "id": "BH08",
+      "x": 50.0,
+      "y": 70.0,
+      "ground_level": 7.8,
+      "depth": 21.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 3.0,
+          "unit_code": "MG",
+          "description": "Brown to dark fill with ash, clinker, brick and concrete fragments. Loose to medium dense. Chemical testing confirmed elevated PAH and heavy metals. Former process building inferred.",
+          "certainty": 0.88
+        },
+        {
+          "top": 3.0,
+          "base": 5.2,
+          "unit_code": "AL",
+          "description": "Soft grey silty clay, high plasticity. Cu 17 kPa. Organic inclusions. Water content 74%. Thin peat lamina 15mm at 4.2m.",
+          "certainty": 0.93
+        },
+        {
+          "top": 5.2,
+          "base": 17.6,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff London Clay. Cu 85 kPa at 6m, 172 kPa at 16m. SPT N=21 at 7m, N=37 at 12m, N=49 at 16m.",
+          "certainty": 0.97
+        },
+        {
+          "top": 17.6,
+          "base": 20.4,
+          "unit_code": "TG",
+          "description": "Dense flint gravel with coarse sand. SPT N=54. Sub-rounded clasts, 10–50mm. Artesian pressure 0.6m above ground level.",
+          "certainty": 0.95
+        },
+        {
+          "top": 20.4,
+          "base": 21.0,
+          "unit_code": "CK",
+          "description": "Cream to white chalk Grade III. SPT N=48. Encountered at base of borehole. Sharp contact with overlying gravel.",
+          "certainty": 0.88
+        }
+      ]
+    },
+    {
+      "id": "BH09",
+      "x": 90.0,
+      "y": 65.0,
+      "ground_level": 7.4,
+      "depth": 20.5,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.8,
+          "unit_code": "MG",
+          "description": "Brown sandy fill with brick and gravel. Medium dense. Relatively clean fill, low contamination. Possible later imported material post-demolition.",
+          "certainty": 0.92
+        },
+        {
+          "top": 1.8,
+          "base": 4.0,
+          "unit_code": "AL",
+          "description": "Soft olive-grey silty clay, high plasticity. Cu 20 kPa. Occasional organic partings. Vane shear test at 2.5m. Water content 70%.",
+          "certainty": 0.94
+        },
+        {
+          "top": 4.0,
+          "base": 17.2,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff London Clay. Cu 89 kPa at 5m, 165 kPa at 15m. SPT N=23 at 7m, N=39 at 12m, N=50 at 16m. Consistent profile.",
+          "certainty": 0.97
+        },
+        {
+          "top": 17.2,
+          "base": 20.0,
+          "unit_code": "TG",
+          "description": "Dense to very dense flint gravel, coarse sandy matrix. SPT N=57. Well-graded. Excellent founding stratum.",
+          "certainty": 0.96
+        },
+        {
+          "top": 20.0,
+          "base": 20.5,
+          "unit_code": "CK",
+          "description": "Cream chalk, moderately strong Grade III. SPT N=46. Base of borehole.",
+          "certainty": 0.87
+        }
+      ]
+    },
+    {
+      "id": "BH10",
+      "x": 108.0,
+      "y": 72.0,
+      "ground_level": 6.1,
+      "depth": 18.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 0.8,
+          "unit_code": "MG",
+          "description": "Thin brown sandy fill with gravel and brick fragments. Medium dense. Thinnest made ground on site, consistent with peripheral yard area away from former process plant.",
+          "certainty": 0.94
+        },
+        {
+          "top": 0.8,
+          "base": 2.8,
+          "unit_code": "AL",
+          "description": "Soft olive silty clay, high plasticity. Cu 24 kPa, slightly stronger than central site boreholes. Water content 63%. Fewer organics.",
+          "certainty": 0.95
+        },
+        {
+          "top": 2.8,
+          "base": 15.2,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff London Clay. Cu 90 kPa at 4m, 172 kPa at 14m. SPT N=26 at 6m, N=41 at 11m, N=52 at 14m. Good core quality.",
+          "certainty": 0.97
+        },
+        {
+          "top": 15.2,
+          "base": 17.5,
+          "unit_code": "TG",
+          "description": "Dense flint gravel, coarse sandy matrix. SPT N=55. Sub-rounded to rounded clasts. Consistent thickness with rest of site.",
+          "certainty": 0.96
+        },
+        {
+          "top": 17.5,
+          "base": 18.0,
+          "unit_code": "CK",
+          "description": "Cream chalk Grade III. SPT N=44. Encountered at base of borehole. Slightly shallower than central boreholes, consistent with gentle chalk surface topography.",
+          "certainty": 0.88
+        }
+      ]
+    }
+  ]
+}

@@ -19,17 +19,8 @@
     <div class="header-brand">
       <span class="brand-icon">⬡</span>
       <h1>GeoModel AI</h1>
-      <span class="brand-sub">Geotechnical Voxel Model PoC</span>
+      <span class="brand-sub">Geotechnical Voxel Model</span>
     </div>
-    <nav class="step-indicator" id="step-indicator" aria-label="Progress">
-      <button class="step active" data-step="1">1 · Data</button>
-      <span class="step-arrow">›</span>
-      <button class="step" data-step="2">2 · Analyse</button>
-      <span class="step-arrow">›</span>
-      <button class="step" data-step="3">3 · Model</button>
-      <span class="step-arrow">›</span>
-      <button class="step" data-step="4">4 · View</button>
-    </nav>
     <div class="header-actions">
       <button id="btn-api-key" class="btn-ghost" title="Configure Anthropic API Key">⚙ API Key</button>
       <button id="btn-reset" class="btn-ghost" title="Reset all data">↺ Reset</button>
@@ -37,16 +28,18 @@
   </header>
 
   <main id="app-main">
-    <!-- ── LEFT PANEL ── -->
+
+    <!-- ── LEFT PANEL: Tools ── -->
     <aside id="left-panel">
       <div class="panel-tabs" role="tablist">
-        <button class="tab-btn active" data-tab="upload" role="tab">Upload</button>
-        <button class="tab-btn" data-tab="text" role="tab">Text</button>
-        <button class="tab-btn" data-tab="demo" role="tab">Demo</button>
+        <button class="tab-btn active" data-tab="data" role="tab">Data</button>
+        <button class="tab-btn" data-tab="constraints" role="tab">Constraints</button>
+        <button class="tab-btn" data-tab="analysis" role="tab">Analysis</button>
       </div>
 
-      <!-- Upload tab -->
-      <div class="tab-content active" id="tab-upload" role="tabpanel">
+      <!-- DATA TAB -->
+      <div class="tab-content active" id="tab-data" role="tabpanel">
+
         <div class="drop-zone" id="drop-bh" tabindex="0" role="button" aria-label="Drop borehole files here">
           <div class="drop-icon">⬇</div>
           <div class="drop-label">Borehole Logs</div>
@@ -55,6 +48,62 @@
         </div>
         <div id="bh-file-list" class="file-list"></div>
 
+        <!-- Topography (collapsible) -->
+        <div class="collapsible-hdr" id="topo-toggle">
+          <span>Topography <span class="badge-opt">CSV optional</span></span>
+          <span class="collapse-arrow">›</span>
+        </div>
+        <div id="topo-section" class="collapsible-body" hidden>
+          <div class="drop-zone drop-zone-sm" id="drop-topo" tabindex="0" role="button">
+            <div class="drop-icon" style="font-size:18px">⬇</div>
+            <div class="drop-label" style="font-size:12px">Topography CSV</div>
+            <div class="drop-hint">Columns: X, Y, Z (mAOD)</div>
+            <input type="file" id="file-topo" accept=".csv,.txt" hidden>
+          </div>
+          <div id="topo-file-info" class="file-list"></div>
+          <label class="inline-check" style="margin-top:4px">
+            <input type="checkbox" id="show-topo" checked>
+            <span>Show topo surface</span>
+          </label>
+        </div>
+
+        <!-- Sample datasets -->
+        <div class="settings-divider">Sample Datasets</div>
+        <div class="sample-grid">
+          <button class="sample-tile" data-demo="demo-site">
+            <div class="sample-tile-chips">
+              <span class="unit-chip" style="background:#8B6914">MG</span>
+              <span class="unit-chip" style="background:#D4A843;color:#222">RTD</span>
+              <span class="unit-chip" style="background:#4A7C59">AC</span>
+              <span class="unit-chip" style="background:#EDE8D8;color:#333">CH</span>
+            </div>
+            <div class="sample-tile-name">Riverside Development</div>
+            <div class="sample-tile-meta">16 BH · mixed alluvial</div>
+          </button>
+          <button class="sample-tile" data-demo="demo-highway">
+            <div class="sample-tile-chips">
+              <span class="unit-chip" style="background:#5c3d1e">TS</span>
+              <span class="unit-chip" style="background:#c8b89a;color:#222">WCK</span>
+              <span class="unit-chip" style="background:#e8e4d8;color:#333">CK</span>
+            </div>
+            <div class="sample-tile-name">A99 Highway Widening</div>
+            <div class="sample-tile-meta">12 BH · chalk downland</div>
+          </button>
+          <button class="sample-tile" data-demo="demo-urban">
+            <div class="sample-tile-chips">
+              <span class="unit-chip" style="background:#7a6a42">MG</span>
+              <span class="unit-chip" style="background:#8faa72;color:#222">AL</span>
+              <span class="unit-chip" style="background:#4a6fa5">LC</span>
+              <span class="unit-chip" style="background:#c8a855;color:#222">TG</span>
+              <span class="unit-chip" style="background:#e8e4d8;color:#333">CK</span>
+            </div>
+            <div class="sample-tile-name">Former Gasworks</div>
+            <div class="sample-tile-meta">10 BH · urban brownfield</div>
+          </button>
+        </div>
+
+        <!-- Grid settings -->
+        <div class="settings-divider">Grid Settings</div>
         <div class="field-group">
           <label>Cell Size <span class="unit-hint">(metres)</span></label>
           <div class="cell-size-row">
@@ -71,12 +120,8 @@
               <input type="number" id="cell-size-z" value="0.25" min="0.05" max="20" step="0.05" class="cell-size-input">
             </div>
           </div>
-          <p class="hint">X/Y horizontal · Z vertical · smaller = finer</p>
+          <p class="hint">X/Y horizontal · Z vertical</p>
         </div>
-
-        <button id="btn-parse" class="btn-primary" disabled>Parse Data →</button>
-
-        <div class="settings-divider">Interpolation</div>
 
         <div class="field-group">
           <label for="k-neighbors">K Neighbours</label>
@@ -84,7 +129,7 @@
             <input type="range" id="k-neighbors" min="2" max="10" value="5" step="1">
             <span id="k-neighbors-val" class="range-readout">5</span>
           </div>
-          <p class="hint">BHs used per voxel — higher = smoother but slower</p>
+          <p class="hint">BHs used per voxel — higher = smoother</p>
         </div>
 
         <div class="field-group">
@@ -93,7 +138,7 @@
             <input type="range" id="idw-power" min="0.5" max="5" value="2" step="0.5">
             <span id="idw-power-val" class="range-readout">2.0</span>
           </div>
-          <p class="hint">Higher = stronger local influence, sharper contacts</p>
+          <p class="hint">Higher = sharper contacts</p>
         </div>
 
         <div class="settings-divider">Interpolation Method</div>
@@ -107,153 +152,181 @@
             <label class="method-option">
               <input type="radio" name="interp-method" value="kriging">
               <span class="method-label">Kriging</span>
-              <span class="method-desc">Ordinary Kriging — geostatistical optimal linear unbiased estimator</span>
+              <span class="method-desc">Ordinary Kriging — geostatistical unbiased estimator</span>
             </label>
             <label class="method-option">
               <input type="radio" name="interp-method" value="gp">
               <span class="method-label">Gaussian Process</span>
-              <span class="method-desc">Probabilistic ML with RBF kernel and variance-based uncertainty</span>
+              <span class="method-desc">Probabilistic ML — RBF kernel, variance-based uncertainty</span>
             </label>
             <label class="method-option">
               <input type="radio" name="interp-method" value="nn">
               <span class="method-label">Neural Network</span>
-              <span class="method-desc">MLP trained on BH observations — learns non-linear spatial patterns</span>
+              <span class="method-desc">MLP — learns non-linear spatial patterns</span>
             </label>
           </div>
         </div>
-      </div>
 
-      <!-- Text tab -->
-      <div class="tab-content" id="tab-text" role="tabpanel">
+        <div class="settings-divider">Semantic Information</div>
         <div class="field-group">
           <label for="input-unit-desc">Unit Descriptions</label>
-          <textarea id="input-unit-desc" rows="5"
-            placeholder="e.g. 'Alluvial Clay: soft to firm, dark grey, silty CLAY, high plasticity, Cu ~25 kPa, Holocene river deposit...'"></textarea>
+          <textarea id="input-unit-desc" rows="3"
+            placeholder="e.g. Alluvial Clay: soft to firm, dark grey silty CLAY, Cu ~25 kPa..."></textarea>
           <button id="btn-add-desc" class="btn-secondary btn-sm">+ Add Description</button>
         </div>
         <div id="desc-list" class="desc-list"></div>
 
         <div class="field-group">
           <label for="input-site-history">Site History</label>
-          <textarea id="input-site-history" rows="4"
-            placeholder="Historical land use, known hazards, previous structures, local geology notes..."></textarea>
+          <textarea id="input-site-history" rows="3"
+            placeholder="Historical land use, known hazards, previous structures, local geology..."></textarea>
         </div>
       </div>
 
-      <!-- Demo tab -->
-      <div class="tab-content" id="tab-demo" role="tabpanel">
-        <div class="demo-card">
-          <div class="demo-title">Riverside Development, Millbrook</div>
-          <div class="demo-meta">16 boreholes · 250 × 200 m · 4 units</div>
-          <div class="demo-units">
-            <span class="unit-chip" style="background:#8B6914">MG</span>
-            <span class="unit-chip" style="background:#D4A843;color:#222">RTD</span>
-            <span class="unit-chip" style="background:#4A7C59">AC</span>
-            <span class="unit-chip" style="background:#EDE8D8;color:#333">CH</span>
-          </div>
-          <p class="demo-desc">Fictional mixed-use site showing Made Ground, River Terrace Deposits, Alluvial Clay lens, and Chalk bedrock. No API key required.</p>
+      <!-- CONSTRAINTS TAB -->
+      <div class="tab-content" id="tab-constraints" role="tabpanel">
+        <div class="field-group">
+          <label>Geological Constraints</label>
+          <textarea id="constraints-text" rows="9"
+            placeholder="Made ground not deeper than 5m&#10;Chalk is above 50mAOD&#10;RTD exists only in the north half&#10;Alluvial Clay between 2m and 8mAOD&#10;There is a palaeochannel in the north third"></textarea>
+          <p class="hint">One rule per line — applied to the 3D model when you click Apply.</p>
         </div>
-        <button id="btn-load-demo" class="btn-primary">Load Demo Site →</button>
+        <button id="btn-apply-constraints" class="btn-primary" disabled>Apply Constraints →</button>
+
+        <div id="constraints-summary" class="constraints-list"></div>
+
+        <div class="settings-divider">Example Rules</div>
+        <div class="example-rules">
+          <div class="example-rule" data-rule="Made ground not deeper than 5m">Made ground not deeper than 5m</div>
+          <div class="example-rule" data-rule="Chalk is above 45mAOD">Chalk is above 45mAOD</div>
+          <div class="example-rule" data-rule="RTD exists only in the north half">RTD exists only in the north half</div>
+          <div class="example-rule" data-rule="Alluvial Clay between 2m and 8mAOD">Alluvial Clay between 2m and 8mAOD</div>
+          <div class="example-rule" data-rule="London Clay depth &lt; 20m">London Clay depth &lt; 20m</div>
+          <div class="example-rule" data-rule="There is a palaeochannel in the south third">There is a palaeochannel in the south third</div>
+        </div>
       </div>
 
-      <!-- Action buttons (always visible) -->
+      <!-- ANALYSIS TAB -->
+      <div class="tab-content" id="tab-analysis" role="tabpanel">
+        <div id="analysis-log" class="analysis-log">
+          <div class="log-entry log-info">Run AI Analysis to see results here.</div>
+        </div>
+      </div>
+
+      <!-- Action buttons -->
       <div class="panel-actions">
         <button id="btn-run-ai" class="btn-primary" disabled>Run AI Analysis →</button>
         <button id="btn-build-model" class="btn-primary" disabled>Build 3D Model →</button>
       </div>
 
       <div id="status-log" class="status-log" aria-live="polite">
-        <div class="log-entry log-info">Ready — load data or use Demo mode.</div>
+        <div class="log-entry log-info">Ready — drop files or load a sample site.</div>
       </div>
     </aside>
 
-    <!-- ── CENTER PANEL ── -->
-    <section id="center-panel">
+    <!-- ── 3D VIEWER (always visible) ── -->
+    <section id="viewer-panel">
+      <canvas id="three-canvas"></canvas>
+      <canvas id="slicer-overlay" class="slicer-overlay" hidden></canvas>
 
-      <!-- Step 1: Data view -->
-      <div id="view-data" class="view active">
-        <div class="view-split">
-          <div id="plan-view-wrap">
-            <div class="view-label">Borehole Plan View</div>
-            <canvas id="plan-canvas"></canvas>
-            <div id="plan-tooltip" class="tooltip" hidden></div>
+      <!-- Welcome overlay — shown when no data loaded -->
+      <div id="welcome-overlay">
+        <div class="welcome-card">
+          <div class="welcome-brand">
+            <span class="welcome-geo-icon">⬡</span>
+            <h2>GeoModel AI</h2>
           </div>
-          <div id="data-table-wrap">
-            <div class="view-label">Data Summary</div>
-            <div class="table-scroll">
-              <table id="data-table">
-                <thead>
-                  <tr>
-                    <th>BH ID</th><th>X (m)</th><th>Y (m)</th>
-                    <th>GL (mAOD)</th><th>Depth (m)</th><th>Layers</th>
-                  </tr>
-                </thead>
-                <tbody id="data-table-body">
-                  <tr><td colspan="6" class="table-empty">No data loaded</td></tr>
-                </tbody>
-              </table>
-            </div>
+          <p class="welcome-tagline">3D geotechnical voxel models from borehole data</p>
+
+          <div class="welcome-drop" id="welcome-drop" tabindex="0" role="button">
+            <div class="welcome-drop-icon">⬇</div>
+            <div class="welcome-drop-label">Drop borehole files here</div>
+            <div class="welcome-drop-hint">AGS 4.x · CSV · TXT · or click to browse</div>
+          </div>
+
+          <div class="welcome-or">— or load a sample dataset —</div>
+
+          <div class="welcome-samples">
+            <button class="welcome-sample-btn" data-demo="demo-site">
+              <div class="wsb-chips">
+                <span class="unit-chip" style="background:#8B6914">MG</span>
+                <span class="unit-chip" style="background:#D4A843;color:#222">RTD</span>
+                <span class="unit-chip" style="background:#4A7C59">AC</span>
+                <span class="unit-chip" style="background:#EDE8D8;color:#333">CH</span>
+              </div>
+              <div class="wsb-name">Riverside Development</div>
+              <div class="wsb-meta">16 BH · 250×200 m · mixed alluvial</div>
+            </button>
+            <button class="welcome-sample-btn" data-demo="demo-highway">
+              <div class="wsb-chips">
+                <span class="unit-chip" style="background:#5c3d1e">TS</span>
+                <span class="unit-chip" style="background:#c8b89a;color:#222">WCK</span>
+                <span class="unit-chip" style="background:#e8e4d8;color:#333">CK</span>
+              </div>
+              <div class="wsb-name">A99 Highway Widening</div>
+              <div class="wsb-meta">12 BH · 200×60 m · chalk downland</div>
+            </button>
+            <button class="welcome-sample-btn" data-demo="demo-urban">
+              <div class="wsb-chips">
+                <span class="unit-chip" style="background:#7a6a42">MG</span>
+                <span class="unit-chip" style="background:#8faa72;color:#222">AL</span>
+                <span class="unit-chip" style="background:#4a6fa5">LC</span>
+                <span class="unit-chip" style="background:#c8a855;color:#222">TG</span>
+                <span class="unit-chip" style="background:#e8e4d8;color:#333">CK</span>
+              </div>
+              <div class="wsb-name">Former Gasworks, Millgate</div>
+              <div class="wsb-meta">10 BH · 120×80 m · urban brownfield</div>
+            </button>
           </div>
         </div>
       </div>
 
-      <!-- Step 2: AI analysis log -->
-      <div id="view-analysis" class="view">
-        <div class="view-label">AI Analysis</div>
-        <div id="analysis-log" class="analysis-log">
-          <div class="log-entry log-info">Waiting for analysis to start…</div>
+      <!-- Slicer panel -->
+      <div id="slicer-panel" class="slicer-panel" hidden>
+        <div class="slicer-panel-hdr">
+          <span>Section Slice</span>
+          <button id="slicer-close" class="slicer-close-btn">✕</button>
+        </div>
+        <div class="slicer-hint" id="slicer-hint">Press D for plan view, then click Draw Line</div>
+        <div class="slicer-modes">
+          <button class="slicer-mode-btn active" data-mode="slab">Slab</button>
+          <button class="slicer-mode-btn" data-mode="removeFront">Remove Front</button>
+          <button class="slicer-mode-btn" data-mode="removeBack">Remove Back</button>
+        </div>
+        <div class="slicer-field">
+          <label>Thickness <span id="slicer-thickness-val">20 m</span></label>
+          <input type="range" id="slicer-thickness" min="1" max="200" value="20">
+        </div>
+        <div class="slicer-field">
+          <label>Position <span class="slicer-hint-sm">Ctrl+scroll</span></label>
+          <input type="range" id="slicer-position" min="-200" max="200" value="0">
+        </div>
+        <div class="slicer-actions">
+          <button id="slicer-draw-btn" class="btn-secondary btn-sm">✎ Draw Line</button>
+          <button id="slicer-clear-btn" class="btn-secondary btn-sm">✕ Clear</button>
         </div>
       </div>
 
-      <!-- Step 3/4: Three.js 3D viewer -->
-      <div id="view-model" class="view">
-        <canvas id="three-canvas"></canvas>
-        <canvas id="slicer-overlay" class="slicer-overlay" hidden></canvas>
-
-        <!-- Slicer panel (floating, bottom-right) -->
-        <div id="slicer-panel" class="slicer-panel" hidden>
-          <div class="slicer-panel-hdr">
-            <span>Section Slice</span>
-            <button id="slicer-close" class="slicer-close-btn">✕</button>
-          </div>
-          <div class="slicer-hint" id="slicer-hint">Press D for plan view, then click Draw Line</div>
-          <div class="slicer-modes">
-            <button class="slicer-mode-btn active" data-mode="slab">Slab</button>
-            <button class="slicer-mode-btn" data-mode="removeFront">Remove Front</button>
-            <button class="slicer-mode-btn" data-mode="removeBack">Remove Back</button>
-          </div>
-          <div class="slicer-field">
-            <label>Thickness <span id="slicer-thickness-val">20 m</span></label>
-            <input type="range" id="slicer-thickness" min="1" max="200" value="20">
-          </div>
-          <div class="slicer-field">
-            <label>Position <span class="slicer-hint-sm">Ctrl+scroll</span></label>
-            <input type="range" id="slicer-position" min="-200" max="200" value="0">
-          </div>
-          <div class="slicer-actions">
-            <button id="slicer-draw-btn" class="btn-secondary btn-sm">✎ Draw Line</button>
-            <button id="slicer-clear-btn" class="btn-secondary btn-sm">✕ Clear</button>
-          </div>
+      <!-- Viewer controls (bottom-left) -->
+      <div class="viewer-controls">
+        <button id="btn-open-slicer" class="btn-open-slicer">✂ Section</button>
+        <div class="vert-exag-ctrl">
+          <span class="vert-exag-lbl">VE</span>
+          <input type="number" id="vert-exag" value="1" min="0.1" max="20" step="0.5" class="vert-exag-input">
+          <span class="vert-exag-x">×</span>
         </div>
-
-        <div class="viewer-controls">
-          <button id="btn-open-slicer" class="btn-open-slicer">✂ Section</button>
-          <div class="vert-exag-ctrl">
-            <span class="vert-exag-lbl">VE</span>
-            <input type="number" id="vert-exag" value="1" min="0.1" max="20" step="0.5" class="vert-exag-input">
-            <span class="vert-exag-x">×</span>
-          </div>
-        </div>
-        <div id="voxel-tooltip" class="tooltip" hidden></div>
       </div>
+
+      <div id="voxel-tooltip" class="tooltip" hidden></div>
     </section>
 
-    <!-- ── RIGHT PANEL ── -->
+    <!-- ── RIGHT PANEL: Legend & View ── -->
     <aside id="right-panel">
+
       <div class="panel-section">
         <h3>Unit Legend</h3>
         <div id="unit-legend" class="unit-legend">
-          <p class="hint">Units appear after analysis</p>
+          <p class="hint">Units appear after model is built</p>
         </div>
       </div>
 
@@ -267,7 +340,7 @@
       </div>
 
       <div class="panel-section">
-        <h3>Transparency</h3>
+        <h3>View Options</h3>
 
         <div class="field-group">
           <label>Overall Opacity</label>
@@ -294,13 +367,11 @@
           <input type="range" id="color-fade-amount" min="0" max="100" value="80">
           <span id="color-fade-val" class="range-readout">80%</span>
         </div>
-        <p class="hint">Full certainty = vivid colour · low certainty → white</p>
-      </div>
+        <p class="hint">Full certainty = vivid · low certainty → white</p>
 
-      <div class="panel-section">
-        <label class="inline-check">
+        <label class="inline-check" style="margin-top:8px">
           <input type="checkbox" id="show-bh-sticks" checked>
-          <span>Show BH Log Sticks</span>
+          <span>Show BH log sticks</span>
         </label>
       </div>
 
@@ -320,6 +391,7 @@
         <button id="btn-export-obj"  class="btn-secondary" disabled>⬇ OBJ</button>
         <button id="btn-export-json" class="btn-secondary" disabled>⬇ JSON</button>
       </div>
+
     </aside>
   </main>
 

@@ -1,0 +1,392 @@
+{
+  "site": {
+    "name": "A99 Highway Widening, Greenfield",
+    "description": "Agricultural chalk downland site on a 200×60m linear corridor proposed for highway widening. Terrain rises gently northward. Vegetation consists of arable crops with field hedgerows along corridor edges.",
+    "constraints": "Topsoil not deeper than 0.5m. Weathered chalk variable. Chalk is reliable founding stratum below 4m."
+  },
+  "geological_units": [
+    {
+      "id": 1,
+      "code": "TS",
+      "name": "Topsoil",
+      "color": "#5c3d1e",
+      "description": "Dark brown silty clay topsoil with rootlets and organic matter. Agricultural horizon, plough-disturbed in upper 0.3m."
+    },
+    {
+      "id": 2,
+      "code": "WCK",
+      "name": "Weathered Chalk",
+      "color": "#c8b89a",
+      "description": "Buff to pale grey structureless putty chalk with occasional flint fragments. Frost-shattered and weathered. SPT N typically 10–30."
+    },
+    {
+      "id": 3,
+      "code": "CK",
+      "name": "Chalk",
+      "color": "#e8e4d8",
+      "description": "White to off-white moderately strong chalk, Grade III–IV. Occasional flint bands and thin marl partings. SPT N typically 30–60+. Reliable founding stratum."
+    }
+  ],
+  "boreholes": [
+    {
+      "id": "BH01",
+      "x": 20.0,
+      "y": 10.0,
+      "ground_level": 97.2,
+      "depth": 10.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 0.35,
+          "unit_code": "TS",
+          "description": "Dark brown silty clay topsoil, firm, rootlets throughout, plough pan at 0.25m.",
+          "certainty": 0.97
+        },
+        {
+          "top": 0.35,
+          "base": 5.8,
+          "unit_code": "WCK",
+          "description": "Buff structureless putty chalk, soft to firm, SPT N=12–22, becoming slightly less weathered below 4m.",
+          "certainty": 0.91
+        },
+        {
+          "top": 5.8,
+          "base": 10.0,
+          "unit_code": "CK",
+          "description": "White moderately strong chalk Grade III, occasional flint nodules, SPT N=38–50.",
+          "certainty": 0.95
+        }
+      ]
+    },
+    {
+      "id": "BH02",
+      "x": 20.0,
+      "y": 30.0,
+      "ground_level": 97.6,
+      "depth": 11.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 0.40,
+          "unit_code": "TS",
+          "description": "Dark brown silty clay topsoil, firm, abundant rootlets, organic-rich.",
+          "certainty": 0.98
+        },
+        {
+          "top": 0.40,
+          "base": 6.5,
+          "unit_code": "WCK",
+          "description": "Buff putty chalk, soft, SPT N=8–18. Wetter and softer in upper 2m. Occasional small flints.",
+          "certainty": 0.89
+        },
+        {
+          "top": 6.5,
+          "base": 11.0,
+          "unit_code": "CK",
+          "description": "White to off-white chalk Grade III, moderately strong, SPT N=42–55. Thin marl parting at 8.2m.",
+          "certainty": 0.96
+        }
+      ]
+    },
+    {
+      "id": "BH03",
+      "x": 20.0,
+      "y": 50.0,
+      "ground_level": 98.1,
+      "depth": 12.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 0.45,
+          "unit_code": "TS",
+          "description": "Dark brown silty clay topsoil with rootlets, firm, cultivated horizon visible at surface.",
+          "certainty": 0.97
+        },
+        {
+          "top": 0.45,
+          "base": 7.1,
+          "unit_code": "WCK",
+          "description": "Buff structureless putty chalk, soft to firm, SPT N=10–24. Thicker weathered profile toward south. Flint fragments 3–5m.",
+          "certainty": 0.88
+        },
+        {
+          "top": 7.1,
+          "base": 12.0,
+          "unit_code": "CK",
+          "description": "White moderately strong chalk Grade III, SPT N=35–52. Occasional flint bands. Good founding stratum.",
+          "certainty": 0.94
+        }
+      ]
+    },
+    {
+      "id": "BH04",
+      "x": 70.0,
+      "y": 10.0,
+      "ground_level": 97.8,
+      "depth": 10.5,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 0.33,
+          "unit_code": "TS",
+          "description": "Dark brown silty clay topsoil, firm with rootlets and occasional gravel fragments.",
+          "certainty": 0.98
+        },
+        {
+          "top": 0.33,
+          "base": 5.4,
+          "unit_code": "WCK",
+          "description": "Buff putty chalk, soft, SPT N=11–20. Upper 1m highly weathered and moist.",
+          "certainty": 0.90
+        },
+        {
+          "top": 5.4,
+          "base": 10.5,
+          "unit_code": "CK",
+          "description": "White chalk Grade III, moderately strong, SPT N=40–58. Flint nodule band at 7.5m.",
+          "certainty": 0.96
+        }
+      ]
+    },
+    {
+      "id": "BH05",
+      "x": 70.0,
+      "y": 30.0,
+      "ground_level": 98.4,
+      "depth": 11.5,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 0.38,
+          "unit_code": "TS",
+          "description": "Dark brown silty clay topsoil, firm, moderate organic content and rootlets.",
+          "certainty": 0.97
+        },
+        {
+          "top": 0.38,
+          "base": 5.9,
+          "unit_code": "WCK",
+          "description": "Buff structureless chalk, soft to firm, SPT N=14–26. Slight improvement in stiffness below 4.5m.",
+          "certainty": 0.91
+        },
+        {
+          "top": 5.9,
+          "base": 11.5,
+          "unit_code": "CK",
+          "description": "White moderately strong chalk Grade III, SPT N=38–55. Marl parting at 9.0m, 50mm thick.",
+          "certainty": 0.95
+        }
+      ]
+    },
+    {
+      "id": "BH06",
+      "x": 70.0,
+      "y": 50.0,
+      "ground_level": 98.8,
+      "depth": 12.5,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 0.48,
+          "unit_code": "TS",
+          "description": "Dark brown silty clay topsoil, firm to stiff, abundant fine rootlets, plough horizon.",
+          "certainty": 0.96
+        },
+        {
+          "top": 0.48,
+          "base": 7.8,
+          "unit_code": "WCK",
+          "description": "Buff to pale grey putty chalk, soft, SPT N=8–16. Thickest weathered profile on site, indicative of former valley feature.",
+          "certainty": 0.87
+        },
+        {
+          "top": 7.8,
+          "base": 12.5,
+          "unit_code": "CK",
+          "description": "White moderately strong chalk Grade III–IV, SPT N=42–60. Fresh chalk from 10m.",
+          "certainty": 0.94
+        }
+      ]
+    },
+    {
+      "id": "BH07",
+      "x": 120.0,
+      "y": 10.0,
+      "ground_level": 99.2,
+      "depth": 11.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 0.35,
+          "unit_code": "TS",
+          "description": "Dark brown silty clay topsoil, firm, roots to 0.3m. Lower organic content than southern boreholes.",
+          "certainty": 0.98
+        },
+        {
+          "top": 0.35,
+          "base": 4.8,
+          "unit_code": "WCK",
+          "description": "Buff putty chalk, firm, SPT N=18–30. Shallower weathering consistent with higher ground.",
+          "certainty": 0.92
+        },
+        {
+          "top": 4.8,
+          "base": 11.0,
+          "unit_code": "CK",
+          "description": "White chalk Grade III, moderately strong to strong, SPT N=44–60+. Flint band at 6.5m.",
+          "certainty": 0.97
+        }
+      ]
+    },
+    {
+      "id": "BH08",
+      "x": 120.0,
+      "y": 30.0,
+      "ground_level": 99.6,
+      "depth": 12.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 0.40,
+          "unit_code": "TS",
+          "description": "Dark brown silty clay topsoil, firm, rootlets common throughout.",
+          "certainty": 0.97
+        },
+        {
+          "top": 0.40,
+          "base": 5.6,
+          "unit_code": "WCK",
+          "description": "Buff structureless putty chalk, soft to firm, SPT N=12–24. Occasional angular flints at 3–4m.",
+          "certainty": 0.90
+        },
+        {
+          "top": 5.6,
+          "base": 12.0,
+          "unit_code": "CK",
+          "description": "White to off-white chalk Grade III, moderately strong, SPT N=40–58. Thin marl partings at 8.4m and 10.1m.",
+          "certainty": 0.95
+        }
+      ]
+    },
+    {
+      "id": "BH09",
+      "x": 120.0,
+      "y": 50.0,
+      "ground_level": 100.1,
+      "depth": 13.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 0.42,
+          "unit_code": "TS",
+          "description": "Dark brown silty clay topsoil, firm, desiccation cracks to 0.2m in upper horizon.",
+          "certainty": 0.97
+        },
+        {
+          "top": 0.42,
+          "base": 6.8,
+          "unit_code": "WCK",
+          "description": "Buff to pale grey putty chalk, soft, SPT N=9–19. Locally wetter and more plastic in 4–6m interval.",
+          "certainty": 0.88
+        },
+        {
+          "top": 6.8,
+          "base": 13.0,
+          "unit_code": "CK",
+          "description": "White chalk Grade III, moderately strong, SPT N=38–56. Good core recovery. Flint nodule cluster at 10.5m.",
+          "certainty": 0.95
+        }
+      ]
+    },
+    {
+      "id": "BH10",
+      "x": 170.0,
+      "y": 10.0,
+      "ground_level": 99.9,
+      "depth": 11.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 0.32,
+          "unit_code": "TS",
+          "description": "Dark brown silty clay topsoil, firm, sparse rootlets, slightly drier.",
+          "certainty": 0.98
+        },
+        {
+          "top": 0.32,
+          "base": 4.5,
+          "unit_code": "WCK",
+          "description": "Buff structureless chalk, firm, SPT N=20–34. Relatively thin consistent with elevated position and good drainage.",
+          "certainty": 0.93
+        },
+        {
+          "top": 4.5,
+          "base": 11.0,
+          "unit_code": "CK",
+          "description": "White moderately strong chalk Grade III, SPT N=45–60+. Excellent core recovery. Flint band at 7.2m.",
+          "certainty": 0.97
+        }
+      ]
+    },
+    {
+      "id": "BH11",
+      "x": 170.0,
+      "y": 30.0,
+      "ground_level": 100.4,
+      "depth": 12.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 0.38,
+          "unit_code": "TS",
+          "description": "Dark brown silty clay topsoil, firm, rootlets throughout, thin organic-rich layer at surface.",
+          "certainty": 0.97
+        },
+        {
+          "top": 0.38,
+          "base": 5.0,
+          "unit_code": "WCK",
+          "description": "Buff putty chalk, firm, SPT N=18–30. Upper 1.5m softer and more weathered. Flint fragments 3–5m.",
+          "certainty": 0.91
+        },
+        {
+          "top": 5.0,
+          "base": 12.0,
+          "unit_code": "CK",
+          "description": "White chalk Grade III, moderately strong to strong, SPT N=42–60+. Marl parting at 9.5m. Consistent with BH10.",
+          "certainty": 0.96
+        }
+      ]
+    },
+    {
+      "id": "BH12",
+      "x": 170.0,
+      "y": 50.0,
+      "ground_level": 100.8,
+      "depth": 13.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 0.45,
+          "unit_code": "TS",
+          "description": "Dark brown silty clay topsoil, firm to stiff, rootlets common, slight organic smell.",
+          "certainty": 0.96
+        },
+        {
+          "top": 0.45,
+          "base": 5.8,
+          "unit_code": "WCK",
+          "description": "Buff to pale grey structureless chalk, soft to firm, SPT N=11–22. Moisture content decreases with depth.",
+          "certainty": 0.89
+        },
+        {
+          "top": 5.8,
+          "base": 13.0,
+          "unit_code": "CK",
+          "description": "White moderately strong chalk Grade III–IV, SPT N=40–60+. Two thin marl partings at 8.0m and 11.3m. Excellent founding stratum.",
+          "certainty": 0.95
+        }
+      ]
+    }
+  ]
+}
