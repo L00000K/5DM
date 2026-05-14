@@ -262,6 +262,16 @@ export function updateLegend() {
 
 // ── Transparency controls ──────────────────────────────────────────────────────
 function initTransparencyControls() {
+  // Overall opacity slider
+  const alphaSlider = document.getElementById('global-alpha');
+  const alphaVal    = document.getElementById('global-alpha-val');
+  alphaSlider?.addEventListener('input', () => {
+    const alpha = parseInt(alphaSlider.value) / 100;
+    alphaVal.textContent = `${alphaSlider.value}%`;
+    if (AppState.scene) AppState.scene.setGlobalAlpha(alpha);
+  });
+
+  // Certainty-based opacity
   const chk    = document.getElementById('transp-enable');
   const slider = document.getElementById('transp-amount');
   const val    = document.getElementById('transp-val');
@@ -276,7 +286,24 @@ function initTransparencyControls() {
   };
   chk?.addEventListener('change', update);
   slider?.addEventListener('input', update);
-  if (row) row.style.opacity = '0.4'; // starts disabled
+  if (row) row.style.opacity = '0.4';
+
+  // Certainty colour fade
+  const fadeChk    = document.getElementById('color-fade-enable');
+  const fadeSlider = document.getElementById('color-fade-amount');
+  const fadeVal    = document.getElementById('color-fade-val');
+  const fadeRow    = document.getElementById('color-fade-row');
+
+  const updateFade = () => {
+    const enabled = fadeChk.checked;
+    const amount  = parseInt(fadeSlider.value) / 100;
+    fadeVal.textContent = `${fadeSlider.value}%`;
+    if (fadeRow) fadeRow.style.opacity = enabled ? '1' : '0.4';
+    if (AppState.scene) AppState.scene.setColorFadeMode(enabled, amount);
+  };
+  fadeChk?.addEventListener('change', updateFade);
+  fadeSlider?.addEventListener('input', updateFade);
+  if (fadeRow) fadeRow.style.opacity = '0.4';
 }
 
 // ── BH sticks toggle ──────────────────────────────────────────────────────────

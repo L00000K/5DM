@@ -132,6 +132,14 @@ class SceneManager {
     this._builder.setTransparencyMode(enabled, amount);
   }
 
+  setColorFadeMode(enabled, amount) {
+    this._builder.setColorFadeMode(enabled, amount);
+  }
+
+  setGlobalAlpha(alpha) {
+    this._builder.setGlobalAlpha(alpha);
+  }
+
   // ── Borehole sticks ───────────────────────────────────────────────────────
   addBoreholeSticks(classifiedBH, geoUnits) {
     if (this._bhSticks) {

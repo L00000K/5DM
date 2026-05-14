@@ -261,6 +261,15 @@
 
       <div class="panel-section">
         <h3>Transparency</h3>
+
+        <div class="field-group">
+          <label>Overall Opacity</label>
+          <div class="range-row">
+            <input type="range" id="global-alpha" min="0" max="100" value="100">
+            <span id="global-alpha-val" class="range-readout">100%</span>
+          </div>
+        </div>
+
         <label class="inline-check">
           <input type="checkbox" id="transp-enable">
           <span>Certainty-based opacity</span>
@@ -269,7 +278,16 @@
           <input type="range" id="transp-amount" min="0" max="100" value="80">
           <span id="transp-val" class="range-readout">80%</span>
         </div>
-        <p class="hint">Low-certainty voxels become translucent</p>
+
+        <label class="inline-check" style="margin-top:6px">
+          <input type="checkbox" id="color-fade-enable">
+          <span>Certainty colour fade</span>
+        </label>
+        <div class="range-row transp-slider-row" id="color-fade-row">
+          <input type="range" id="color-fade-amount" min="0" max="100" value="80">
+          <span id="color-fade-val" class="range-readout">80%</span>
+        </div>
+        <p class="hint">Full certainty = vivid colour · low certainty → white</p>
       </div>
 
       <div class="panel-section">
