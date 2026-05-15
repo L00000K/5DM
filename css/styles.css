@@ -100,6 +100,7 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
 }
 
 #right-panel {
@@ -136,7 +137,7 @@ html, body {
   background: var(--bg-panel);
 }
 
-.tab-content { display: none; padding: 12px; flex: 1; overflow-y: auto; gap: 10px; flex-direction: column; }
+.tab-content { display: none; padding: 12px; flex: 1; min-height: 0; overflow-y: auto; gap: 10px; flex-direction: column; }
 .tab-content.active { display: flex; }
 
 /* ── Drop Zone ── */
@@ -643,6 +644,7 @@ input[type="range"] {
 #tab-analysis {
   padding: 0;
   overflow: hidden;
+  min-height: 0;
 }
 
 .analysis-log {
