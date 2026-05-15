@@ -264,6 +264,12 @@ async function loadDemoSite(demoName) {
       document.getElementById('constraints-text').value = data.site.constraints;
     }
 
+    if (data.topography?.length) {
+      AppState.topoPoints = data.topography;
+      document.getElementById('show-topo').checked = true;
+      log(`Topography loaded — ${data.topography.length} points.`, 'ok');
+    }
+
     updateLegend();
     updateInfoPanel();
     setEnabled('btn-run-ai', true);

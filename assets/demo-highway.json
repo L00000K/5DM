@@ -1,7 +1,7 @@
 {
   "site": {
     "name": "A99 Highway Widening, Greenfield",
-    "description": "Agricultural chalk downland site on a 200×60m linear corridor proposed for highway widening. Terrain rises gently northward. Vegetation consists of arable crops with field hedgerows along corridor edges.",
+    "description": "Agricultural chalk downland site on a 200\u00d760m linear corridor proposed for highway widening. Terrain rises gently northward. Vegetation consists of arable crops with field hedgerows along corridor edges.",
     "constraints": "Topsoil not deeper than 0.5m. Weathered chalk variable. Chalk is reliable founding stratum below 4m."
   },
   "geological_units": [
@@ -17,14 +17,14 @@
       "code": "WCK",
       "name": "Weathered Chalk",
       "color": "#c8b89a",
-      "description": "Buff to pale grey structureless putty chalk with occasional flint fragments. Frost-shattered and weathered. SPT N typically 10–30."
+      "description": "Buff to pale grey structureless putty chalk with occasional flint fragments. Frost-shattered and weathered. SPT N typically 10\u201330."
     },
     {
       "id": 3,
       "code": "CK",
       "name": "Chalk",
       "color": "#e8e4d8",
-      "description": "White to off-white moderately strong chalk, Grade III–IV. Occasional flint bands and thin marl partings. SPT N typically 30–60+. Reliable founding stratum."
+      "description": "White to off-white moderately strong chalk, Grade III\u2013IV. Occasional flint bands and thin marl partings. SPT N typically 30\u201360+. Reliable founding stratum."
     }
   ],
   "boreholes": [
@@ -46,14 +46,14 @@
           "top": 0.35,
           "base": 5.8,
           "unit_code": "WCK",
-          "description": "Buff structureless putty chalk, soft to firm, SPT N=12–22, becoming slightly less weathered below 4m.",
+          "description": "Buff structureless putty chalk, soft to firm, SPT N=12\u201322, becoming slightly less weathered below 4m.",
           "certainty": 0.91
         },
         {
           "top": 5.8,
           "base": 10.0,
           "unit_code": "CK",
-          "description": "White moderately strong chalk Grade III, occasional flint nodules, SPT N=38–50.",
+          "description": "White moderately strong chalk Grade III, occasional flint nodules, SPT N=38\u201350.",
           "certainty": 0.95
         }
       ]
@@ -67,23 +67,23 @@
       "layers": [
         {
           "top": 0.0,
-          "base": 0.40,
+          "base": 0.4,
           "unit_code": "TS",
           "description": "Dark brown silty clay topsoil, firm, abundant rootlets, organic-rich.",
           "certainty": 0.98
         },
         {
-          "top": 0.40,
+          "top": 0.4,
           "base": 6.5,
           "unit_code": "WCK",
-          "description": "Buff putty chalk, soft, SPT N=8–18. Wetter and softer in upper 2m. Occasional small flints.",
+          "description": "Buff putty chalk, soft, SPT N=8\u201318. Wetter and softer in upper 2m. Occasional small flints.",
           "certainty": 0.89
         },
         {
           "top": 6.5,
           "base": 11.0,
           "unit_code": "CK",
-          "description": "White to off-white chalk Grade III, moderately strong, SPT N=42–55. Thin marl parting at 8.2m.",
+          "description": "White to off-white chalk Grade III, moderately strong, SPT N=42\u201355. Thin marl parting at 8.2m.",
           "certainty": 0.96
         }
       ]
@@ -106,14 +106,14 @@
           "top": 0.45,
           "base": 7.1,
           "unit_code": "WCK",
-          "description": "Buff structureless putty chalk, soft to firm, SPT N=10–24. Thicker weathered profile toward south. Flint fragments 3–5m.",
+          "description": "Buff structureless putty chalk, soft to firm, SPT N=10\u201324. Thicker weathered profile toward south. Flint fragments 3\u20135m.",
           "certainty": 0.88
         },
         {
           "top": 7.1,
           "base": 12.0,
           "unit_code": "CK",
-          "description": "White moderately strong chalk Grade III, SPT N=35–52. Occasional flint bands. Good founding stratum.",
+          "description": "White moderately strong chalk Grade III, SPT N=35\u201352. Occasional flint bands. Good founding stratum.",
           "certainty": 0.94
         }
       ]
@@ -136,14 +136,14 @@
           "top": 0.33,
           "base": 5.4,
           "unit_code": "WCK",
-          "description": "Buff putty chalk, soft, SPT N=11–20. Upper 1m highly weathered and moist.",
-          "certainty": 0.90
+          "description": "Buff putty chalk, soft, SPT N=11\u201320. Upper 1m highly weathered and moist.",
+          "certainty": 0.9
         },
         {
           "top": 5.4,
           "base": 10.5,
           "unit_code": "CK",
-          "description": "White chalk Grade III, moderately strong, SPT N=40–58. Flint nodule band at 7.5m.",
+          "description": "White chalk Grade III, moderately strong, SPT N=40\u201358. Flint nodule band at 7.5m.",
           "certainty": 0.96
         }
       ]
@@ -166,14 +166,14 @@
           "top": 0.38,
           "base": 5.9,
           "unit_code": "WCK",
-          "description": "Buff structureless chalk, soft to firm, SPT N=14–26. Slight improvement in stiffness below 4.5m.",
+          "description": "Buff structureless chalk, soft to firm, SPT N=14\u201326. Slight improvement in stiffness below 4.5m.",
           "certainty": 0.91
         },
         {
           "top": 5.9,
           "base": 11.5,
           "unit_code": "CK",
-          "description": "White moderately strong chalk Grade III, SPT N=38–55. Marl parting at 9.0m, 50mm thick.",
+          "description": "White moderately strong chalk Grade III, SPT N=38\u201355. Marl parting at 9.0m, 50mm thick.",
           "certainty": 0.95
         }
       ]
@@ -196,14 +196,14 @@
           "top": 0.48,
           "base": 7.8,
           "unit_code": "WCK",
-          "description": "Buff to pale grey putty chalk, soft, SPT N=8–16. Thickest weathered profile on site, indicative of former valley feature.",
+          "description": "Buff to pale grey putty chalk, soft, SPT N=8\u201316. Thickest weathered profile on site, indicative of former valley feature.",
           "certainty": 0.87
         },
         {
           "top": 7.8,
           "base": 12.5,
           "unit_code": "CK",
-          "description": "White moderately strong chalk Grade III–IV, SPT N=42–60. Fresh chalk from 10m.",
+          "description": "White moderately strong chalk Grade III\u2013IV, SPT N=42\u201360. Fresh chalk from 10m.",
           "certainty": 0.94
         }
       ]
@@ -226,14 +226,14 @@
           "top": 0.35,
           "base": 4.8,
           "unit_code": "WCK",
-          "description": "Buff putty chalk, firm, SPT N=18–30. Shallower weathering consistent with higher ground.",
+          "description": "Buff putty chalk, firm, SPT N=18\u201330. Shallower weathering consistent with higher ground.",
           "certainty": 0.92
         },
         {
           "top": 4.8,
           "base": 11.0,
           "unit_code": "CK",
-          "description": "White chalk Grade III, moderately strong to strong, SPT N=44–60+. Flint band at 6.5m.",
+          "description": "White chalk Grade III, moderately strong to strong, SPT N=44\u201360+. Flint band at 6.5m.",
           "certainty": 0.97
         }
       ]
@@ -247,23 +247,23 @@
       "layers": [
         {
           "top": 0.0,
-          "base": 0.40,
+          "base": 0.4,
           "unit_code": "TS",
           "description": "Dark brown silty clay topsoil, firm, rootlets common throughout.",
           "certainty": 0.97
         },
         {
-          "top": 0.40,
+          "top": 0.4,
           "base": 5.6,
           "unit_code": "WCK",
-          "description": "Buff structureless putty chalk, soft to firm, SPT N=12–24. Occasional angular flints at 3–4m.",
-          "certainty": 0.90
+          "description": "Buff structureless putty chalk, soft to firm, SPT N=12\u201324. Occasional angular flints at 3\u20134m.",
+          "certainty": 0.9
         },
         {
           "top": 5.6,
           "base": 12.0,
           "unit_code": "CK",
-          "description": "White to off-white chalk Grade III, moderately strong, SPT N=40–58. Thin marl partings at 8.4m and 10.1m.",
+          "description": "White to off-white chalk Grade III, moderately strong, SPT N=40\u201358. Thin marl partings at 8.4m and 10.1m.",
           "certainty": 0.95
         }
       ]
@@ -286,14 +286,14 @@
           "top": 0.42,
           "base": 6.8,
           "unit_code": "WCK",
-          "description": "Buff to pale grey putty chalk, soft, SPT N=9–19. Locally wetter and more plastic in 4–6m interval.",
+          "description": "Buff to pale grey putty chalk, soft, SPT N=9\u201319. Locally wetter and more plastic in 4\u20136m interval.",
           "certainty": 0.88
         },
         {
           "top": 6.8,
           "base": 13.0,
           "unit_code": "CK",
-          "description": "White chalk Grade III, moderately strong, SPT N=38–56. Good core recovery. Flint nodule cluster at 10.5m.",
+          "description": "White chalk Grade III, moderately strong, SPT N=38\u201356. Good core recovery. Flint nodule cluster at 10.5m.",
           "certainty": 0.95
         }
       ]
@@ -316,14 +316,14 @@
           "top": 0.32,
           "base": 4.5,
           "unit_code": "WCK",
-          "description": "Buff structureless chalk, firm, SPT N=20–34. Relatively thin consistent with elevated position and good drainage.",
+          "description": "Buff structureless chalk, firm, SPT N=20\u201334. Relatively thin consistent with elevated position and good drainage.",
           "certainty": 0.93
         },
         {
           "top": 4.5,
           "base": 11.0,
           "unit_code": "CK",
-          "description": "White moderately strong chalk Grade III, SPT N=45–60+. Excellent core recovery. Flint band at 7.2m.",
+          "description": "White moderately strong chalk Grade III, SPT N=45\u201360+. Excellent core recovery. Flint band at 7.2m.",
           "certainty": 0.97
         }
       ]
@@ -346,14 +346,14 @@
           "top": 0.38,
           "base": 5.0,
           "unit_code": "WCK",
-          "description": "Buff putty chalk, firm, SPT N=18–30. Upper 1.5m softer and more weathered. Flint fragments 3–5m.",
+          "description": "Buff putty chalk, firm, SPT N=18\u201330. Upper 1.5m softer and more weathered. Flint fragments 3\u20135m.",
           "certainty": 0.91
         },
         {
           "top": 5.0,
           "base": 12.0,
           "unit_code": "CK",
-          "description": "White chalk Grade III, moderately strong to strong, SPT N=42–60+. Marl parting at 9.5m. Consistent with BH10.",
+          "description": "White chalk Grade III, moderately strong to strong, SPT N=42\u201360+. Marl parting at 9.5m. Consistent with BH10.",
           "certainty": 0.96
         }
       ]
@@ -376,17 +376,684 @@
           "top": 0.45,
           "base": 5.8,
           "unit_code": "WCK",
-          "description": "Buff to pale grey structureless chalk, soft to firm, SPT N=11–22. Moisture content decreases with depth.",
+          "description": "Buff to pale grey structureless chalk, soft to firm, SPT N=11\u201322. Moisture content decreases with depth.",
           "certainty": 0.89
         },
         {
           "top": 5.8,
           "base": 13.0,
           "unit_code": "CK",
-          "description": "White moderately strong chalk Grade III–IV, SPT N=40–60+. Two thin marl partings at 8.0m and 11.3m. Excellent founding stratum.",
+          "description": "White moderately strong chalk Grade III\u2013IV, SPT N=40\u201360+. Two thin marl partings at 8.0m and 11.3m. Excellent founding stratum.",
           "certainty": 0.95
         }
       ]
+    }
+  ],
+  "topography": [
+    {
+      "x": 12.0,
+      "y": 2.0,
+      "z": 97.47
+    },
+    {
+      "x": 21.2,
+      "y": 2.0,
+      "z": 97.28
+    },
+    {
+      "x": 30.4,
+      "y": 2.0,
+      "z": 97.53
+    },
+    {
+      "x": 39.7,
+      "y": 2.0,
+      "z": 97.82
+    },
+    {
+      "x": 48.9,
+      "y": 2.0,
+      "z": 98.1
+    },
+    {
+      "x": 58.1,
+      "y": 2.0,
+      "z": 98.1
+    },
+    {
+      "x": 67.3,
+      "y": 2.0,
+      "z": 98.04
+    },
+    {
+      "x": 76.6,
+      "y": 2.0,
+      "z": 98.01
+    },
+    {
+      "x": 85.8,
+      "y": 2.0,
+      "z": 98.42
+    },
+    {
+      "x": 95.0,
+      "y": 2.0,
+      "z": 98.71
+    },
+    {
+      "x": 104.2,
+      "y": 2.0,
+      "z": 99.03
+    },
+    {
+      "x": 113.4,
+      "y": 2.0,
+      "z": 99.21
+    },
+    {
+      "x": 122.7,
+      "y": 2.0,
+      "z": 99.16
+    },
+    {
+      "x": 131.9,
+      "y": 2.0,
+      "z": 99.29
+    },
+    {
+      "x": 141.1,
+      "y": 2.0,
+      "z": 99.55
+    },
+    {
+      "x": 150.3,
+      "y": 2.0,
+      "z": 99.72
+    },
+    {
+      "x": 159.6,
+      "y": 2.0,
+      "z": 99.8
+    },
+    {
+      "x": 168.8,
+      "y": 2.0,
+      "z": 99.91
+    },
+    {
+      "x": 178.0,
+      "y": 2.0,
+      "z": 99.96
+    },
+    {
+      "x": 12.0,
+      "y": 11.3,
+      "z": 97.28
+    },
+    {
+      "x": 21.2,
+      "y": 11.3,
+      "z": 97.27
+    },
+    {
+      "x": 30.4,
+      "y": 11.3,
+      "z": 97.55
+    },
+    {
+      "x": 39.7,
+      "y": 11.3,
+      "z": 97.83
+    },
+    {
+      "x": 48.9,
+      "y": 11.3,
+      "z": 98.01
+    },
+    {
+      "x": 58.1,
+      "y": 11.3,
+      "z": 98.15
+    },
+    {
+      "x": 67.3,
+      "y": 11.3,
+      "z": 97.81
+    },
+    {
+      "x": 76.6,
+      "y": 11.3,
+      "z": 97.91
+    },
+    {
+      "x": 85.8,
+      "y": 11.3,
+      "z": 98.35
+    },
+    {
+      "x": 95.0,
+      "y": 11.3,
+      "z": 98.89
+    },
+    {
+      "x": 104.2,
+      "y": 11.3,
+      "z": 99.15
+    },
+    {
+      "x": 113.4,
+      "y": 11.3,
+      "z": 99.28
+    },
+    {
+      "x": 122.7,
+      "y": 11.3,
+      "z": 99.26
+    },
+    {
+      "x": 131.9,
+      "y": 11.3,
+      "z": 99.38
+    },
+    {
+      "x": 141.1,
+      "y": 11.3,
+      "z": 99.66
+    },
+    {
+      "x": 150.3,
+      "y": 11.3,
+      "z": 99.77
+    },
+    {
+      "x": 159.6,
+      "y": 11.3,
+      "z": 99.93
+    },
+    {
+      "x": 168.8,
+      "y": 11.3,
+      "z": 99.96
+    },
+    {
+      "x": 178.0,
+      "y": 11.3,
+      "z": 99.97
+    },
+    {
+      "x": 12.0,
+      "y": 20.7,
+      "z": 97.64
+    },
+    {
+      "x": 21.2,
+      "y": 20.7,
+      "z": 97.56
+    },
+    {
+      "x": 30.4,
+      "y": 20.7,
+      "z": 97.71
+    },
+    {
+      "x": 39.7,
+      "y": 20.7,
+      "z": 97.85
+    },
+    {
+      "x": 48.9,
+      "y": 20.7,
+      "z": 98.1
+    },
+    {
+      "x": 58.1,
+      "y": 20.7,
+      "z": 98.19
+    },
+    {
+      "x": 67.3,
+      "y": 20.7,
+      "z": 98.16
+    },
+    {
+      "x": 76.6,
+      "y": 20.7,
+      "z": 98.25
+    },
+    {
+      "x": 85.8,
+      "y": 20.7,
+      "z": 98.47
+    },
+    {
+      "x": 95.0,
+      "y": 20.7,
+      "z": 98.86
+    },
+    {
+      "x": 104.2,
+      "y": 20.7,
+      "z": 99.24
+    },
+    {
+      "x": 113.4,
+      "y": 20.7,
+      "z": 99.36
+    },
+    {
+      "x": 122.7,
+      "y": 20.7,
+      "z": 99.41
+    },
+    {
+      "x": 131.9,
+      "y": 20.7,
+      "z": 99.44
+    },
+    {
+      "x": 141.1,
+      "y": 20.7,
+      "z": 99.61
+    },
+    {
+      "x": 150.3,
+      "y": 20.7,
+      "z": 99.96
+    },
+    {
+      "x": 159.6,
+      "y": 20.7,
+      "z": 100.09
+    },
+    {
+      "x": 168.8,
+      "y": 20.7,
+      "z": 100.17
+    },
+    {
+      "x": 178.0,
+      "y": 20.7,
+      "z": 100.07
+    },
+    {
+      "x": 12.0,
+      "y": 30.0,
+      "z": 97.72
+    },
+    {
+      "x": 21.2,
+      "y": 30.0,
+      "z": 97.54
+    },
+    {
+      "x": 30.4,
+      "y": 30.0,
+      "z": 97.75
+    },
+    {
+      "x": 39.7,
+      "y": 30.0,
+      "z": 98.1
+    },
+    {
+      "x": 48.9,
+      "y": 30.0,
+      "z": 98.26
+    },
+    {
+      "x": 58.1,
+      "y": 30.0,
+      "z": 98.38
+    },
+    {
+      "x": 67.3,
+      "y": 30.0,
+      "z": 98.44
+    },
+    {
+      "x": 76.6,
+      "y": 30.0,
+      "z": 98.5
+    },
+    {
+      "x": 85.8,
+      "y": 30.0,
+      "z": 98.7
+    },
+    {
+      "x": 95.0,
+      "y": 30.0,
+      "z": 98.94
+    },
+    {
+      "x": 104.2,
+      "y": 30.0,
+      "z": 99.24
+    },
+    {
+      "x": 113.4,
+      "y": 30.0,
+      "z": 99.52
+    },
+    {
+      "x": 122.7,
+      "y": 30.0,
+      "z": 99.55
+    },
+    {
+      "x": 131.9,
+      "y": 30.0,
+      "z": 99.56
+    },
+    {
+      "x": 141.1,
+      "y": 30.0,
+      "z": 99.82
+    },
+    {
+      "x": 150.3,
+      "y": 30.0,
+      "z": 100.04
+    },
+    {
+      "x": 159.6,
+      "y": 30.0,
+      "z": 100.19
+    },
+    {
+      "x": 168.8,
+      "y": 30.0,
+      "z": 100.42
+    },
+    {
+      "x": 178.0,
+      "y": 30.0,
+      "z": 100.3
+    },
+    {
+      "x": 12.0,
+      "y": 39.3,
+      "z": 97.94
+    },
+    {
+      "x": 21.2,
+      "y": 39.3,
+      "z": 97.84
+    },
+    {
+      "x": 30.4,
+      "y": 39.3,
+      "z": 97.89
+    },
+    {
+      "x": 39.7,
+      "y": 39.3,
+      "z": 98.07
+    },
+    {
+      "x": 48.9,
+      "y": 39.3,
+      "z": 98.34
+    },
+    {
+      "x": 58.1,
+      "y": 39.3,
+      "z": 98.45
+    },
+    {
+      "x": 67.3,
+      "y": 39.3,
+      "z": 98.57
+    },
+    {
+      "x": 76.6,
+      "y": 39.3,
+      "z": 98.68
+    },
+    {
+      "x": 85.8,
+      "y": 39.3,
+      "z": 98.75
+    },
+    {
+      "x": 95.0,
+      "y": 39.3,
+      "z": 99.02
+    },
+    {
+      "x": 104.2,
+      "y": 39.3,
+      "z": 99.51
+    },
+    {
+      "x": 113.4,
+      "y": 39.3,
+      "z": 99.66
+    },
+    {
+      "x": 122.7,
+      "y": 39.3,
+      "z": 99.66
+    },
+    {
+      "x": 131.9,
+      "y": 39.3,
+      "z": 99.65
+    },
+    {
+      "x": 141.1,
+      "y": 39.3,
+      "z": 99.76
+    },
+    {
+      "x": 150.3,
+      "y": 39.3,
+      "z": 100.08
+    },
+    {
+      "x": 159.6,
+      "y": 39.3,
+      "z": 100.37
+    },
+    {
+      "x": 168.8,
+      "y": 39.3,
+      "z": 100.43
+    },
+    {
+      "x": 178.0,
+      "y": 39.3,
+      "z": 100.34
+    },
+    {
+      "x": 12.0,
+      "y": 48.7,
+      "z": 98.03
+    },
+    {
+      "x": 21.2,
+      "y": 48.7,
+      "z": 98.19
+    },
+    {
+      "x": 30.4,
+      "y": 48.7,
+      "z": 98.09
+    },
+    {
+      "x": 39.7,
+      "y": 48.7,
+      "z": 98.29
+    },
+    {
+      "x": 48.9,
+      "y": 48.7,
+      "z": 98.48
+    },
+    {
+      "x": 58.1,
+      "y": 48.7,
+      "z": 98.53
+    },
+    {
+      "x": 67.3,
+      "y": 48.7,
+      "z": 98.82
+    },
+    {
+      "x": 76.6,
+      "y": 48.7,
+      "z": 98.8
+    },
+    {
+      "x": 85.8,
+      "y": 48.7,
+      "z": 98.86
+    },
+    {
+      "x": 95.0,
+      "y": 48.7,
+      "z": 99.1
+    },
+    {
+      "x": 104.2,
+      "y": 48.7,
+      "z": 99.56
+    },
+    {
+      "x": 113.4,
+      "y": 48.7,
+      "z": 99.87
+    },
+    {
+      "x": 122.7,
+      "y": 48.7,
+      "z": 100.06
+    },
+    {
+      "x": 131.9,
+      "y": 48.7,
+      "z": 99.87
+    },
+    {
+      "x": 141.1,
+      "y": 48.7,
+      "z": 99.97
+    },
+    {
+      "x": 150.3,
+      "y": 48.7,
+      "z": 100.19
+    },
+    {
+      "x": 159.6,
+      "y": 48.7,
+      "z": 100.44
+    },
+    {
+      "x": 168.8,
+      "y": 48.7,
+      "z": 100.79
+    },
+    {
+      "x": 178.0,
+      "y": 48.7,
+      "z": 100.57
+    },
+    {
+      "x": 12.0,
+      "y": 58.0,
+      "z": 98.16
+    },
+    {
+      "x": 21.2,
+      "y": 58.0,
+      "z": 98.17
+    },
+    {
+      "x": 30.4,
+      "y": 58.0,
+      "z": 98.11
+    },
+    {
+      "x": 39.7,
+      "y": 58.0,
+      "z": 98.3
+    },
+    {
+      "x": 48.9,
+      "y": 58.0,
+      "z": 98.48
+    },
+    {
+      "x": 58.1,
+      "y": 58.0,
+      "z": 98.58
+    },
+    {
+      "x": 67.3,
+      "y": 58.0,
+      "z": 98.8
+    },
+    {
+      "x": 76.6,
+      "y": 58.0,
+      "z": 98.79
+    },
+    {
+      "x": 85.8,
+      "y": 58.0,
+      "z": 98.96
+    },
+    {
+      "x": 95.0,
+      "y": 58.0,
+      "z": 99.18
+    },
+    {
+      "x": 104.2,
+      "y": 58.0,
+      "z": 99.43
+    },
+    {
+      "x": 113.4,
+      "y": 58.0,
+      "z": 99.81
+    },
+    {
+      "x": 122.7,
+      "y": 58.0,
+      "z": 99.86
+    },
+    {
+      "x": 131.9,
+      "y": 58.0,
+      "z": 99.95
+    },
+    {
+      "x": 141.1,
+      "y": 58.0,
+      "z": 99.97
+    },
+    {
+      "x": 150.3,
+      "y": 58.0,
+      "z": 100.17
+    },
+    {
+      "x": 159.6,
+      "y": 58.0,
+      "z": 100.39
+    },
+    {
+      "x": 168.8,
+      "y": 58.0,
+      "z": 100.56
+    },
+    {
+      "x": 178.0,
+      "y": 58.0,
+      "z": 100.62
     }
   ]
 }

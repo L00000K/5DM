@@ -1,7 +1,7 @@
 {
   "site": {
     "name": "Former Gasworks, Millgate",
-    "description": "Urban brownfield redevelopment site, 120×80m, on the footprint of a former Victorian-era coal gasworks. Site includes remnant brick foundations, buried tanks, and highly variable made ground. Underlain by alluvium associated with a former tidal channel, over London Clay and Thames Gravel sequence.",
+    "description": "Urban brownfield redevelopment site, 120\u00d780m, on the footprint of a former Victorian-era coal gasworks. Site includes remnant brick foundations, buried tanks, and highly variable made ground. Underlain by alluvium associated with a former tidal channel, over London Clay and Thames Gravel sequence.",
     "constraints": "Made ground variable depth 0.5-4m. Alluvium soft and compressible. London Clay stiff below 8m. Thames Gravel dense, good bearing."
   },
   "geological_units": [
@@ -17,28 +17,28 @@
       "code": "AL",
       "name": "Alluvium",
       "color": "#8faa72",
-      "description": "Soft to firm olive-grey silty clay with occasional peat laminae and organic inclusions. Estuarine origin, associated with former tidal channel. High moisture content, low undrained shear strength Cu 15–40 kPa. Compressible and consolidation-prone."
+      "description": "Soft to firm olive-grey silty clay with occasional peat laminae and organic inclusions. Estuarine origin, associated with former tidal channel. High moisture content, low undrained shear strength Cu 15\u201340 kPa. Compressible and consolidation-prone."
     },
     {
       "id": 3,
       "code": "LC",
       "name": "London Clay",
       "color": "#4a6fa5",
-      "description": "Stiff to very stiff fissured blue-grey silty clay. Becoming stiffer with depth. Cu 80–200 kPa below 8m. Slight swelling potential on unloading. SPT N typically 20–50+. Consistent across site."
+      "description": "Stiff to very stiff fissured blue-grey silty clay. Becoming stiffer with depth. Cu 80\u2013200 kPa below 8m. Slight swelling potential on unloading. SPT N typically 20\u201350+. Consistent across site."
     },
     {
       "id": 4,
       "code": "TG",
       "name": "Thames Gravel",
       "color": "#c8a855",
-      "description": "Dense to very dense sub-rounded to rounded flint gravel with coarse sand matrix. SPT N typically 40–60+. Excellent bearing capacity and drainage. Basal gravel of Quaternary river terrace sequence."
+      "description": "Dense to very dense sub-rounded to rounded flint gravel with coarse sand matrix. SPT N typically 40\u201360+. Excellent bearing capacity and drainage. Basal gravel of Quaternary river terrace sequence."
     },
     {
       "id": 5,
       "code": "CK",
       "name": "Chalk",
       "color": "#e8e4d8",
-      "description": "Cream to white moderately strong chalk, Grade III. Encountered at base of boreholes. SPT N 40–60+. Upper surface locally softened by groundwater dissolution."
+      "description": "Cream to white moderately strong chalk, Grade III. Encountered at base of boreholes. SPT N 40\u201360+. Upper surface locally softened by groundwater dissolution."
     }
   ],
   "boreholes": [
@@ -74,7 +74,7 @@
           "top": 16.8,
           "base": 19.4,
           "unit_code": "TG",
-          "description": "Dense flint gravel with coarse sand, sub-rounded. SPT N=52. Gravel size 10–50mm. Good core recovery.",
+          "description": "Dense flint gravel with coarse sand, sub-rounded. SPT N=52. Gravel size 10\u201350mm. Good core recovery.",
           "certainty": 0.96
         },
         {
@@ -185,7 +185,7 @@
           "top": 0.0,
           "base": 3.8,
           "unit_code": "MG",
-          "description": "Very variable fill: black ash and clinker 0–1.2m, brick rubble and concrete 1.2–2.6m, brown sandy soil with tar inclusions 2.6–3.8m. Loose. Possible buried tank void at 2.0m (probe deflection noted).",
+          "description": "Very variable fill: black ash and clinker 0\u20131.2m, brick rubble and concrete 1.2\u20132.6m, brown sandy soil with tar inclusions 2.6\u20133.8m. Loose. Possible buried tank void at 2.0m (probe deflection noted).",
           "certainty": 0.82
         },
         {
@@ -206,7 +206,7 @@
           "top": 18.2,
           "base": 20.6,
           "unit_code": "TG",
-          "description": "Dense flint gravel with coarse to medium sand. SPT N=52. Gravel clasts sub-angular to rounded, 5–40mm.",
+          "description": "Dense flint gravel with coarse to medium sand. SPT N=52. Gravel clasts sub-angular to rounded, 5\u201340mm.",
           "certainty": 0.95
         },
         {
@@ -317,14 +317,14 @@
           "top": 0.0,
           "base": 4.0,
           "unit_code": "MG",
-          "description": "Thickest made ground on site. Black ash and clinker 0–1.5m, dark brown reworked soil with rubble 1.5–3.0m, brown sandy fill with coal fragments 3.0–4.0m. Very loose in upper 1m. Former coal storage yard inferred.",
+          "description": "Thickest made ground on site. Black ash and clinker 0\u20131.5m, dark brown reworked soil with rubble 1.5\u20133.0m, brown sandy fill with coal fragments 3.0\u20134.0m. Very loose in upper 1m. Former coal storage yard inferred.",
           "certainty": 0.84
         },
         {
           "top": 4.0,
           "base": 6.5,
           "unit_code": "AL",
-          "description": "Soft grey-olive silty clay, very high plasticity. Cu 14 kPa, lowest recorded on site. Water content 82%. Significant peat content 4.5–5.0m. Settlement-sensitive.",
+          "description": "Soft grey-olive silty clay, very high plasticity. Cu 14 kPa, lowest recorded on site. Water content 82%. Significant peat content 4.5\u20135.0m. Settlement-sensitive.",
           "certainty": 0.92
         },
         {
@@ -382,7 +382,7 @@
           "top": 17.6,
           "base": 20.4,
           "unit_code": "TG",
-          "description": "Dense flint gravel with coarse sand. SPT N=54. Sub-rounded clasts, 10–50mm. Artesian pressure 0.6m above ground level.",
+          "description": "Dense flint gravel with coarse sand. SPT N=54. Sub-rounded clasts, 10\u201350mm. Artesian pressure 0.6m above ground level.",
           "certainty": 0.95
         },
         {
@@ -481,6 +481,593 @@
           "certainty": 0.88
         }
       ]
+    }
+  ],
+  "topography": [
+    {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 6.92
+    },
+    {
+      "x": 9.8,
+      "y": 0.0,
+      "z": 6.78
+    },
+    {
+      "x": 19.7,
+      "y": 0.0,
+      "z": 6.81
+    },
+    {
+      "x": 29.5,
+      "y": 0.0,
+      "z": 6.78
+    },
+    {
+      "x": 39.3,
+      "y": 0.0,
+      "z": 6.8
+    },
+    {
+      "x": 49.2,
+      "y": 0.0,
+      "z": 6.69
+    },
+    {
+      "x": 59.0,
+      "y": 0.0,
+      "z": 6.7
+    },
+    {
+      "x": 68.8,
+      "y": 0.0,
+      "z": 6.58
+    },
+    {
+      "x": 78.7,
+      "y": 0.0,
+      "z": 6.59
+    },
+    {
+      "x": 88.5,
+      "y": 0.0,
+      "z": 6.38
+    },
+    {
+      "x": 98.3,
+      "y": 0.0,
+      "z": 6.37
+    },
+    {
+      "x": 108.2,
+      "y": 0.0,
+      "z": 6.52
+    },
+    {
+      "x": 118.0,
+      "y": 0.0,
+      "z": 6.53
+    },
+    {
+      "x": 0.0,
+      "y": 10.2,
+      "z": 6.84
+    },
+    {
+      "x": 9.8,
+      "y": 10.2,
+      "z": 6.85
+    },
+    {
+      "x": 19.7,
+      "y": 10.2,
+      "z": 6.83
+    },
+    {
+      "x": 29.5,
+      "y": 10.2,
+      "z": 6.79
+    },
+    {
+      "x": 39.3,
+      "y": 10.2,
+      "z": 6.77
+    },
+    {
+      "x": 49.2,
+      "y": 10.2,
+      "z": 6.62
+    },
+    {
+      "x": 59.0,
+      "y": 10.2,
+      "z": 6.44
+    },
+    {
+      "x": 68.8,
+      "y": 10.2,
+      "z": 6.71
+    },
+    {
+      "x": 78.7,
+      "y": 10.2,
+      "z": 6.64
+    },
+    {
+      "x": 88.5,
+      "y": 10.2,
+      "z": 6.35
+    },
+    {
+      "x": 98.3,
+      "y": 10.2,
+      "z": 6.26
+    },
+    {
+      "x": 108.2,
+      "y": 10.2,
+      "z": 6.58
+    },
+    {
+      "x": 118.0,
+      "y": 10.2,
+      "z": 6.6
+    },
+    {
+      "x": 0.0,
+      "y": 20.5,
+      "z": 6.86
+    },
+    {
+      "x": 9.8,
+      "y": 20.5,
+      "z": 6.78
+    },
+    {
+      "x": 19.7,
+      "y": 20.5,
+      "z": 6.91
+    },
+    {
+      "x": 29.5,
+      "y": 20.5,
+      "z": 6.92
+    },
+    {
+      "x": 39.3,
+      "y": 20.5,
+      "z": 6.9
+    },
+    {
+      "x": 49.2,
+      "y": 20.5,
+      "z": 6.74
+    },
+    {
+      "x": 59.0,
+      "y": 20.5,
+      "z": 6.68
+    },
+    {
+      "x": 68.8,
+      "y": 20.5,
+      "z": 6.85
+    },
+    {
+      "x": 78.7,
+      "y": 20.5,
+      "z": 6.7
+    },
+    {
+      "x": 88.5,
+      "y": 20.5,
+      "z": 6.58
+    },
+    {
+      "x": 98.3,
+      "y": 20.5,
+      "z": 6.59
+    },
+    {
+      "x": 108.2,
+      "y": 20.5,
+      "z": 6.65
+    },
+    {
+      "x": 118.0,
+      "y": 20.5,
+      "z": 6.76
+    },
+    {
+      "x": 0.0,
+      "y": 30.8,
+      "z": 7.05
+    },
+    {
+      "x": 9.8,
+      "y": 30.8,
+      "z": 7.06
+    },
+    {
+      "x": 19.7,
+      "y": 30.8,
+      "z": 6.96
+    },
+    {
+      "x": 29.5,
+      "y": 30.8,
+      "z": 6.99
+    },
+    {
+      "x": 39.3,
+      "y": 30.8,
+      "z": 6.95
+    },
+    {
+      "x": 49.2,
+      "y": 30.8,
+      "z": 6.89
+    },
+    {
+      "x": 59.0,
+      "y": 30.8,
+      "z": 6.95
+    },
+    {
+      "x": 68.8,
+      "y": 30.8,
+      "z": 6.89
+    },
+    {
+      "x": 78.7,
+      "y": 30.8,
+      "z": 6.83
+    },
+    {
+      "x": 88.5,
+      "y": 30.8,
+      "z": 6.84
+    },
+    {
+      "x": 98.3,
+      "y": 30.8,
+      "z": 6.79
+    },
+    {
+      "x": 108.2,
+      "y": 30.8,
+      "z": 6.78
+    },
+    {
+      "x": 118.0,
+      "y": 30.8,
+      "z": 6.73
+    },
+    {
+      "x": 0.0,
+      "y": 41.0,
+      "z": 7.11
+    },
+    {
+      "x": 9.8,
+      "y": 41.0,
+      "z": 7.25
+    },
+    {
+      "x": 19.7,
+      "y": 41.0,
+      "z": 7.22
+    },
+    {
+      "x": 29.5,
+      "y": 41.0,
+      "z": 7.18
+    },
+    {
+      "x": 39.3,
+      "y": 41.0,
+      "z": 7.05
+    },
+    {
+      "x": 49.2,
+      "y": 41.0,
+      "z": 7.13
+    },
+    {
+      "x": 59.0,
+      "y": 41.0,
+      "z": 7.04
+    },
+    {
+      "x": 68.8,
+      "y": 41.0,
+      "z": 7.04
+    },
+    {
+      "x": 78.7,
+      "y": 41.0,
+      "z": 7.07
+    },
+    {
+      "x": 88.5,
+      "y": 41.0,
+      "z": 6.94
+    },
+    {
+      "x": 98.3,
+      "y": 41.0,
+      "z": 6.91
+    },
+    {
+      "x": 108.2,
+      "y": 41.0,
+      "z": 6.91
+    },
+    {
+      "x": 118.0,
+      "y": 41.0,
+      "z": 6.87
+    },
+    {
+      "x": 0.0,
+      "y": 51.2,
+      "z": 7.31
+    },
+    {
+      "x": 9.8,
+      "y": 51.2,
+      "z": 7.2
+    },
+    {
+      "x": 19.7,
+      "y": 51.2,
+      "z": 7.13
+    },
+    {
+      "x": 29.5,
+      "y": 51.2,
+      "z": 7.18
+    },
+    {
+      "x": 39.3,
+      "y": 51.2,
+      "z": 7.2
+    },
+    {
+      "x": 49.2,
+      "y": 51.2,
+      "z": 7.18
+    },
+    {
+      "x": 59.0,
+      "y": 51.2,
+      "z": 7.24
+    },
+    {
+      "x": 68.8,
+      "y": 51.2,
+      "z": 7.18
+    },
+    {
+      "x": 78.7,
+      "y": 51.2,
+      "z": 7.04
+    },
+    {
+      "x": 88.5,
+      "y": 51.2,
+      "z": 7.07
+    },
+    {
+      "x": 98.3,
+      "y": 51.2,
+      "z": 6.91
+    },
+    {
+      "x": 108.2,
+      "y": 51.2,
+      "z": 6.9
+    },
+    {
+      "x": 118.0,
+      "y": 51.2,
+      "z": 6.74
+    },
+    {
+      "x": 0.0,
+      "y": 61.5,
+      "z": 7.34
+    },
+    {
+      "x": 9.8,
+      "y": 61.5,
+      "z": 7.4
+    },
+    {
+      "x": 19.7,
+      "y": 61.5,
+      "z": 7.37
+    },
+    {
+      "x": 29.5,
+      "y": 61.5,
+      "z": 7.28
+    },
+    {
+      "x": 39.3,
+      "y": 61.5,
+      "z": 7.46
+    },
+    {
+      "x": 49.2,
+      "y": 61.5,
+      "z": 7.66
+    },
+    {
+      "x": 59.0,
+      "y": 61.5,
+      "z": 7.41
+    },
+    {
+      "x": 68.8,
+      "y": 61.5,
+      "z": 7.17
+    },
+    {
+      "x": 78.7,
+      "y": 61.5,
+      "z": 7.28
+    },
+    {
+      "x": 88.5,
+      "y": 61.5,
+      "z": 7.34
+    },
+    {
+      "x": 98.3,
+      "y": 61.5,
+      "z": 6.94
+    },
+    {
+      "x": 108.2,
+      "y": 61.5,
+      "z": 6.46
+    },
+    {
+      "x": 118.0,
+      "y": 61.5,
+      "z": 6.47
+    },
+    {
+      "x": 0.0,
+      "y": 71.8,
+      "z": 7.44
+    },
+    {
+      "x": 9.8,
+      "y": 71.8,
+      "z": 7.54
+    },
+    {
+      "x": 19.7,
+      "y": 71.8,
+      "z": 7.4
+    },
+    {
+      "x": 29.5,
+      "y": 71.8,
+      "z": 7.32
+    },
+    {
+      "x": 39.3,
+      "y": 71.8,
+      "z": 7.55
+    },
+    {
+      "x": 49.2,
+      "y": 71.8,
+      "z": 7.88
+    },
+    {
+      "x": 59.0,
+      "y": 71.8,
+      "z": 7.6
+    },
+    {
+      "x": 68.8,
+      "y": 71.8,
+      "z": 7.38
+    },
+    {
+      "x": 78.7,
+      "y": 71.8,
+      "z": 7.26
+    },
+    {
+      "x": 88.5,
+      "y": 71.8,
+      "z": 7.15
+    },
+    {
+      "x": 98.3,
+      "y": 71.8,
+      "z": 6.77
+    },
+    {
+      "x": 108.2,
+      "y": 71.8,
+      "z": 6.13
+    },
+    {
+      "x": 118.0,
+      "y": 71.8,
+      "z": 6.35
+    },
+    {
+      "x": 0.0,
+      "y": 82.0,
+      "z": 7.33
+    },
+    {
+      "x": 9.8,
+      "y": 82.0,
+      "z": 7.42
+    },
+    {
+      "x": 19.7,
+      "y": 82.0,
+      "z": 7.31
+    },
+    {
+      "x": 29.5,
+      "y": 82.0,
+      "z": 7.38
+    },
+    {
+      "x": 39.3,
+      "y": 82.0,
+      "z": 7.48
+    },
+    {
+      "x": 49.2,
+      "y": 82.0,
+      "z": 7.65
+    },
+    {
+      "x": 59.0,
+      "y": 82.0,
+      "z": 7.53
+    },
+    {
+      "x": 68.8,
+      "y": 82.0,
+      "z": 7.22
+    },
+    {
+      "x": 78.7,
+      "y": 82.0,
+      "z": 7.12
+    },
+    {
+      "x": 88.5,
+      "y": 82.0,
+      "z": 6.92
+    },
+    {
+      "x": 98.3,
+      "y": 82.0,
+      "z": 6.74
+    },
+    {
+      "x": 108.2,
+      "y": 82.0,
+      "z": 6.44
+    },
+    {
+      "x": 118.0,
+      "y": 82.0,
+      "z": 6.41
     }
   ]
 }
