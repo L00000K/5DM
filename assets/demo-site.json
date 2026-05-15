@@ -1,2428 +1,2495 @@
 {
   "site": {
-    "name": "Riverside Mixed Development, Millbrook",
-    "description": "Fictional site investigation for a mixed-use riverside development. 16 boreholes drilled to 15-20m depth across a 250\u00d7200m area.",
-    "coordinate_system": "local",
-    "units": "m",
-    "ground_level_datum": "AOD"
+    "name": "Riverside Development, Millbrook",
+    "description": "Mixed-use development site on the River Mill floodplain, 250\u00d7190m. Site underlain by River Terrace Deposits (RTD) cut by a NW-SE trending palaeochannel filled with soft Alluvial Clay Lens (ACL). A normal E-W fault at ~95m north of site origin drops the Chalk bedrock 3.5m on the north block. London Clay (SC) underlies the RTD across the site.",
+    "constraints": "Made ground not deeper than 2m\nAlluvial Clay Lens exists only in the central west half\nChalk is above 4mAOD in south \u2014 faulted below 0mAOD in north\nThere is a normal fault running east-west at 95m north"
   },
   "geological_units": [
     {
       "id": 1,
       "code": "MG",
       "name": "Made Ground",
-      "color": "#8B6914",
-      "description": "Variable fill material including demolition rubble, ash, and reworked natural soils. Loose to medium dense. Encountered across most of the site reflecting historical industrial use.",
-      "age": "20th century",
-      "engineering_notes": "Variable compressibility. Not suitable as founding stratum without treatment."
+      "color": "#7a6a42",
+      "description": "Firm brown sandy fill with brick, tile and ash. Variable thickness. Historical development."
     },
     {
       "id": 2,
       "code": "RTD",
       "name": "River Terrace Deposits",
       "color": "#D4A843",
-      "description": "Medium dense to dense, sub-angular to sub-rounded flint GRAVEL with coarse sand. Occasional cobbles. Thickness increases toward the eastern boundary.",
-      "age": "Pleistocene",
-      "engineering_notes": "Good founding stratum. SPT N values typically 25-45."
+      "description": "Dense sub-angular flint gravel in sandy matrix. Holocene\u2013Pleistocene. Thickness 2.5\u20134m. Good drainage."
     },
     {
       "id": 3,
-      "code": "AC",
-      "name": "Alluvial Clay",
+      "code": "ACL",
+      "name": "Alluvial Clay Lens",
       "color": "#4A7C59",
-      "description": "Soft to firm, dark grey, silty CLAY with occasional organic laminae and shell fragments. High plasticity. Lens-like geometry controlled by former river channel.",
-      "age": "Holocene",
-      "engineering_notes": "Consolidation settlement risk. Cu typically 20-40 kPa. Su(rem) low."
+      "description": "Soft dark grey silty clay with organic laminae. Palaeochannel infill, NW-SE trending. Cu ~15\u201325 kPa. Compressible \u2014 significant settlement risk."
     },
     {
       "id": 4,
+      "code": "SC",
+      "name": "Stiff Clay",
+      "color": "#4a6fa5",
+      "description": "Stiff to very stiff grey-brown fissured London Clay. High plasticity. Cu 80\u2013180 kPa. Eocene. Displaced vertically 3.5m by normal fault."
+    },
+    {
+      "id": 5,
       "code": "CH",
       "name": "Chalk",
       "color": "#EDE8D8",
-      "description": "Soft to medium hard, white to light grey CHALK, Grade B/C (structurally weak to medium). Fractured in upper 2m. Slight flint bands at depth. Consistent across site.",
-      "age": "Upper Cretaceous",
-      "engineering_notes": "Check for solution features. SPT refusal common below 1.5m. Good long-term founding stratum."
+      "description": "White to off-white moderately strong Chalk, Grade III\u2013IV. Cretaceous. Top at ~2.5 mAOD south of fault; drops to ~\u22120.8 mAOD north. Reliable founding stratum."
     }
   ],
   "boreholes": [
     {
       "id": "BH-01",
-      "x": 15.0,
-      "y": 18.0,
+      "x": 15,
+      "y": 18,
       "ground_level": 11.8,
-      "depth": 15.0,
+      "depth": 12.9,
       "layers": [
         {
           "top": 0.0,
-          "base": 1.8,
+          "base": 1.57,
           "unit_code": "MG",
-          "description": "Loose to medium dense reddish brown sandy GRAVEL fill with brick fragments",
+          "description": "Firm brown sandy FILL; brick, tile and ash fragments. Historical development.",
           "certainty": 0.92
         },
         {
-          "top": 1.8,
-          "base": 5.5,
+          "top": 1.57,
+          "base": 4.89,
           "unit_code": "RTD",
-          "description": "Medium dense brown sub-rounded flint GRAVEL with coarse sand, SPT N=28",
-          "certainty": 0.88
+          "description": "Dense sub-angular flint GRAVEL in sandy matrix, occasional cobbles.",
+          "certainty": 0.89
         },
         {
-          "top": 5.5,
-          "base": 8.2,
-          "unit_code": "AC",
-          "description": "Soft, dark grey silty CLAY with occasional shell fragments, Cu=22 kPa",
-          "certainty": 0.85
+          "top": 4.89,
+          "base": 8.97,
+          "unit_code": "SC",
+          "description": "Stiff to very stiff grey-brown fissured CLAY (London Clay Fm). High plasticity. Cu 80\u2013180 kPa.",
+          "certainty": 0.91
         },
         {
-          "top": 8.2,
-          "base": 15.0,
+          "top": 8.97,
+          "base": 12.9,
           "unit_code": "CH",
-          "description": "Soft to medium hard white CHALK, Grade C, fractured, SPT refusal at 9.5m",
-          "certainty": 0.95
+          "description": "White to off-white moderately strong CHALK, Grade III\u2013IV. Occasional flint bands. SPT N 40\u201360+.",
+          "certainty": 0.97
         }
       ]
     },
     {
       "id": "BH-02",
-      "x": 85.0,
-      "y": 18.0,
+      "x": 85,
+      "y": 18,
       "ground_level": 11.5,
-      "depth": 18.0,
+      "depth": 12.5,
       "layers": [
         {
           "top": 0.0,
-          "base": 2.1,
+          "base": 1.37,
           "unit_code": "MG",
-          "description": "Medium dense brown silty SAND and GRAVEL fill with ash layers",
+          "description": "Firm brown sandy FILL; brick, tile and ash fragments. Historical development.",
+          "certainty": 0.92
+        },
+        {
+          "top": 1.37,
+          "base": 4.59,
+          "unit_code": "RTD",
+          "description": "Dense sub-angular flint GRAVEL in sandy matrix, occasional cobbles.",
           "certainty": 0.9
         },
         {
-          "top": 2.1,
-          "base": 6.8,
-          "unit_code": "RTD",
-          "description": "Dense brown flint GRAVEL with coarse to medium sand, SPT N=38",
-          "certainty": 0.91
+          "top": 4.59,
+          "base": 8.33,
+          "unit_code": "SC",
+          "description": "Stiff to very stiff grey-brown fissured CLAY (London Clay Fm). High plasticity. Cu 80\u2013180 kPa.",
+          "certainty": 0.88
         },
         {
-          "top": 6.8,
-          "base": 10.5,
-          "unit_code": "AC",
-          "description": "Soft, grey silty CLAY, high plasticity, organic laminae at 8.2m, Cu=18 kPa",
-          "certainty": 0.82
-        },
-        {
-          "top": 10.5,
-          "base": 18.0,
+          "top": 8.33,
+          "base": 12.5,
           "unit_code": "CH",
-          "description": "Medium hard white CHALK, Grade B/C, flint bands at 13.5 and 16.0m",
-          "certainty": 0.94
+          "description": "White to off-white moderately strong CHALK, Grade III\u2013IV. Occasional flint bands. SPT N 40\u201360+.",
+          "certainty": 0.96
         }
       ]
     },
     {
       "id": "BH-03",
-      "x": 155.0,
-      "y": 18.0,
+      "x": 155,
+      "y": 18,
       "ground_level": 11.2,
-      "depth": 16.0,
+      "depth": 12.9,
       "layers": [
         {
           "top": 0.0,
-          "base": 1.5,
+          "base": 1.74,
           "unit_code": "MG",
-          "description": "Loose brownish grey sandy CLAY fill with occasional gravel",
-          "certainty": 0.88
+          "description": "Firm brown sandy FILL; brick, tile and ash fragments. Historical development.",
+          "certainty": 0.91
         },
         {
-          "top": 1.5,
-          "base": 7.2,
+          "top": 1.74,
+          "base": 5.13,
           "unit_code": "RTD",
-          "description": "Medium dense to dense brown sub-angular flint GRAVEL, SPT N=32-41",
+          "description": "Dense sub-angular flint GRAVEL in sandy matrix, occasional cobbles.",
+          "certainty": 0.93
+        },
+        {
+          "top": 5.13,
+          "base": 8.21,
+          "unit_code": "SC",
+          "description": "Stiff to very stiff grey-brown fissured CLAY (London Clay Fm). High plasticity. Cu 80\u2013180 kPa.",
           "certainty": 0.9
         },
         {
-          "top": 7.2,
-          "base": 9.8,
-          "unit_code": "AC",
-          "description": "Firm dark grey silty CLAY, Cu=35 kPa, thin sand laminae",
-          "certainty": 0.8
-        },
-        {
-          "top": 9.8,
-          "base": 16.0,
+          "top": 8.21,
+          "base": 12.9,
           "unit_code": "CH",
-          "description": "Soft white CHALK, Grade C, heavily fractured upper 1m",
-          "certainty": 0.93
+          "description": "White to off-white moderately strong CHALK, Grade III\u2013IV. Occasional flint bands. SPT N 40\u201360+.",
+          "certainty": 0.95
         }
       ]
     },
     {
       "id": "BH-04",
-      "x": 225.0,
-      "y": 18.0,
+      "x": 225,
+      "y": 18,
       "ground_level": 10.9,
-      "depth": 15.0,
+      "depth": 11.3,
       "layers": [
         {
           "top": 0.0,
-          "base": 1.2,
+          "base": 1.01,
           "unit_code": "MG",
-          "description": "Loose reddish brown sandy GRAVEL fill",
-          "certainty": 0.9
+          "description": "Firm brown sandy FILL; brick, tile and ash fragments. Historical development.",
+          "certainty": 0.96
         },
         {
-          "top": 1.2,
-          "base": 7.8,
+          "top": 1.01,
+          "base": 4.52,
           "unit_code": "RTD",
-          "description": "Dense brown flint GRAVEL with cobbles, SPT N=44, thickness greatest here",
-          "certainty": 0.92
+          "description": "Dense sub-angular flint GRAVEL in sandy matrix, occasional cobbles.",
+          "certainty": 0.96
         },
         {
-          "top": 7.8,
-          "base": 9.5,
-          "unit_code": "AC",
-          "description": "Soft grey silty CLAY, thin lens, Cu=25 kPa",
-          "certainty": 0.75
-        },
-        {
-          "top": 9.5,
-          "base": 15.0,
-          "unit_code": "CH",
-          "description": "Soft to medium hard CHALK, Grade B/C",
+          "top": 4.52,
+          "base": 8.2,
+          "unit_code": "SC",
+          "description": "Stiff to very stiff grey-brown fissured CLAY (London Clay Fm). High plasticity. Cu 80\u2013180 kPa.",
           "certainty": 0.93
+        },
+        {
+          "top": 8.2,
+          "base": 11.3,
+          "unit_code": "CH",
+          "description": "White to off-white moderately strong CHALK, Grade III\u2013IV. Occasional flint bands. SPT N 40\u201360+.",
+          "certainty": 0.97
         }
       ]
     },
     {
       "id": "BH-05",
-      "x": 15.0,
-      "y": 78.0,
+      "x": 15,
+      "y": 78,
       "ground_level": 12.1,
-      "depth": 17.0,
+      "depth": 13.3,
       "layers": [
         {
           "top": 0.0,
-          "base": 2.5,
+          "base": 1.42,
           "unit_code": "MG",
-          "description": "Medium dense brownish grey GRAVEL and SAND fill with brick and concrete rubble",
+          "description": "Firm brown sandy FILL; brick, tile and ash fragments. Historical development.",
+          "certainty": 0.95
+        },
+        {
+          "top": 1.42,
+          "base": 4.61,
+          "unit_code": "RTD",
+          "description": "Dense sub-angular flint GRAVEL in sandy matrix, occasional cobbles.",
           "certainty": 0.91
         },
         {
-          "top": 2.5,
-          "base": 4.8,
-          "unit_code": "RTD",
-          "description": "Medium dense brown flint GRAVEL, SPT N=24",
-          "certainty": 0.85
+          "top": 4.61,
+          "base": 9.59,
+          "unit_code": "SC",
+          "description": "Stiff to very stiff grey-brown fissured CLAY (London Clay Fm). High plasticity. Cu 80\u2013180 kPa.",
+          "certainty": 0.89
         },
         {
-          "top": 4.8,
-          "base": 9.5,
-          "unit_code": "AC",
-          "description": "Soft to firm dark grey silty CLAY, thick alluvial deposit, Cu=28 kPa",
-          "certainty": 0.87
-        },
-        {
-          "top": 9.5,
-          "base": 17.0,
+          "top": 9.59,
+          "base": 13.3,
           "unit_code": "CH",
-          "description": "Soft CHALK, Grade C, upper 2m highly fractured",
-          "certainty": 0.94
-        }
-      ]
-    },
-    {
-      "id": "BH-06",
-      "x": 85.0,
-      "y": 78.0,
-      "ground_level": 11.7,
-      "depth": 18.0,
-      "layers": [
-        {
-          "top": 0.0,
-          "base": 2.0,
-          "unit_code": "MG",
-          "description": "Variable fill, dark grey silty CLAY and SAND with organic content, possible made ground",
-          "certainty": 0.88
-        },
-        {
-          "top": 2.0,
-          "base": 5.5,
-          "unit_code": "RTD",
-          "description": "Medium dense brown GRAVEL with fine to coarse sand, SPT N=30",
-          "certainty": 0.86
-        },
-        {
-          "top": 5.5,
-          "base": 11.0,
-          "unit_code": "AC",
-          "description": "Soft, dark grey, silty organic CLAY, peat layer at 7.5-8.2m, Cu=15 kPa",
-          "certainty": 0.83
-        },
-        {
-          "top": 11.0,
-          "base": 18.0,
-          "unit_code": "CH",
-          "description": "Soft to medium hard CHALK, Grade B/C, flint band at 14.0m",
+          "description": "White to off-white moderately strong CHALK, Grade III\u2013IV. Occasional flint bands. SPT N 40\u201360+.",
           "certainty": 0.92
         }
       ]
     },
     {
-      "id": "BH-07",
-      "x": 155.0,
-      "y": 78.0,
-      "ground_level": 11.4,
-      "depth": 16.5,
+      "id": "BH-06",
+      "x": 85,
+      "y": 78,
+      "ground_level": 11.7,
+      "depth": 13.9,
       "layers": [
         {
           "top": 0.0,
-          "base": 1.8,
+          "base": 1.01,
           "unit_code": "MG",
-          "description": "Loose reddish brown sandy GRAVEL fill with glass and tile fragments",
+          "description": "Firm brown sandy FILL; brick, tile and ash fragments. Historical development.",
+          "certainty": 0.94
+        },
+        {
+          "top": 1.01,
+          "base": 2.95,
+          "unit_code": "RTD",
+          "description": "Dense sub-angular flint GRAVEL, sandy matrix.",
           "certainty": 0.89
         },
         {
-          "top": 1.8,
-          "base": 6.5,
-          "unit_code": "RTD",
-          "description": "Dense brown sub-rounded flint GRAVEL, SPT N=39",
+          "top": 2.95,
+          "base": 4.03,
+          "unit_code": "ACL",
+          "description": "Soft dark grey silty CLAY with organic laminae and rootlets. Palaeochannel infill. Cu ~15\u201325 kPa.",
           "certainty": 0.91
         },
         {
-          "top": 6.5,
-          "base": 9.8,
-          "unit_code": "AC",
-          "description": "Firm grey silty CLAY, Cu=38 kPa, occasional sand partings",
-          "certainty": 0.81
+          "top": 4.03,
+          "base": 6.07,
+          "unit_code": "RTD",
+          "description": "Dense sub-angular flint GRAVEL, sandy matrix, occasional cobbles.",
+          "certainty": 0.94
         },
         {
-          "top": 9.8,
-          "base": 16.5,
+          "top": 6.07,
+          "base": 8.95,
+          "unit_code": "SC",
+          "description": "Stiff to very stiff grey-brown fissured CLAY (London Clay Fm). High plasticity. Cu 80\u2013180 kPa.",
+          "certainty": 0.89
+        },
+        {
+          "top": 8.95,
+          "base": 13.9,
           "unit_code": "CH",
-          "description": "Medium hard white CHALK, Grade B, less fractured, flint nodules",
+          "description": "White to off-white moderately strong CHALK, Grade III\u2013IV. Occasional flint bands. SPT N 40\u201360+.",
+          "certainty": 0.96
+        }
+      ]
+    },
+    {
+      "id": "BH-07",
+      "x": 155,
+      "y": 78,
+      "ground_level": 11.4,
+      "depth": 11.7,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.25,
+          "unit_code": "MG",
+          "description": "Firm brown sandy FILL; brick, tile and ash fragments. Historical development.",
+          "certainty": 0.92
+        },
+        {
+          "top": 1.25,
+          "base": 2.86,
+          "unit_code": "RTD",
+          "description": "Dense sub-angular flint GRAVEL, sandy matrix.",
+          "certainty": 0.91
+        },
+        {
+          "top": 2.86,
+          "base": 3.69,
+          "unit_code": "ACL",
+          "description": "Soft dark grey silty CLAY with organic laminae and rootlets. Palaeochannel infill. Cu ~15\u201325 kPa.",
+          "certainty": 0.91
+        },
+        {
+          "top": 3.69,
+          "base": 5.76,
+          "unit_code": "RTD",
+          "description": "Dense sub-angular flint GRAVEL, sandy matrix, occasional cobbles.",
+          "certainty": 0.91
+        },
+        {
+          "top": 5.76,
+          "base": 8.32,
+          "unit_code": "SC",
+          "description": "Stiff to very stiff grey-brown fissured CLAY (London Clay Fm). High plasticity. Cu 80\u2013180 kPa.",
+          "certainty": 0.93
+        },
+        {
+          "top": 8.32,
+          "base": 11.7,
+          "unit_code": "CH",
+          "description": "White to off-white moderately strong CHALK, Grade III\u2013IV. Occasional flint bands. SPT N 40\u201360+.",
           "certainty": 0.95
         }
       ]
     },
     {
       "id": "BH-08",
-      "x": 225.0,
-      "y": 78.0,
+      "x": 225,
+      "y": 78,
       "ground_level": 11.0,
-      "depth": 15.5,
+      "depth": 12.1,
       "layers": [
         {
           "top": 0.0,
-          "base": 1.4,
+          "base": 1.16,
           "unit_code": "MG",
-          "description": "Loose brown sandy GRAVEL fill",
-          "certainty": 0.9
+          "description": "Firm brown sandy FILL; brick, tile and ash fragments. Historical development.",
+          "certainty": 0.94
         },
         {
-          "top": 1.4,
-          "base": 8.2,
+          "top": 1.16,
+          "base": 3.79,
           "unit_code": "RTD",
-          "description": "Dense to very dense flint GRAVEL, SPT N=46, cobbles at 6m",
-          "certainty": 0.93
+          "description": "Dense sub-angular flint GRAVEL in sandy matrix, occasional cobbles.",
+          "certainty": 0.92
         },
         {
-          "top": 8.2,
-          "base": 9.5,
-          "unit_code": "AC",
-          "description": "Soft grey CLAY, thin wedge, Cu=22 kPa",
-          "certainty": 0.72
+          "top": 3.79,
+          "base": 7.93,
+          "unit_code": "SC",
+          "description": "Stiff to very stiff grey-brown fissured CLAY (London Clay Fm). High plasticity. Cu 80\u2013180 kPa.",
+          "certainty": 0.92
         },
         {
-          "top": 9.5,
-          "base": 15.5,
+          "top": 7.93,
+          "base": 12.1,
           "unit_code": "CH",
-          "description": "Soft to medium hard CHALK, Grade B/C",
-          "certainty": 0.93
+          "description": "White to off-white moderately strong CHALK, Grade III\u2013IV. Occasional flint bands. SPT N 40\u201360+.",
+          "certainty": 0.97
         }
       ]
     },
     {
       "id": "BH-09",
-      "x": 15.0,
-      "y": 138.0,
+      "x": 15,
+      "y": 138,
       "ground_level": 12.4,
-      "depth": 17.5,
+      "depth": 16.0,
       "layers": [
         {
           "top": 0.0,
-          "base": 3.0,
+          "base": 2.08,
           "unit_code": "MG",
-          "description": "Loose to medium dense brownish grey sandy CLAY fill, possible former ground surface at 1.5m",
+          "description": "Firm brown sandy FILL; brick, tile and ash fragments. Historical development.",
+          "certainty": 0.96
+        },
+        {
+          "top": 2.08,
+          "base": 3.68,
+          "unit_code": "RTD",
+          "description": "Dense sub-angular flint GRAVEL, sandy matrix.",
+          "certainty": 0.9
+        },
+        {
+          "top": 3.68,
+          "base": 4.83,
+          "unit_code": "ACL",
+          "description": "Soft dark grey silty CLAY with organic laminae and rootlets. Palaeochannel infill. Cu ~15\u201325 kPa.",
           "certainty": 0.87
         },
         {
-          "top": 3.0,
-          "base": 5.2,
+          "top": 4.83,
+          "base": 6.96,
           "unit_code": "RTD",
-          "description": "Medium dense brown GRAVEL and SAND, SPT N=22",
-          "certainty": 0.83
+          "description": "Dense sub-angular flint GRAVEL, sandy matrix, occasional cobbles.",
+          "certainty": 0.94
         },
         {
-          "top": 5.2,
-          "base": 10.8,
-          "unit_code": "AC",
-          "description": "Soft dark grey silty CLAY, thick channel deposit, Cu=20 kPa, wood fragment at 7.5m",
-          "certainty": 0.88
+          "top": 6.96,
+          "base": 13.03,
+          "unit_code": "SC",
+          "description": "Stiff to very stiff grey-brown fissured CLAY (London Clay Fm). High plasticity. Cu 80\u2013180 kPa.",
+          "certainty": 0.94
         },
         {
-          "top": 10.8,
-          "base": 17.5,
+          "top": 13.03,
+          "base": 16.0,
           "unit_code": "CH",
-          "description": "Soft CHALK, Grade C, fractured, possible solution feature zone 12-13m",
-          "certainty": 0.89
+          "description": "White to off-white moderately strong CHALK, Grade III\u2013IV. Occasional flint bands. SPT N 40\u201360+.",
+          "certainty": 0.95
         }
       ]
     },
     {
       "id": "BH-10",
-      "x": 85.0,
-      "y": 138.0,
+      "x": 85,
+      "y": 138,
       "ground_level": 12.0,
-      "depth": 18.0,
+      "depth": 16.0,
       "layers": [
         {
           "top": 0.0,
-          "base": 2.8,
+          "base": 1.64,
           "unit_code": "MG",
-          "description": "Medium dense brown sandy GRAVEL fill with demolition rubble",
+          "description": "Firm brown sandy FILL; brick, tile and ash fragments. Historical development.",
           "certainty": 0.91
         },
         {
-          "top": 2.8,
-          "base": 5.0,
+          "top": 1.64,
+          "base": 3.16,
           "unit_code": "RTD",
-          "description": "Medium dense brown flint GRAVEL, SPT N=26",
-          "certainty": 0.84
+          "description": "Dense sub-angular flint GRAVEL, sandy matrix.",
+          "certainty": 0.94
         },
         {
-          "top": 5.0,
-          "base": 11.5,
-          "unit_code": "AC",
-          "description": "Soft to firm grey silty organic CLAY, Cu=25-35 kPa, prominent organic layer 8.5-9.0m",
-          "certainty": 0.86
+          "top": 3.16,
+          "base": 4.75,
+          "unit_code": "ACL",
+          "description": "Soft dark grey silty CLAY with organic laminae and rootlets. Palaeochannel infill. Cu ~15\u201325 kPa.",
+          "certainty": 0.9
         },
         {
-          "top": 11.5,
-          "base": 18.0,
+          "top": 4.75,
+          "base": 6.64,
+          "unit_code": "RTD",
+          "description": "Dense sub-angular flint GRAVEL, sandy matrix, occasional cobbles.",
+          "certainty": 0.96
+        },
+        {
+          "top": 6.64,
+          "base": 12.69,
+          "unit_code": "SC",
+          "description": "Stiff to very stiff grey-brown fissured CLAY (London Clay Fm). High plasticity. Cu 80\u2013180 kPa.",
+          "certainty": 0.95
+        },
+        {
+          "top": 12.69,
+          "base": 16.0,
           "unit_code": "CH",
-          "description": "Soft to medium hard CHALK, Grade B/C, flint band at 15.5m",
-          "certainty": 0.92
+          "description": "White to off-white moderately strong CHALK, Grade III\u2013IV. Occasional flint bands. SPT N 40\u201360+.",
+          "certainty": 0.94
         }
       ]
     },
     {
       "id": "BH-11",
-      "x": 155.0,
-      "y": 138.0,
+      "x": 155,
+      "y": 138,
       "ground_level": 11.6,
-      "depth": 16.0,
+      "depth": 15.4,
       "layers": [
         {
           "top": 0.0,
-          "base": 2.0,
+          "base": 1.71,
           "unit_code": "MG",
-          "description": "Loose brown sandy GRAVEL and silty SAND fill",
-          "certainty": 0.89
-        },
-        {
-          "top": 2.0,
-          "base": 7.0,
-          "unit_code": "RTD",
-          "description": "Dense brown sub-angular flint GRAVEL, SPT N=36-42",
+          "description": "Firm brown sandy FILL; brick, tile and ash fragments. Historical development.",
           "certainty": 0.92
         },
         {
-          "top": 7.0,
-          "base": 10.0,
-          "unit_code": "AC",
-          "description": "Firm grey silty CLAY, Cu=36 kPa, decreasing thickness eastward",
-          "certainty": 0.8
+          "top": 1.71,
+          "base": 4.74,
+          "unit_code": "RTD",
+          "description": "Dense sub-angular flint GRAVEL in sandy matrix, occasional cobbles.",
+          "certainty": 0.9
         },
         {
-          "top": 10.0,
-          "base": 16.0,
+          "top": 4.74,
+          "base": 12.34,
+          "unit_code": "SC",
+          "description": "Stiff to very stiff grey-brown fissured CLAY (London Clay Fm). High plasticity. Cu 80\u2013180 kPa.",
+          "certainty": 0.9
+        },
+        {
+          "top": 12.34,
+          "base": 15.4,
           "unit_code": "CH",
-          "description": "Medium hard white CHALK, Grade B, flint nodules, less fractured",
+          "description": "White to off-white moderately strong CHALK, Grade III\u2013IV. Occasional flint bands. SPT N 40\u201360+.",
           "certainty": 0.95
         }
       ]
     },
     {
       "id": "BH-12",
-      "x": 225.0,
-      "y": 138.0,
+      "x": 225,
+      "y": 138,
       "ground_level": 11.1,
-      "depth": 15.0,
+      "depth": 16.4,
       "layers": [
         {
           "top": 0.0,
-          "base": 1.5,
+          "base": 2.01,
           "unit_code": "MG",
-          "description": "Loose greyish brown sandy GRAVEL fill",
-          "certainty": 0.9
+          "description": "Firm brown sandy FILL; brick, tile and ash fragments. Historical development.",
+          "certainty": 0.95
         },
         {
-          "top": 1.5,
-          "base": 8.5,
+          "top": 2.01,
+          "base": 5.56,
           "unit_code": "RTD",
-          "description": "Dense to very dense flint GRAVEL, SPT N=44, thickest RTD on site",
-          "certainty": 0.93
+          "description": "Dense sub-angular flint GRAVEL in sandy matrix, occasional cobbles.",
+          "certainty": 0.91
         },
         {
-          "top": 8.5,
-          "base": 9.5,
-          "unit_code": "AC",
-          "description": "Soft grey CLAY, thin discontinuous lens, Cu=24 kPa",
-          "certainty": 0.65
-        },
-        {
-          "top": 9.5,
-          "base": 15.0,
-          "unit_code": "CH",
-          "description": "Soft to medium hard CHALK, Grade B/C",
+          "top": 5.56,
+          "base": 11.85,
+          "unit_code": "SC",
+          "description": "Stiff to very stiff grey-brown fissured CLAY (London Clay Fm). High plasticity. Cu 80\u2013180 kPa.",
           "certainty": 0.92
+        },
+        {
+          "top": 11.85,
+          "base": 16.4,
+          "unit_code": "CH",
+          "description": "White to off-white moderately strong CHALK, Grade III\u2013IV. Occasional flint bands. SPT N 40\u201360+.",
+          "certainty": 0.95
         }
       ]
     },
     {
       "id": "BH-13",
-      "x": 50.0,
-      "y": 108.0,
+      "x": 50,
+      "y": 108,
       "ground_level": 11.9,
-      "depth": 17.0,
+      "depth": 15.3,
       "layers": [
         {
           "top": 0.0,
-          "base": 2.2,
+          "base": 1.57,
           "unit_code": "MG",
-          "description": "Medium dense reddish brown sandy GRAVEL fill with brick and tile",
+          "description": "Firm brown sandy FILL; brick, tile and ash fragments. Historical development.",
+          "certainty": 0.96
+        },
+        {
+          "top": 1.57,
+          "base": 3.2,
+          "unit_code": "RTD",
+          "description": "Dense sub-angular flint GRAVEL, sandy matrix.",
+          "certainty": 0.96
+        },
+        {
+          "top": 3.2,
+          "base": 4.85,
+          "unit_code": "ACL",
+          "description": "Soft dark grey silty CLAY with organic laminae and rootlets. Palaeochannel infill. Cu ~15\u201325 kPa.",
+          "certainty": 0.82
+        },
+        {
+          "top": 4.85,
+          "base": 6.7,
+          "unit_code": "RTD",
+          "description": "Dense sub-angular flint GRAVEL, sandy matrix, occasional cobbles.",
+          "certainty": 0.95
+        },
+        {
+          "top": 6.7,
+          "base": 12.24,
+          "unit_code": "SC",
+          "description": "Stiff to very stiff grey-brown fissured CLAY (London Clay Fm). High plasticity. Cu 80\u2013180 kPa.",
           "certainty": 0.9
         },
         {
-          "top": 2.2,
-          "base": 5.8,
-          "unit_code": "RTD",
-          "description": "Medium dense to dense brown flint GRAVEL, SPT N=31",
-          "certainty": 0.87
-        },
-        {
-          "top": 5.8,
-          "base": 10.2,
-          "unit_code": "AC",
-          "description": "Soft dark grey silty CLAY, organic content, Cu=22 kPa",
-          "certainty": 0.85
-        },
-        {
-          "top": 10.2,
-          "base": 17.0,
+          "top": 12.24,
+          "base": 15.3,
           "unit_code": "CH",
-          "description": "Soft CHALK, Grade C, fractured throughout",
-          "certainty": 0.91
-        }
-      ]
-    },
-    {
-      "id": "BH-14",
-      "x": 120.0,
-      "y": 48.0,
-      "ground_level": 11.3,
-      "depth": 16.0,
-      "layers": [
-        {
-          "top": 0.0,
-          "base": 1.7,
-          "unit_code": "MG",
-          "description": "Loose brown GRAVEL and SAND fill",
-          "certainty": 0.88
-        },
-        {
-          "top": 1.7,
-          "base": 6.0,
-          "unit_code": "RTD",
-          "description": "Dense brown sub-angular flint GRAVEL, SPT N=37",
-          "certainty": 0.9
-        },
-        {
-          "top": 6.0,
-          "base": 9.0,
-          "unit_code": "AC",
-          "description": "Soft to firm grey silty CLAY, Cu=30 kPa",
-          "certainty": 0.83
-        },
-        {
-          "top": 9.0,
-          "base": 16.0,
-          "unit_code": "CH",
-          "description": "Medium hard CHALK, Grade B, flint band at 12.0m",
-          "certainty": 0.94
-        }
-      ]
-    },
-    {
-      "id": "BH-15",
-      "x": 190.0,
-      "y": 108.0,
-      "ground_level": 11.2,
-      "depth": 15.5,
-      "layers": [
-        {
-          "top": 0.0,
-          "base": 1.6,
-          "unit_code": "MG",
-          "description": "Loose brownish grey sandy GRAVEL fill",
-          "certainty": 0.89
-        },
-        {
-          "top": 1.6,
-          "base": 7.5,
-          "unit_code": "RTD",
-          "description": "Dense flint GRAVEL, SPT N=40, fines content low",
-          "certainty": 0.92
-        },
-        {
-          "top": 7.5,
-          "base": 9.5,
-          "unit_code": "AC",
-          "description": "Soft grey silty CLAY, discontinuous, Cu=26 kPa",
-          "certainty": 0.73
-        },
-        {
-          "top": 9.5,
-          "base": 15.5,
-          "unit_code": "CH",
-          "description": "Soft to medium hard CHALK, Grade B/C",
+          "description": "White to off-white moderately strong CHALK, Grade III\u2013IV. Occasional flint bands. SPT N 40\u201360+.",
           "certainty": 0.93
         }
       ]
     },
     {
-      "id": "BH-16",
-      "x": 120.0,
-      "y": 168.0,
-      "ground_level": 12.2,
-      "depth": 18.0,
+      "id": "BH-14",
+      "x": 120,
+      "y": 48,
+      "ground_level": 11.3,
+      "depth": 11.7,
       "layers": [
         {
           "top": 0.0,
-          "base": 2.8,
+          "base": 1.3,
           "unit_code": "MG",
-          "description": "Loose to medium dense dark grey silty CLAY fill with gravel, high organic content, possible former pond fill",
-          "certainty": 0.86
+          "description": "Firm brown sandy FILL; brick, tile and ash fragments. Historical development.",
+          "certainty": 0.92
         },
         {
-          "top": 2.8,
-          "base": 4.5,
+          "top": 1.3,
+          "base": 5.17,
           "unit_code": "RTD",
-          "description": "Medium dense brown GRAVEL, thin, SPT N=20",
-          "certainty": 0.79
-        },
-        {
-          "top": 4.5,
-          "base": 11.8,
-          "unit_code": "AC",
-          "description": "Soft to very soft dark grey silty organic CLAY, peat layers at 6.0-6.5m and 9.0-9.5m, Cu=12-25 kPa",
+          "description": "Dense sub-angular flint GRAVEL in sandy matrix, occasional cobbles.",
           "certainty": 0.9
         },
         {
-          "top": 11.8,
-          "base": 18.0,
+          "top": 5.17,
+          "base": 8.58,
+          "unit_code": "SC",
+          "description": "Stiff to very stiff grey-brown fissured CLAY (London Clay Fm). High plasticity. Cu 80\u2013180 kPa.",
+          "certainty": 0.95
+        },
+        {
+          "top": 8.58,
+          "base": 11.7,
           "unit_code": "CH",
-          "description": "Soft CHALK, Grade C, fractured, possible dissolution pipe at 13.0m",
-          "certainty": 0.88
+          "description": "White to off-white moderately strong CHALK, Grade III\u2013IV. Occasional flint bands. SPT N 40\u201360+.",
+          "certainty": 0.93
+        }
+      ]
+    },
+    {
+      "id": "BH-15",
+      "x": 190,
+      "y": 108,
+      "ground_level": 11.2,
+      "depth": 16.7,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 2.04,
+          "unit_code": "MG",
+          "description": "Firm brown sandy FILL; brick, tile and ash fragments. Historical development.",
+          "certainty": 0.97
+        },
+        {
+          "top": 2.04,
+          "base": 5.3,
+          "unit_code": "RTD",
+          "description": "Dense sub-angular flint GRAVEL in sandy matrix, occasional cobbles.",
+          "certainty": 0.94
+        },
+        {
+          "top": 5.3,
+          "base": 11.77,
+          "unit_code": "SC",
+          "description": "Stiff to very stiff grey-brown fissured CLAY (London Clay Fm). High plasticity. Cu 80\u2013180 kPa.",
+          "certainty": 0.89
+        },
+        {
+          "top": 11.77,
+          "base": 16.7,
+          "unit_code": "CH",
+          "description": "White to off-white moderately strong CHALK, Grade III\u2013IV. Occasional flint bands. SPT N 40\u201360+.",
+          "certainty": 0.97
+        }
+      ]
+    },
+    {
+      "id": "BH-16",
+      "x": 120,
+      "y": 168,
+      "ground_level": 12.2,
+      "depth": 17.2,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.58,
+          "unit_code": "MG",
+          "description": "Firm brown sandy FILL; brick, tile and ash fragments. Historical development.",
+          "certainty": 0.94
+        },
+        {
+          "top": 1.58,
+          "base": 5.56,
+          "unit_code": "RTD",
+          "description": "Dense sub-angular flint GRAVEL in sandy matrix, occasional cobbles.",
+          "certainty": 0.89
+        },
+        {
+          "top": 5.56,
+          "base": 12.81,
+          "unit_code": "SC",
+          "description": "Stiff to very stiff grey-brown fissured CLAY (London Clay Fm). High plasticity. Cu 80\u2013180 kPa.",
+          "certainty": 0.92
+        },
+        {
+          "top": 12.81,
+          "base": 17.2,
+          "unit_code": "CH",
+          "description": "White to off-white moderately strong CHALK, Grade III\u2013IV. Occasional flint bands. SPT N 40\u201360+.",
+          "certainty": 0.96
         }
       ]
     }
   ],
   "topography": [
     {
-      "x": 0.0,
-      "y": 3.0,
-      "z": 11.8
-    },
-    {
-      "x": 12.0,
-      "y": 3.0,
-      "z": 11.7
-    },
-    {
-      "x": 24.0,
-      "y": 3.0,
-      "z": 11.73
-    },
-    {
-      "x": 36.0,
-      "y": 3.0,
-      "z": 11.67
-    },
-    {
-      "x": 48.0,
-      "y": 3.0,
-      "z": 11.7
-    },
-    {
-      "x": 60.0,
-      "y": 3.0,
-      "z": 11.62
-    },
-    {
-      "x": 72.0,
-      "y": 3.0,
-      "z": 11.61
-    },
-    {
-      "x": 84.0,
-      "y": 3.0,
-      "z": 11.44
-    },
-    {
-      "x": 96.0,
-      "y": 3.0,
-      "z": 11.49
-    },
-    {
-      "x": 108.0,
-      "y": 3.0,
-      "z": 11.38
-    },
-    {
-      "x": 120.0,
-      "y": 3.0,
-      "z": 11.37
-    },
-    {
-      "x": 132.0,
-      "y": 3.0,
-      "z": 11.35
-    },
-    {
-      "x": 144.0,
-      "y": 3.0,
-      "z": 11.2
-    },
-    {
-      "x": 156.0,
-      "y": 3.0,
-      "z": 11.2
-    },
-    {
-      "x": 168.0,
-      "y": 3.0,
-      "z": 11.28
-    },
-    {
-      "x": 180.0,
-      "y": 3.0,
-      "z": 11.26
-    },
-    {
-      "x": 192.0,
-      "y": 3.0,
-      "z": 11.15
-    },
-    {
-      "x": 204.0,
-      "y": 3.0,
-      "z": 11.12
-    },
-    {
-      "x": 216.0,
-      "y": 3.0,
-      "z": 11.07
-    },
-    {
-      "x": 228.0,
-      "y": 3.0,
-      "z": 10.89
-    },
-    {
-      "x": 240.0,
-      "y": 3.0,
-      "z": 11.08
-    },
-    {
-      "x": 0.0,
-      "y": 14.2,
-      "z": 11.83
-    },
-    {
-      "x": 12.0,
-      "y": 14.2,
-      "z": 11.77
-    },
-    {
-      "x": 24.0,
-      "y": 14.2,
-      "z": 11.73
-    },
-    {
-      "x": 36.0,
-      "y": 14.2,
-      "z": 11.82
-    },
-    {
-      "x": 48.0,
-      "y": 14.2,
-      "z": 11.64
-    },
-    {
-      "x": 60.0,
-      "y": 14.2,
-      "z": 11.52
-    },
-    {
-      "x": 72.0,
-      "y": 14.2,
-      "z": 11.46
-    },
-    {
-      "x": 84.0,
-      "y": 14.2,
-      "z": 11.56
-    },
-    {
-      "x": 96.0,
-      "y": 14.2,
-      "z": 11.52
-    },
-    {
-      "x": 108.0,
-      "y": 14.2,
-      "z": 11.52
-    },
-    {
-      "x": 120.0,
-      "y": 14.2,
-      "z": 11.45
-    },
-    {
-      "x": 132.0,
-      "y": 14.2,
-      "z": 11.34
-    },
-    {
-      "x": 144.0,
-      "y": 14.2,
-      "z": 11.33
-    },
-    {
-      "x": 156.0,
-      "y": 14.2,
-      "z": 11.18
-    },
-    {
-      "x": 168.0,
-      "y": 14.2,
-      "z": 11.25
-    },
-    {
-      "x": 180.0,
-      "y": 14.2,
-      "z": 11.31
-    },
-    {
-      "x": 192.0,
-      "y": 14.2,
-      "z": 11.21
-    },
-    {
-      "x": 204.0,
-      "y": 14.2,
-      "z": 11.14
-    },
-    {
-      "x": 216.0,
-      "y": 14.2,
-      "z": 10.96
-    },
-    {
-      "x": 228.0,
-      "y": 14.2,
-      "z": 10.95
-    },
-    {
-      "x": 240.0,
-      "y": 14.2,
-      "z": 10.9
-    },
-    {
-      "x": 0.0,
-      "y": 25.5,
-      "z": 11.75
-    },
-    {
-      "x": 12.0,
-      "y": 25.5,
-      "z": 11.76
-    },
-    {
-      "x": 24.0,
-      "y": 25.5,
+      "x": -15.0,
+      "y": -15.0,
       "z": 11.71
     },
     {
-      "x": 36.0,
-      "y": 25.5,
-      "z": 11.7
+      "x": -2.2,
+      "y": -15.0,
+      "z": 11.68
     },
     {
-      "x": 48.0,
-      "y": 25.5,
-      "z": 11.61
+      "x": 10.5,
+      "y": -15.0,
+      "z": 11.76
     },
     {
-      "x": 60.0,
-      "y": 25.5,
-      "z": 11.57
-    },
-    {
-      "x": 72.0,
-      "y": 25.5,
-      "z": 11.56
-    },
-    {
-      "x": 84.0,
-      "y": 25.5,
-      "z": 11.48
-    },
-    {
-      "x": 96.0,
-      "y": 25.5,
-      "z": 11.47
-    },
-    {
-      "x": 108.0,
-      "y": 25.5,
-      "z": 11.39
-    },
-    {
-      "x": 120.0,
-      "y": 25.5,
-      "z": 11.35
-    },
-    {
-      "x": 132.0,
-      "y": 25.5,
-      "z": 11.42
-    },
-    {
-      "x": 144.0,
-      "y": 25.5,
-      "z": 11.29
-    },
-    {
-      "x": 156.0,
-      "y": 25.5,
-      "z": 11.24
-    },
-    {
-      "x": 168.0,
-      "y": 25.5,
-      "z": 11.19
-    },
-    {
-      "x": 180.0,
-      "y": 25.5,
-      "z": 11.3
-    },
-    {
-      "x": 192.0,
-      "y": 25.5,
-      "z": 11.14
-    },
-    {
-      "x": 204.0,
-      "y": 25.5,
-      "z": 11.07
-    },
-    {
-      "x": 216.0,
-      "y": 25.5,
-      "z": 11.06
-    },
-    {
-      "x": 228.0,
-      "y": 25.5,
-      "z": 10.96
-    },
-    {
-      "x": 240.0,
-      "y": 25.5,
-      "z": 11.01
-    },
-    {
-      "x": 0.0,
-      "y": 36.8,
-      "z": 11.85
-    },
-    {
-      "x": 12.0,
-      "y": 36.8,
-      "z": 11.87
-    },
-    {
-      "x": 24.0,
-      "y": 36.8,
-      "z": 11.85
-    },
-    {
-      "x": 36.0,
-      "y": 36.8,
-      "z": 11.72
-    },
-    {
-      "x": 48.0,
-      "y": 36.8,
-      "z": 11.62
-    },
-    {
-      "x": 60.0,
-      "y": 36.8,
-      "z": 11.61
-    },
-    {
-      "x": 72.0,
-      "y": 36.8,
-      "z": 11.54
-    },
-    {
-      "x": 84.0,
-      "y": 36.8,
-      "z": 11.48
-    },
-    {
-      "x": 96.0,
-      "y": 36.8,
-      "z": 11.57
-    },
-    {
-      "x": 108.0,
-      "y": 36.8,
-      "z": 11.48
-    },
-    {
-      "x": 120.0,
-      "y": 36.8,
-      "z": 11.31
-    },
-    {
-      "x": 132.0,
-      "y": 36.8,
-      "z": 11.38
-    },
-    {
-      "x": 144.0,
-      "y": 36.8,
-      "z": 11.31
-    },
-    {
-      "x": 156.0,
-      "y": 36.8,
-      "z": 11.37
-    },
-    {
-      "x": 168.0,
-      "y": 36.8,
-      "z": 11.28
-    },
-    {
-      "x": 180.0,
-      "y": 36.8,
-      "z": 11.23
-    },
-    {
-      "x": 192.0,
-      "y": 36.8,
-      "z": 11.18
-    },
-    {
-      "x": 204.0,
-      "y": 36.8,
-      "z": 11.16
-    },
-    {
-      "x": 216.0,
-      "y": 36.8,
-      "z": 11.02
-    },
-    {
-      "x": 228.0,
-      "y": 36.8,
-      "z": 11.05
-    },
-    {
-      "x": 240.0,
-      "y": 36.8,
-      "z": 11.13
-    },
-    {
-      "x": 0.0,
-      "y": 48.0,
-      "z": 11.85
-    },
-    {
-      "x": 12.0,
-      "y": 48.0,
-      "z": 11.82
-    },
-    {
-      "x": 24.0,
-      "y": 48.0,
-      "z": 11.94
-    },
-    {
-      "x": 36.0,
-      "y": 48.0,
-      "z": 11.8
-    },
-    {
-      "x": 48.0,
-      "y": 48.0,
-      "z": 11.67
-    },
-    {
-      "x": 60.0,
-      "y": 48.0,
-      "z": 11.6
-    },
-    {
-      "x": 72.0,
-      "y": 48.0,
-      "z": 11.56
-    },
-    {
-      "x": 84.0,
-      "y": 48.0,
-      "z": 11.6
-    },
-    {
-      "x": 96.0,
-      "y": 48.0,
-      "z": 11.56
-    },
-    {
-      "x": 108.0,
-      "y": 48.0,
-      "z": 11.37
-    },
-    {
-      "x": 120.0,
-      "y": 48.0,
-      "z": 11.22
-    },
-    {
-      "x": 132.0,
-      "y": 48.0,
-      "z": 11.32
-    },
-    {
-      "x": 144.0,
-      "y": 48.0,
-      "z": 11.45
-    },
-    {
-      "x": 156.0,
-      "y": 48.0,
-      "z": 11.36
-    },
-    {
-      "x": 168.0,
-      "y": 48.0,
-      "z": 11.42
-    },
-    {
-      "x": 180.0,
-      "y": 48.0,
-      "z": 11.37
-    },
-    {
-      "x": 192.0,
-      "y": 48.0,
-      "z": 11.16
-    },
-    {
-      "x": 204.0,
-      "y": 48.0,
-      "z": 11.23
-    },
-    {
-      "x": 216.0,
-      "y": 48.0,
-      "z": 11.16
-    },
-    {
-      "x": 228.0,
-      "y": 48.0,
-      "z": 11.11
-    },
-    {
-      "x": 240.0,
-      "y": 48.0,
-      "z": 11.07
-    },
-    {
-      "x": 0.0,
-      "y": 59.2,
-      "z": 11.97
-    },
-    {
-      "x": 12.0,
-      "y": 59.2,
-      "z": 11.9
-    },
-    {
-      "x": 24.0,
-      "y": 59.2,
-      "z": 11.93
-    },
-    {
-      "x": 36.0,
-      "y": 59.2,
-      "z": 11.85
-    },
-    {
-      "x": 48.0,
-      "y": 59.2,
-      "z": 11.86
-    },
-    {
-      "x": 60.0,
-      "y": 59.2,
-      "z": 11.79
-    },
-    {
-      "x": 72.0,
-      "y": 59.2,
-      "z": 11.63
-    },
-    {
-      "x": 84.0,
-      "y": 59.2,
+      "x": 23.2,
+      "y": -15.0,
       "z": 11.64
     },
     {
-      "x": 96.0,
-      "y": 59.2,
+      "x": 36.0,
+      "y": -15.0,
+      "z": 11.69
+    },
+    {
+      "x": 48.8,
+      "y": -15.0,
+      "z": 11.61
+    },
+    {
+      "x": 61.5,
+      "y": -15.0,
       "z": 11.51
     },
     {
-      "x": 108.0,
-      "y": 59.2,
-      "z": 11.52
+      "x": 74.2,
+      "y": -15.0,
+      "z": 11.55
     },
     {
-      "x": 120.0,
-      "y": 59.2,
-      "z": 11.43
+      "x": 87.0,
+      "y": -15.0,
+      "z": 11.44
     },
     {
-      "x": 132.0,
-      "y": 59.2,
+      "x": 99.8,
+      "y": -15.0,
+      "z": 11.48
+    },
+    {
+      "x": 112.5,
+      "y": -15.0,
+      "z": 11.38
+    },
+    {
+      "x": 125.2,
+      "y": -15.0,
+      "z": 11.34
+    },
+    {
+      "x": 138.0,
+      "y": -15.0,
       "z": 11.35
     },
     {
-      "x": 144.0,
-      "y": 59.2,
-      "z": 11.42
+      "x": 150.8,
+      "y": -15.0,
+      "z": 11.39
     },
     {
-      "x": 156.0,
-      "y": 59.2,
-      "z": 11.41
-    },
-    {
-      "x": 168.0,
-      "y": 59.2,
-      "z": 11.3
-    },
-    {
-      "x": 180.0,
-      "y": 59.2,
-      "z": 11.37
-    },
-    {
-      "x": 192.0,
-      "y": 59.2,
-      "z": 11.27
-    },
-    {
-      "x": 204.0,
-      "y": 59.2,
+      "x": 163.5,
+      "y": -15.0,
       "z": 11.24
     },
     {
-      "x": 216.0,
-      "y": 59.2,
-      "z": 11.13
+      "x": 176.2,
+      "y": -15.0,
+      "z": 11.24
     },
     {
-      "x": 228.0,
-      "y": 59.2,
+      "x": 189.0,
+      "y": -15.0,
+      "z": 11.27
+    },
+    {
+      "x": 201.8,
+      "y": -15.0,
+      "z": 11.28
+    },
+    {
+      "x": 214.5,
+      "y": -15.0,
+      "z": 11.16
+    },
+    {
+      "x": 227.2,
+      "y": -15.0,
+      "z": 11.1
+    },
+    {
+      "x": 240.0,
+      "y": -15.0,
+      "z": 11.21
+    },
+    {
+      "x": -15.0,
+      "y": -2.8,
+      "z": 11.68
+    },
+    {
+      "x": -2.2,
+      "y": -2.8,
+      "z": 11.83
+    },
+    {
+      "x": 10.5,
+      "y": -2.8,
+      "z": 11.73
+    },
+    {
+      "x": 23.2,
+      "y": -2.8,
+      "z": 11.69
+    },
+    {
+      "x": 36.0,
+      "y": -2.8,
+      "z": 11.64
+    },
+    {
+      "x": 48.8,
+      "y": -2.8,
+      "z": 11.61
+    },
+    {
+      "x": 61.5,
+      "y": -2.8,
+      "z": 11.64
+    },
+    {
+      "x": 74.2,
+      "y": -2.8,
+      "z": 11.48
+    },
+    {
+      "x": 87.0,
+      "y": -2.8,
+      "z": 11.53
+    },
+    {
+      "x": 99.8,
+      "y": -2.8,
+      "z": 11.52
+    },
+    {
+      "x": 112.5,
+      "y": -2.8,
+      "z": 11.43
+    },
+    {
+      "x": 125.2,
+      "y": -2.8,
+      "z": 11.41
+    },
+    {
+      "x": 138.0,
+      "y": -2.8,
+      "z": 11.26
+    },
+    {
+      "x": 150.8,
+      "y": -2.8,
+      "z": 11.21
+    },
+    {
+      "x": 163.5,
+      "y": -2.8,
+      "z": 11.22
+    },
+    {
+      "x": 176.2,
+      "y": -2.8,
+      "z": 11.3
+    },
+    {
+      "x": 189.0,
+      "y": -2.8,
+      "z": 11.21
+    },
+    {
+      "x": 201.8,
+      "y": -2.8,
+      "z": 11.12
+    },
+    {
+      "x": 214.5,
+      "y": -2.8,
+      "z": 11.08
+    },
+    {
+      "x": 227.2,
+      "y": -2.8,
+      "z": 11.02
+    },
+    {
+      "x": 240.0,
+      "y": -2.8,
+      "z": 11.02
+    },
+    {
+      "x": -15.0,
+      "y": 9.4,
+      "z": 11.83
+    },
+    {
+      "x": -2.2,
+      "y": 9.4,
+      "z": 11.82
+    },
+    {
+      "x": 10.5,
+      "y": 9.4,
+      "z": 11.75
+    },
+    {
+      "x": 23.2,
+      "y": 9.4,
+      "z": 11.8
+    },
+    {
+      "x": 36.0,
+      "y": 9.4,
+      "z": 11.74
+    },
+    {
+      "x": 48.8,
+      "y": 9.4,
+      "z": 11.73
+    },
+    {
+      "x": 61.5,
+      "y": 9.4,
+      "z": 11.62
+    },
+    {
+      "x": 74.2,
+      "y": 9.4,
+      "z": 11.49
+    },
+    {
+      "x": 87.0,
+      "y": 9.4,
+      "z": 11.59
+    },
+    {
+      "x": 99.8,
+      "y": 9.4,
+      "z": 11.42
+    },
+    {
+      "x": 112.5,
+      "y": 9.4,
+      "z": 11.43
+    },
+    {
+      "x": 125.2,
+      "y": 9.4,
+      "z": 11.43
+    },
+    {
+      "x": 138.0,
+      "y": 9.4,
+      "z": 11.24
+    },
+    {
+      "x": 150.8,
+      "y": 9.4,
+      "z": 11.23
+    },
+    {
+      "x": 163.5,
+      "y": 9.4,
+      "z": 11.15
+    },
+    {
+      "x": 176.2,
+      "y": 9.4,
+      "z": 11.28
+    },
+    {
+      "x": 189.0,
+      "y": 9.4,
+      "z": 11.26
+    },
+    {
+      "x": 201.8,
+      "y": 9.4,
+      "z": 11.12
+    },
+    {
+      "x": 214.5,
+      "y": 9.4,
+      "z": 11.05
+    },
+    {
+      "x": 227.2,
+      "y": 9.4,
+      "z": 10.9
+    },
+    {
+      "x": 240.0,
+      "y": 9.4,
+      "z": 11.03
+    },
+    {
+      "x": -15.0,
+      "y": 21.6,
+      "z": 11.81
+    },
+    {
+      "x": -2.2,
+      "y": 21.6,
+      "z": 11.81
+    },
+    {
+      "x": 10.5,
+      "y": 21.6,
+      "z": 11.79
+    },
+    {
+      "x": 23.2,
+      "y": 21.6,
+      "z": 11.85
+    },
+    {
+      "x": 36.0,
+      "y": 21.6,
+      "z": 11.83
+    },
+    {
+      "x": 48.8,
+      "y": 21.6,
+      "z": 11.67
+    },
+    {
+      "x": 61.5,
+      "y": 21.6,
+      "z": 11.62
+    },
+    {
+      "x": 74.2,
+      "y": 21.6,
+      "z": 11.44
+    },
+    {
+      "x": 87.0,
+      "y": 21.6,
+      "z": 11.54
+    },
+    {
+      "x": 99.8,
+      "y": 21.6,
+      "z": 11.52
+    },
+    {
+      "x": 112.5,
+      "y": 21.6,
+      "z": 11.52
+    },
+    {
+      "x": 125.2,
+      "y": 21.6,
+      "z": 11.43
+    },
+    {
+      "x": 138.0,
+      "y": 21.6,
+      "z": 11.26
+    },
+    {
+      "x": 150.8,
+      "y": 21.6,
+      "z": 11.19
+    },
+    {
+      "x": 163.5,
+      "y": 21.6,
+      "z": 11.25
+    },
+    {
+      "x": 176.2,
+      "y": 21.6,
+      "z": 11.17
+    },
+    {
+      "x": 189.0,
+      "y": 21.6,
+      "z": 11.21
+    },
+    {
+      "x": 201.8,
+      "y": 21.6,
+      "z": 11.05
+    },
+    {
+      "x": 214.5,
+      "y": 21.6,
+      "z": 10.89
+    },
+    {
+      "x": 227.2,
+      "y": 21.6,
+      "z": 10.83
+    },
+    {
+      "x": 240.0,
+      "y": 21.6,
+      "z": 11.03
+    },
+    {
+      "x": -15.0,
+      "y": 33.8,
+      "z": 11.75
+    },
+    {
+      "x": -2.2,
+      "y": 33.8,
+      "z": 11.77
+    },
+    {
+      "x": 10.5,
+      "y": 33.8,
+      "z": 11.78
+    },
+    {
+      "x": 23.2,
+      "y": 33.8,
+      "z": 11.86
+    },
+    {
+      "x": 36.0,
+      "y": 33.8,
+      "z": 11.68
+    },
+    {
+      "x": 48.8,
+      "y": 33.8,
+      "z": 11.69
+    },
+    {
+      "x": 61.5,
+      "y": 33.8,
+      "z": 11.63
+    },
+    {
+      "x": 74.2,
+      "y": 33.8,
+      "z": 11.63
+    },
+    {
+      "x": 87.0,
+      "y": 33.8,
+      "z": 11.58
+    },
+    {
+      "x": 99.8,
+      "y": 33.8,
+      "z": 11.54
+    },
+    {
+      "x": 112.5,
+      "y": 33.8,
+      "z": 11.35
+    },
+    {
+      "x": 125.2,
+      "y": 33.8,
+      "z": 11.34
+    },
+    {
+      "x": 138.0,
+      "y": 33.8,
+      "z": 11.31
+    },
+    {
+      "x": 150.8,
+      "y": 33.8,
+      "z": 11.36
+    },
+    {
+      "x": 163.5,
+      "y": 33.8,
+      "z": 11.36
+    },
+    {
+      "x": 176.2,
+      "y": 33.8,
+      "z": 11.21
+    },
+    {
+      "x": 189.0,
+      "y": 33.8,
+      "z": 11.18
+    },
+    {
+      "x": 201.8,
+      "y": 33.8,
+      "z": 11.1
+    },
+    {
+      "x": 214.5,
+      "y": 33.8,
+      "z": 11.0
+    },
+    {
+      "x": 227.2,
+      "y": 33.8,
       "z": 11.0
     },
     {
       "x": 240.0,
-      "y": 59.2,
-      "z": 11.08
+      "y": 33.8,
+      "z": 11.06
     },
     {
-      "x": 0.0,
-      "y": 70.5,
-      "z": 11.93
+      "x": -15.0,
+      "y": 45.9,
+      "z": 11.81
     },
     {
-      "x": 12.0,
-      "y": 70.5,
-      "z": 12.15
+      "x": -2.2,
+      "y": 45.9,
+      "z": 11.77
     },
     {
-      "x": 24.0,
-      "y": 70.5,
-      "z": 12.1
+      "x": 10.5,
+      "y": 45.9,
+      "z": 11.84
+    },
+    {
+      "x": 23.2,
+      "y": 45.9,
+      "z": 11.81
     },
     {
       "x": 36.0,
-      "y": 70.5,
-      "z": 11.98
+      "y": 45.9,
+      "z": 11.81
     },
     {
-      "x": 48.0,
-      "y": 70.5,
-      "z": 11.79
+      "x": 48.8,
+      "y": 45.9,
+      "z": 11.81
     },
     {
-      "x": 60.0,
-      "y": 70.5,
-      "z": 11.67
+      "x": 61.5,
+      "y": 45.9,
+      "z": 11.7
     },
     {
-      "x": 72.0,
-      "y": 70.5,
-      "z": 11.77
+      "x": 74.2,
+      "y": 45.9,
+      "z": 11.61
     },
     {
-      "x": 84.0,
-      "y": 70.5,
-      "z": 11.77
+      "x": 87.0,
+      "y": 45.9,
+      "z": 11.58
     },
     {
-      "x": 96.0,
-      "y": 70.5,
-      "z": 11.57
+      "x": 99.8,
+      "y": 45.9,
+      "z": 11.5
     },
     {
-      "x": 108.0,
-      "y": 70.5,
-      "z": 11.54
+      "x": 112.5,
+      "y": 45.9,
+      "z": 11.26
     },
     {
-      "x": 120.0,
-      "y": 70.5,
+      "x": 125.2,
+      "y": 45.9,
       "z": 11.39
     },
     {
-      "x": 132.0,
-      "y": 70.5,
-      "z": 11.48
-    },
-    {
-      "x": 144.0,
-      "y": 70.5,
-      "z": 11.46
-    },
-    {
-      "x": 156.0,
-      "y": 70.5,
-      "z": 11.33
-    },
-    {
-      "x": 168.0,
-      "y": 70.5,
-      "z": 11.38
-    },
-    {
-      "x": 180.0,
-      "y": 70.5,
-      "z": 11.34
-    },
-    {
-      "x": 192.0,
-      "y": 70.5,
-      "z": 11.22
-    },
-    {
-      "x": 204.0,
-      "y": 70.5,
-      "z": 11.24
-    },
-    {
-      "x": 216.0,
-      "y": 70.5,
-      "z": 11.05
-    },
-    {
-      "x": 228.0,
-      "y": 70.5,
-      "z": 10.98
-    },
-    {
-      "x": 240.0,
-      "y": 70.5,
-      "z": 11.09
-    },
-    {
-      "x": 0.0,
-      "y": 81.8,
-      "z": 12.08
-    },
-    {
-      "x": 12.0,
-      "y": 81.8,
-      "z": 12.04
-    },
-    {
-      "x": 24.0,
-      "y": 81.8,
-      "z": 12.02
-    },
-    {
-      "x": 36.0,
-      "y": 81.8,
-      "z": 12.03
-    },
-    {
-      "x": 48.0,
-      "y": 81.8,
-      "z": 11.88
-    },
-    {
-      "x": 60.0,
-      "y": 81.8,
-      "z": 11.77
-    },
-    {
-      "x": 72.0,
-      "y": 81.8,
-      "z": 11.72
-    },
-    {
-      "x": 84.0,
-      "y": 81.8,
-      "z": 11.63
-    },
-    {
-      "x": 96.0,
-      "y": 81.8,
-      "z": 11.63
-    },
-    {
-      "x": 108.0,
-      "y": 81.8,
-      "z": 11.57
-    },
-    {
-      "x": 120.0,
-      "y": 81.8,
-      "z": 11.54
-    },
-    {
-      "x": 132.0,
-      "y": 81.8,
-      "z": 11.42
-    },
-    {
-      "x": 144.0,
-      "y": 81.8,
-      "z": 11.37
-    },
-    {
-      "x": 156.0,
-      "y": 81.8,
-      "z": 11.32
-    },
-    {
-      "x": 168.0,
-      "y": 81.8,
+      "x": 138.0,
+      "y": 45.9,
       "z": 11.41
     },
     {
-      "x": 180.0,
-      "y": 81.8,
-      "z": 11.28
+      "x": 150.8,
+      "y": 45.9,
+      "z": 11.42
     },
     {
-      "x": 192.0,
-      "y": 81.8,
-      "z": 11.34
+      "x": 163.5,
+      "y": 45.9,
+      "z": 11.39
     },
     {
-      "x": 204.0,
-      "y": 81.8,
+      "x": 176.2,
+      "y": 45.9,
+      "z": 11.29
+    },
+    {
+      "x": 189.0,
+      "y": 45.9,
       "z": 11.24
     },
     {
-      "x": 216.0,
-      "y": 81.8,
-      "z": 10.98
-    },
-    {
-      "x": 228.0,
-      "y": 81.8,
-      "z": 10.96
-    },
-    {
-      "x": 240.0,
-      "y": 81.8,
-      "z": 11.11
-    },
-    {
-      "x": 0.0,
-      "y": 93.0,
-      "z": 11.97
-    },
-    {
-      "x": 12.0,
-      "y": 93.0,
-      "z": 11.97
-    },
-    {
-      "x": 24.0,
-      "y": 93.0,
-      "z": 12.08
-    },
-    {
-      "x": 36.0,
-      "y": 93.0,
-      "z": 11.94
-    },
-    {
-      "x": 48.0,
-      "y": 93.0,
-      "z": 11.88
-    },
-    {
-      "x": 60.0,
-      "y": 93.0,
-      "z": 11.89
-    },
-    {
-      "x": 72.0,
-      "y": 93.0,
-      "z": 11.82
-    },
-    {
-      "x": 84.0,
-      "y": 93.0,
-      "z": 11.66
-    },
-    {
-      "x": 96.0,
-      "y": 93.0,
-      "z": 11.62
-    },
-    {
-      "x": 108.0,
-      "y": 93.0,
-      "z": 11.63
-    },
-    {
-      "x": 120.0,
-      "y": 93.0,
-      "z": 11.56
-    },
-    {
-      "x": 132.0,
-      "y": 93.0,
-      "z": 11.5
-    },
-    {
-      "x": 144.0,
-      "y": 93.0,
-      "z": 11.49
-    },
-    {
-      "x": 156.0,
-      "y": 93.0,
-      "z": 11.45
-    },
-    {
-      "x": 168.0,
-      "y": 93.0,
-      "z": 11.46
-    },
-    {
-      "x": 180.0,
-      "y": 93.0,
-      "z": 11.23
-    },
-    {
-      "x": 192.0,
-      "y": 93.0,
-      "z": 11.23
-    },
-    {
-      "x": 204.0,
-      "y": 93.0,
-      "z": 11.18
-    },
-    {
-      "x": 216.0,
-      "y": 93.0,
-      "z": 11.2
-    },
-    {
-      "x": 228.0,
-      "y": 93.0,
-      "z": 11.05
-    },
-    {
-      "x": 240.0,
-      "y": 93.0,
-      "z": 11.07
-    },
-    {
-      "x": 0.0,
-      "y": 104.2,
-      "z": 12.02
-    },
-    {
-      "x": 12.0,
-      "y": 104.2,
-      "z": 12.01
-    },
-    {
-      "x": 24.0,
-      "y": 104.2,
-      "z": 11.95
-    },
-    {
-      "x": 36.0,
-      "y": 104.2,
-      "z": 11.88
-    },
-    {
-      "x": 48.0,
-      "y": 104.2,
-      "z": 11.98
-    },
-    {
-      "x": 60.0,
-      "y": 104.2,
-      "z": 11.87
-    },
-    {
-      "x": 72.0,
-      "y": 104.2,
-      "z": 11.89
-    },
-    {
-      "x": 84.0,
-      "y": 104.2,
-      "z": 11.79
-    },
-    {
-      "x": 96.0,
-      "y": 104.2,
-      "z": 11.66
-    },
-    {
-      "x": 108.0,
-      "y": 104.2,
-      "z": 11.78
-    },
-    {
-      "x": 120.0,
-      "y": 104.2,
-      "z": 11.68
-    },
-    {
-      "x": 132.0,
-      "y": 104.2,
-      "z": 11.64
-    },
-    {
-      "x": 144.0,
-      "y": 104.2,
-      "z": 11.58
-    },
-    {
-      "x": 156.0,
-      "y": 104.2,
-      "z": 11.51
-    },
-    {
-      "x": 168.0,
-      "y": 104.2,
-      "z": 11.31
-    },
-    {
-      "x": 180.0,
-      "y": 104.2,
-      "z": 11.25
-    },
-    {
-      "x": 192.0,
-      "y": 104.2,
-      "z": 11.16
-    },
-    {
-      "x": 204.0,
-      "y": 104.2,
-      "z": 11.21
-    },
-    {
-      "x": 216.0,
-      "y": 104.2,
+      "x": 201.8,
+      "y": 45.9,
       "z": 11.12
     },
     {
-      "x": 228.0,
-      "y": 104.2,
+      "x": 214.5,
+      "y": 45.9,
       "z": 11.15
     },
     {
+      "x": 227.2,
+      "y": 45.9,
+      "z": 11.02
+    },
+    {
       "x": 240.0,
-      "y": 104.2,
-      "z": 11.27
+      "y": 45.9,
+      "z": 11.03
     },
     {
-      "x": 0.0,
-      "y": 115.5,
-      "z": 12.06
+      "x": -15.0,
+      "y": 58.1,
+      "z": 11.85
     },
     {
-      "x": 12.0,
-      "y": 115.5,
-      "z": 12.17
+      "x": -2.2,
+      "y": 58.1,
+      "z": 11.87
     },
     {
-      "x": 24.0,
-      "y": 115.5,
-      "z": 12.05
+      "x": 10.5,
+      "y": 58.1,
+      "z": 11.93
+    },
+    {
+      "x": 23.2,
+      "y": 58.1,
+      "z": 11.85
     },
     {
       "x": 36.0,
-      "y": 115.5,
-      "z": 11.94
-    },
-    {
-      "x": 48.0,
-      "y": 115.5,
-      "z": 11.99
-    },
-    {
-      "x": 60.0,
-      "y": 115.5,
-      "z": 11.98
-    },
-    {
-      "x": 72.0,
-      "y": 115.5,
-      "z": 11.88
-    },
-    {
-      "x": 84.0,
-      "y": 115.5,
-      "z": 11.89
-    },
-    {
-      "x": 96.0,
-      "y": 115.5,
-      "z": 11.75
-    },
-    {
-      "x": 108.0,
-      "y": 115.5,
-      "z": 11.71
-    },
-    {
-      "x": 120.0,
-      "y": 115.5,
+      "y": 58.1,
       "z": 11.76
     },
     {
-      "x": 132.0,
-      "y": 115.5,
-      "z": 11.62
+      "x": 48.8,
+      "y": 58.1,
+      "z": 11.71
     },
     {
-      "x": 144.0,
-      "y": 115.5,
-      "z": 11.56
-    },
-    {
-      "x": 156.0,
-      "y": 115.5,
-      "z": 11.55
-    },
-    {
-      "x": 168.0,
-      "y": 115.5,
-      "z": 11.34
-    },
-    {
-      "x": 180.0,
-      "y": 115.5,
-      "z": 11.3
-    },
-    {
-      "x": 192.0,
-      "y": 115.5,
-      "z": 11.23
-    },
-    {
-      "x": 204.0,
-      "y": 115.5,
-      "z": 11.3
-    },
-    {
-      "x": 216.0,
-      "y": 115.5,
-      "z": 11.15
-    },
-    {
-      "x": 228.0,
-      "y": 115.5,
-      "z": 11.27
-    },
-    {
-      "x": 240.0,
-      "y": 115.5,
-      "z": 11.12
-    },
-    {
-      "x": 0.0,
-      "y": 126.8,
-      "z": 12.16
-    },
-    {
-      "x": 12.0,
-      "y": 126.8,
-      "z": 12.31
-    },
-    {
-      "x": 24.0,
-      "y": 126.8,
-      "z": 12.25
-    },
-    {
-      "x": 36.0,
-      "y": 126.8,
-      "z": 11.99
-    },
-    {
-      "x": 48.0,
-      "y": 126.8,
-      "z": 11.87
-    },
-    {
-      "x": 60.0,
-      "y": 126.8,
-      "z": 11.98
-    },
-    {
-      "x": 72.0,
-      "y": 126.8,
-      "z": 11.87
-    },
-    {
-      "x": 84.0,
-      "y": 126.8,
-      "z": 11.96
-    },
-    {
-      "x": 96.0,
-      "y": 126.8,
-      "z": 11.92
-    },
-    {
-      "x": 108.0,
-      "y": 126.8,
-      "z": 11.8
-    },
-    {
-      "x": 120.0,
-      "y": 126.8,
-      "z": 11.75
-    },
-    {
-      "x": 132.0,
-      "y": 126.8,
-      "z": 11.66
-    },
-    {
-      "x": 144.0,
-      "y": 126.8,
-      "z": 11.68
-    },
-    {
-      "x": 156.0,
-      "y": 126.8,
-      "z": 11.52
-    },
-    {
-      "x": 168.0,
-      "y": 126.8,
-      "z": 11.54
-    },
-    {
-      "x": 180.0,
-      "y": 126.8,
-      "z": 11.33
-    },
-    {
-      "x": 192.0,
-      "y": 126.8,
-      "z": 11.28
-    },
-    {
-      "x": 204.0,
-      "y": 126.8,
-      "z": 11.28
-    },
-    {
-      "x": 216.0,
-      "y": 126.8,
-      "z": 11.14
-    },
-    {
-      "x": 228.0,
-      "y": 126.8,
-      "z": 11.11
-    },
-    {
-      "x": 240.0,
-      "y": 126.8,
-      "z": 11.22
-    },
-    {
-      "x": 0.0,
-      "y": 138.0,
-      "z": 12.2
-    },
-    {
-      "x": 12.0,
-      "y": 138.0,
-      "z": 12.39
-    },
-    {
-      "x": 24.0,
-      "y": 138.0,
-      "z": 12.42
-    },
-    {
-      "x": 36.0,
-      "y": 138.0,
-      "z": 12.2
-    },
-    {
-      "x": 48.0,
-      "y": 138.0,
-      "z": 11.9
-    },
-    {
-      "x": 60.0,
-      "y": 138.0,
-      "z": 11.88
-    },
-    {
-      "x": 72.0,
-      "y": 138.0,
-      "z": 11.91
-    },
-    {
-      "x": 84.0,
-      "y": 138.0,
-      "z": 12.08
-    },
-    {
-      "x": 96.0,
-      "y": 138.0,
-      "z": 12.02
-    },
-    {
-      "x": 108.0,
-      "y": 138.0,
-      "z": 11.95
-    },
-    {
-      "x": 120.0,
-      "y": 138.0,
-      "z": 11.79
-    },
-    {
-      "x": 132.0,
-      "y": 138.0,
-      "z": 11.66
-    },
-    {
-      "x": 144.0,
-      "y": 138.0,
-      "z": 11.68
-    },
-    {
-      "x": 156.0,
-      "y": 138.0,
+      "x": 61.5,
+      "y": 58.1,
       "z": 11.64
     },
     {
-      "x": 168.0,
-      "y": 138.0,
-      "z": 11.58
+      "x": 74.2,
+      "y": 58.1,
+      "z": 11.64
     },
     {
-      "x": 180.0,
-      "y": 138.0,
-      "z": 11.54
+      "x": 87.0,
+      "y": 58.1,
+      "z": 11.53
     },
     {
-      "x": 192.0,
-      "y": 138.0,
-      "z": 11.38
+      "x": 99.8,
+      "y": 58.1,
+      "z": 11.59
     },
     {
-      "x": 204.0,
-      "y": 138.0,
-      "z": 11.16
+      "x": 112.5,
+      "y": 58.1,
+      "z": 11.41
     },
     {
-      "x": 216.0,
-      "y": 138.0,
-      "z": 11.19
+      "x": 125.2,
+      "y": 58.1,
+      "z": 11.3
     },
     {
-      "x": 228.0,
-      "y": 138.0,
-      "z": 11.07
+      "x": 138.0,
+      "y": 58.1,
+      "z": 11.34
     },
     {
-      "x": 240.0,
-      "y": 138.0,
-      "z": 11.19
+      "x": 150.8,
+      "y": 58.1,
+      "z": 11.36
     },
     {
-      "x": 0.0,
-      "y": 149.2,
-      "z": 12.32
-    },
-    {
-      "x": 12.0,
-      "y": 149.2,
-      "z": 12.25
-    },
-    {
-      "x": 24.0,
-      "y": 149.2,
-      "z": 12.19
-    },
-    {
-      "x": 36.0,
-      "y": 149.2,
-      "z": 12.04
-    },
-    {
-      "x": 48.0,
-      "y": 149.2,
-      "z": 12.0
-    },
-    {
-      "x": 60.0,
-      "y": 149.2,
-      "z": 11.9
-    },
-    {
-      "x": 72.0,
-      "y": 149.2,
-      "z": 11.97
-    },
-    {
-      "x": 84.0,
-      "y": 149.2,
-      "z": 12.01
-    },
-    {
-      "x": 96.0,
-      "y": 149.2,
-      "z": 11.9
-    },
-    {
-      "x": 108.0,
-      "y": 149.2,
-      "z": 11.97
-    },
-    {
-      "x": 120.0,
-      "y": 149.2,
-      "z": 11.9
-    },
-    {
-      "x": 132.0,
-      "y": 149.2,
-      "z": 11.83
-    },
-    {
-      "x": 144.0,
-      "y": 149.2,
-      "z": 11.75
-    },
-    {
-      "x": 156.0,
-      "y": 149.2,
-      "z": 11.67
-    },
-    {
-      "x": 168.0,
-      "y": 149.2,
-      "z": 11.5
-    },
-    {
-      "x": 180.0,
-      "y": 149.2,
-      "z": 11.47
-    },
-    {
-      "x": 192.0,
-      "y": 149.2,
+      "x": 163.5,
+      "y": 58.1,
       "z": 11.35
     },
     {
-      "x": 204.0,
-      "y": 149.2,
-      "z": 11.19
+      "x": 176.2,
+      "y": 58.1,
+      "z": 11.27
     },
     {
-      "x": 216.0,
-      "y": 149.2,
-      "z": 11.23
+      "x": 189.0,
+      "y": 58.1,
+      "z": 11.34
     },
     {
-      "x": 228.0,
-      "y": 149.2,
-      "z": 11.17
+      "x": 201.8,
+      "y": 58.1,
+      "z": 11.29
+    },
+    {
+      "x": 214.5,
+      "y": 58.1,
+      "z": 11.13
+    },
+    {
+      "x": 227.2,
+      "y": 58.1,
+      "z": 11.1
     },
     {
       "x": 240.0,
-      "y": 149.2,
-      "z": 11.14
+      "y": 58.1,
+      "z": 11.04
     },
     {
-      "x": 0.0,
-      "y": 160.5,
-      "z": 12.2
+      "x": -15.0,
+      "y": 70.3,
+      "z": 11.87
     },
     {
-      "x": 12.0,
-      "y": 160.5,
-      "z": 12.2
+      "x": -2.2,
+      "y": 70.3,
+      "z": 11.97
     },
     {
-      "x": 24.0,
-      "y": 160.5,
+      "x": 10.5,
+      "y": 70.3,
+      "z": 12.02
+    },
+    {
+      "x": 23.2,
+      "y": 70.3,
+      "z": 12.09
+    },
+    {
+      "x": 36.0,
+      "y": 70.3,
+      "z": 11.86
+    },
+    {
+      "x": 48.8,
+      "y": 70.3,
+      "z": 11.73
+    },
+    {
+      "x": 61.5,
+      "y": 70.3,
+      "z": 11.82
+    },
+    {
+      "x": 74.2,
+      "y": 70.3,
+      "z": 11.7
+    },
+    {
+      "x": 87.0,
+      "y": 70.3,
+      "z": 11.62
+    },
+    {
+      "x": 99.8,
+      "y": 70.3,
+      "z": 11.62
+    },
+    {
+      "x": 112.5,
+      "y": 70.3,
+      "z": 11.42
+    },
+    {
+      "x": 125.2,
+      "y": 70.3,
+      "z": 11.45
+    },
+    {
+      "x": 138.0,
+      "y": 70.3,
+      "z": 11.51
+    },
+    {
+      "x": 150.8,
+      "y": 70.3,
+      "z": 11.47
+    },
+    {
+      "x": 163.5,
+      "y": 70.3,
+      "z": 11.43
+    },
+    {
+      "x": 176.2,
+      "y": 70.3,
+      "z": 11.31
+    },
+    {
+      "x": 189.0,
+      "y": 70.3,
+      "z": 11.26
+    },
+    {
+      "x": 201.8,
+      "y": 70.3,
+      "z": 11.13
+    },
+    {
+      "x": 214.5,
+      "y": 70.3,
+      "z": 11.13
+    },
+    {
+      "x": 227.2,
+      "y": 70.3,
+      "z": 11.03
+    },
+    {
+      "x": 240.0,
+      "y": 70.3,
+      "z": 11.13
+    },
+    {
+      "x": -15.0,
+      "y": 82.5,
+      "z": 11.94
+    },
+    {
+      "x": -2.2,
+      "y": 82.5,
+      "z": 11.97
+    },
+    {
+      "x": 10.5,
+      "y": 82.5,
+      "z": 12.14
+    },
+    {
+      "x": 23.2,
+      "y": 82.5,
       "z": 12.14
     },
     {
       "x": 36.0,
-      "y": 160.5,
-      "z": 11.97
-    },
-    {
-      "x": 48.0,
-      "y": 160.5,
-      "z": 11.9
-    },
-    {
-      "x": 60.0,
-      "y": 160.5,
-      "z": 12.01
-    },
-    {
-      "x": 72.0,
-      "y": 160.5,
+      "y": 82.5,
       "z": 12.0
     },
     {
-      "x": 84.0,
-      "y": 160.5,
-      "z": 11.95
+      "x": 48.8,
+      "y": 82.5,
+      "z": 11.91
     },
     {
-      "x": 96.0,
-      "y": 160.5,
-      "z": 12.03
+      "x": 61.5,
+      "y": 82.5,
+      "z": 11.84
     },
     {
-      "x": 108.0,
-      "y": 160.5,
-      "z": 12.07
-    },
-    {
-      "x": 120.0,
-      "y": 160.5,
-      "z": 12.08
-    },
-    {
-      "x": 132.0,
-      "y": 160.5,
-      "z": 11.94
-    },
-    {
-      "x": 144.0,
-      "y": 160.5,
+      "x": 74.2,
+      "y": 82.5,
       "z": 11.76
     },
     {
-      "x": 156.0,
-      "y": 160.5,
-      "z": 11.74
+      "x": 87.0,
+      "y": 82.5,
+      "z": 11.65
     },
     {
-      "x": 168.0,
-      "y": 160.5,
-      "z": 11.64
+      "x": 99.8,
+      "y": 82.5,
+      "z": 11.66
     },
     {
-      "x": 180.0,
-      "y": 160.5,
-      "z": 11.58
+      "x": 112.5,
+      "y": 82.5,
+      "z": 11.55
     },
     {
-      "x": 192.0,
-      "y": 160.5,
-      "z": 11.5
+      "x": 125.2,
+      "y": 82.5,
+      "z": 11.42
     },
     {
-      "x": 204.0,
-      "y": 160.5,
-      "z": 11.28
+      "x": 138.0,
+      "y": 82.5,
+      "z": 11.36
     },
     {
-      "x": 216.0,
-      "y": 160.5,
-      "z": 11.21
+      "x": 150.8,
+      "y": 82.5,
+      "z": 11.36
     },
     {
-      "x": 228.0,
-      "y": 160.5,
+      "x": 163.5,
+      "y": 82.5,
+      "z": 11.35
+    },
+    {
+      "x": 176.2,
+      "y": 82.5,
+      "z": 11.38
+    },
+    {
+      "x": 189.0,
+      "y": 82.5,
+      "z": 11.36
+    },
+    {
+      "x": 201.8,
+      "y": 82.5,
+      "z": 11.19
+    },
+    {
+      "x": 214.5,
+      "y": 82.5,
       "z": 11.15
     },
     {
+      "x": 227.2,
+      "y": 82.5,
+      "z": 11.1
+    },
+    {
       "x": 240.0,
-      "y": 160.5,
-      "z": 11.29
+      "y": 82.5,
+      "z": 11.16
     },
     {
-      "x": 0.0,
-      "y": 171.8,
-      "z": 12.15
+      "x": -15.0,
+      "y": 94.7,
+      "z": 11.96
     },
     {
-      "x": 12.0,
-      "y": 171.8,
-      "z": 12.07
+      "x": -2.2,
+      "y": 94.7,
+      "z": 11.96
     },
     {
-      "x": 24.0,
-      "y": 171.8,
+      "x": 10.5,
+      "y": 94.7,
+      "z": 11.98
+    },
+    {
+      "x": 23.2,
+      "y": 94.7,
+      "z": 11.94
+    },
+    {
+      "x": 36.0,
+      "y": 94.7,
+      "z": 11.87
+    },
+    {
+      "x": 48.8,
+      "y": 94.7,
+      "z": 11.91
+    },
+    {
+      "x": 61.5,
+      "y": 94.7,
+      "z": 11.91
+    },
+    {
+      "x": 74.2,
+      "y": 94.7,
+      "z": 11.83
+    },
+    {
+      "x": 87.0,
+      "y": 94.7,
+      "z": 11.72
+    },
+    {
+      "x": 99.8,
+      "y": 94.7,
+      "z": 11.71
+    },
+    {
+      "x": 112.5,
+      "y": 94.7,
+      "z": 11.68
+    },
+    {
+      "x": 125.2,
+      "y": 94.7,
+      "z": 11.48
+    },
+    {
+      "x": 138.0,
+      "y": 94.7,
+      "z": 11.52
+    },
+    {
+      "x": 150.8,
+      "y": 94.7,
+      "z": 11.51
+    },
+    {
+      "x": 163.5,
+      "y": 94.7,
+      "z": 11.45
+    },
+    {
+      "x": 176.2,
+      "y": 94.7,
+      "z": 11.37
+    },
+    {
+      "x": 189.0,
+      "y": 94.7,
+      "z": 11.25
+    },
+    {
+      "x": 201.8,
+      "y": 94.7,
+      "z": 11.17
+    },
+    {
+      "x": 214.5,
+      "y": 94.7,
+      "z": 11.21
+    },
+    {
+      "x": 227.2,
+      "y": 94.7,
+      "z": 11.08
+    },
+    {
+      "x": 240.0,
+      "y": 94.7,
+      "z": 11.19
+    },
+    {
+      "x": -15.0,
+      "y": 106.9,
+      "z": 12.1
+    },
+    {
+      "x": -2.2,
+      "y": 106.9,
+      "z": 12.02
+    },
+    {
+      "x": 10.5,
+      "y": 106.9,
+      "z": 12.02
+    },
+    {
+      "x": 23.2,
+      "y": 106.9,
       "z": 12.08
     },
     {
       "x": 36.0,
-      "y": 171.8,
-      "z": 11.95
+      "y": 106.9,
+      "z": 11.97
     },
     {
-      "x": 48.0,
-      "y": 171.8,
-      "z": 12.04
+      "x": 48.8,
+      "y": 106.9,
+      "z": 11.84
     },
     {
-      "x": 60.0,
-      "y": 171.8,
-      "z": 11.99
+      "x": 61.5,
+      "y": 106.9,
+      "z": 11.81
     },
     {
-      "x": 72.0,
-      "y": 171.8,
-      "z": 12.01
+      "x": 74.2,
+      "y": 106.9,
+      "z": 11.76
     },
     {
-      "x": 84.0,
-      "y": 171.8,
-      "z": 11.99
-    },
-    {
-      "x": 96.0,
-      "y": 171.8,
-      "z": 12.05
-    },
-    {
-      "x": 108.0,
-      "y": 171.8,
-      "z": 12.01
-    },
-    {
-      "x": 120.0,
-      "y": 171.8,
-      "z": 12.23
-    },
-    {
-      "x": 132.0,
-      "y": 171.8,
-      "z": 12.04
-    },
-    {
-      "x": 144.0,
-      "y": 171.8,
-      "z": 11.94
-    },
-    {
-      "x": 156.0,
-      "y": 171.8,
-      "z": 11.77
-    },
-    {
-      "x": 168.0,
-      "y": 171.8,
-      "z": 11.69
-    },
-    {
-      "x": 180.0,
-      "y": 171.8,
-      "z": 11.6
-    },
-    {
-      "x": 192.0,
-      "y": 171.8,
-      "z": 11.42
-    },
-    {
-      "x": 204.0,
-      "y": 171.8,
-      "z": 11.44
-    },
-    {
-      "x": 216.0,
-      "y": 171.8,
-      "z": 11.26
-    },
-    {
-      "x": 228.0,
-      "y": 171.8,
-      "z": 11.37
-    },
-    {
-      "x": 240.0,
-      "y": 171.8,
-      "z": 11.36
-    },
-    {
-      "x": 0.0,
-      "y": 183.0,
-      "z": 11.96
-    },
-    {
-      "x": 12.0,
-      "y": 183.0,
-      "z": 12.07
-    },
-    {
-      "x": 24.0,
-      "y": 183.0,
-      "z": 11.99
-    },
-    {
-      "x": 36.0,
-      "y": 183.0,
-      "z": 11.93
-    },
-    {
-      "x": 48.0,
-      "y": 183.0,
-      "z": 11.99
-    },
-    {
-      "x": 60.0,
-      "y": 183.0,
+      "x": 87.0,
+      "y": 106.9,
       "z": 11.86
     },
     {
-      "x": 72.0,
-      "y": 183.0,
-      "z": 11.82
+      "x": 99.8,
+      "y": 106.9,
+      "z": 11.79
     },
     {
-      "x": 84.0,
-      "y": 183.0,
-      "z": 11.86
+      "x": 112.5,
+      "y": 106.9,
+      "z": 11.61
     },
     {
-      "x": 96.0,
-      "y": 183.0,
-      "z": 11.93
+      "x": 125.2,
+      "y": 106.9,
+      "z": 11.67
     },
     {
-      "x": 108.0,
-      "y": 183.0,
-      "z": 12.1
+      "x": 138.0,
+      "y": 106.9,
+      "z": 11.63
     },
     {
-      "x": 120.0,
-      "y": 183.0,
-      "z": 12.15
+      "x": 150.8,
+      "y": 106.9,
+      "z": 11.51
     },
     {
-      "x": 132.0,
-      "y": 183.0,
-      "z": 11.96
+      "x": 163.5,
+      "y": 106.9,
+      "z": 11.39
     },
     {
-      "x": 144.0,
-      "y": 183.0,
-      "z": 11.88
-    },
-    {
-      "x": 156.0,
-      "y": 183.0,
-      "z": 11.72
-    },
-    {
-      "x": 168.0,
-      "y": 183.0,
-      "z": 11.73
-    },
-    {
-      "x": 180.0,
-      "y": 183.0,
-      "z": 11.57
-    },
-    {
-      "x": 192.0,
-      "y": 183.0,
-      "z": 11.58
-    },
-    {
-      "x": 204.0,
-      "y": 183.0,
-      "z": 11.37
-    },
-    {
-      "x": 216.0,
-      "y": 183.0,
-      "z": 11.47
-    },
-    {
-      "x": 228.0,
-      "y": 183.0,
+      "x": 176.2,
+      "y": 106.9,
       "z": 11.3
     },
     {
+      "x": 189.0,
+      "y": 106.9,
+      "z": 11.13
+    },
+    {
+      "x": 201.8,
+      "y": 106.9,
+      "z": 11.14
+    },
+    {
+      "x": 214.5,
+      "y": 106.9,
+      "z": 11.3
+    },
+    {
+      "x": 227.2,
+      "y": 106.9,
+      "z": 11.21
+    },
+    {
       "x": 240.0,
-      "y": 183.0,
+      "y": 106.9,
+      "z": 11.19
+    },
+    {
+      "x": -15.0,
+      "y": 119.1,
+      "z": 12.14
+    },
+    {
+      "x": -2.2,
+      "y": 119.1,
+      "z": 12.11
+    },
+    {
+      "x": 10.5,
+      "y": 119.1,
+      "z": 12.24
+    },
+    {
+      "x": 23.2,
+      "y": 119.1,
+      "z": 12.17
+    },
+    {
+      "x": 36.0,
+      "y": 119.1,
+      "z": 11.92
+    },
+    {
+      "x": 48.8,
+      "y": 119.1,
+      "z": 11.87
+    },
+    {
+      "x": 61.5,
+      "y": 119.1,
+      "z": 11.86
+    },
+    {
+      "x": 74.2,
+      "y": 119.1,
+      "z": 11.84
+    },
+    {
+      "x": 87.0,
+      "y": 119.1,
+      "z": 11.89
+    },
+    {
+      "x": 99.8,
+      "y": 119.1,
+      "z": 11.78
+    },
+    {
+      "x": 112.5,
+      "y": 119.1,
+      "z": 11.73
+    },
+    {
+      "x": 125.2,
+      "y": 119.1,
+      "z": 11.6
+    },
+    {
+      "x": 138.0,
+      "y": 119.1,
+      "z": 11.67
+    },
+    {
+      "x": 150.8,
+      "y": 119.1,
+      "z": 11.52
+    },
+    {
+      "x": 163.5,
+      "y": 119.1,
+      "z": 11.47
+    },
+    {
+      "x": 176.2,
+      "y": 119.1,
+      "z": 11.37
+    },
+    {
+      "x": 189.0,
+      "y": 119.1,
+      "z": 11.33
+    },
+    {
+      "x": 201.8,
+      "y": 119.1,
+      "z": 11.23
+    },
+    {
+      "x": 214.5,
+      "y": 119.1,
+      "z": 11.29
+    },
+    {
+      "x": 227.2,
+      "y": 119.1,
+      "z": 11.18
+    },
+    {
+      "x": 240.0,
+      "y": 119.1,
+      "z": 11.2
+    },
+    {
+      "x": -15.0,
+      "y": 131.2,
+      "z": 12.12
+    },
+    {
+      "x": -2.2,
+      "y": 131.2,
+      "z": 12.14
+    },
+    {
+      "x": 10.5,
+      "y": 131.2,
+      "z": 12.34
+    },
+    {
+      "x": 23.2,
+      "y": 131.2,
+      "z": 12.24
+    },
+    {
+      "x": 36.0,
+      "y": 131.2,
+      "z": 11.99
+    },
+    {
+      "x": 48.8,
+      "y": 131.2,
+      "z": 12.01
+    },
+    {
+      "x": 61.5,
+      "y": 131.2,
+      "z": 11.86
+    },
+    {
+      "x": 74.2,
+      "y": 131.2,
+      "z": 11.94
+    },
+    {
+      "x": 87.0,
+      "y": 131.2,
+      "z": 12.02
+    },
+    {
+      "x": 99.8,
+      "y": 131.2,
+      "z": 11.91
+    },
+    {
+      "x": 112.5,
+      "y": 131.2,
+      "z": 11.78
+    },
+    {
+      "x": 125.2,
+      "y": 131.2,
+      "z": 11.73
+    },
+    {
+      "x": 138.0,
+      "y": 131.2,
+      "z": 11.65
+    },
+    {
+      "x": 150.8,
+      "y": 131.2,
+      "z": 11.65
+    },
+    {
+      "x": 163.5,
+      "y": 131.2,
+      "z": 11.49
+    },
+    {
+      "x": 176.2,
+      "y": 131.2,
+      "z": 11.46
+    },
+    {
+      "x": 189.0,
+      "y": 131.2,
+      "z": 11.29
+    },
+    {
+      "x": 201.8,
+      "y": 131.2,
+      "z": 11.22
+    },
+    {
+      "x": 214.5,
+      "y": 131.2,
+      "z": 11.21
+    },
+    {
+      "x": 227.2,
+      "y": 131.2,
+      "z": 11.12
+    },
+    {
+      "x": 240.0,
+      "y": 131.2,
+      "z": 11.17
+    },
+    {
+      "x": -15.0,
+      "y": 143.4,
+      "z": 12.17
+    },
+    {
+      "x": -2.2,
+      "y": 143.4,
+      "z": 12.32
+    },
+    {
+      "x": 10.5,
+      "y": 143.4,
+      "z": 12.35
+    },
+    {
+      "x": 23.2,
+      "y": 143.4,
+      "z": 12.34
+    },
+    {
+      "x": 36.0,
+      "y": 143.4,
+      "z": 12.12
+    },
+    {
+      "x": 48.8,
+      "y": 143.4,
+      "z": 11.99
+    },
+    {
+      "x": 61.5,
+      "y": 143.4,
+      "z": 11.97
+    },
+    {
+      "x": 74.2,
+      "y": 143.4,
+      "z": 11.95
+    },
+    {
+      "x": 87.0,
+      "y": 143.4,
+      "z": 11.99
+    },
+    {
+      "x": 99.8,
+      "y": 143.4,
+      "z": 11.93
+    },
+    {
+      "x": 112.5,
+      "y": 143.4,
+      "z": 11.98
+    },
+    {
+      "x": 125.2,
+      "y": 143.4,
+      "z": 11.87
+    },
+    {
+      "x": 138.0,
+      "y": 143.4,
+      "z": 11.76
+    },
+    {
+      "x": 150.8,
+      "y": 143.4,
+      "z": 11.69
+    },
+    {
+      "x": 163.5,
+      "y": 143.4,
+      "z": 11.54
+    },
+    {
+      "x": 176.2,
+      "y": 143.4,
+      "z": 11.51
+    },
+    {
+      "x": 189.0,
+      "y": 143.4,
+      "z": 11.47
+    },
+    {
+      "x": 201.8,
+      "y": 143.4,
+      "z": 11.34
+    },
+    {
+      "x": 214.5,
+      "y": 143.4,
+      "z": 11.09
+    },
+    {
+      "x": 227.2,
+      "y": 143.4,
+      "z": 11.05
+    },
+    {
+      "x": 240.0,
+      "y": 143.4,
+      "z": 11.15
+    },
+    {
+      "x": -15.0,
+      "y": 155.6,
+      "z": 12.02
+    },
+    {
+      "x": -2.2,
+      "y": 155.6,
+      "z": 12.13
+    },
+    {
+      "x": 10.5,
+      "y": 155.6,
+      "z": 12.16
+    },
+    {
+      "x": 23.2,
+      "y": 155.6,
+      "z": 12.23
+    },
+    {
+      "x": 36.0,
+      "y": 155.6,
+      "z": 12.14
+    },
+    {
+      "x": 48.8,
+      "y": 155.6,
+      "z": 12.06
+    },
+    {
+      "x": 61.5,
+      "y": 155.6,
+      "z": 11.88
+    },
+    {
+      "x": 74.2,
+      "y": 155.6,
+      "z": 11.98
+    },
+    {
+      "x": 87.0,
+      "y": 155.6,
+      "z": 11.98
+    },
+    {
+      "x": 99.8,
+      "y": 155.6,
+      "z": 11.9
+    },
+    {
+      "x": 112.5,
+      "y": 155.6,
+      "z": 12.11
+    },
+    {
+      "x": 125.2,
+      "y": 155.6,
+      "z": 12.11
+    },
+    {
+      "x": 138.0,
+      "y": 155.6,
+      "z": 11.78
+    },
+    {
+      "x": 150.8,
+      "y": 155.6,
+      "z": 11.75
+    },
+    {
+      "x": 163.5,
+      "y": 155.6,
+      "z": 11.58
+    },
+    {
+      "x": 176.2,
+      "y": 155.6,
+      "z": 11.53
+    },
+    {
+      "x": 189.0,
+      "y": 155.6,
+      "z": 11.52
+    },
+    {
+      "x": 201.8,
+      "y": 155.6,
+      "z": 11.39
+    },
+    {
+      "x": 214.5,
+      "y": 155.6,
+      "z": 11.17
+    },
+    {
+      "x": 227.2,
+      "y": 155.6,
+      "z": 11.18
+    },
+    {
+      "x": 240.0,
+      "y": 155.6,
+      "z": 11.21
+    },
+    {
+      "x": -15.0,
+      "y": 167.8,
+      "z": 12.02
+    },
+    {
+      "x": -2.2,
+      "y": 167.8,
+      "z": 12.04
+    },
+    {
+      "x": 10.5,
+      "y": 167.8,
+      "z": 12.09
+    },
+    {
+      "x": 23.2,
+      "y": 167.8,
+      "z": 12.13
+    },
+    {
+      "x": 36.0,
+      "y": 167.8,
+      "z": 11.94
+    },
+    {
+      "x": 48.8,
+      "y": 167.8,
+      "z": 11.97
+    },
+    {
+      "x": 61.5,
+      "y": 167.8,
+      "z": 11.92
+    },
+    {
+      "x": 74.2,
+      "y": 167.8,
+      "z": 11.84
+    },
+    {
+      "x": 87.0,
+      "y": 167.8,
+      "z": 11.91
+    },
+    {
+      "x": 99.8,
+      "y": 167.8,
+      "z": 12.03
+    },
+    {
+      "x": 112.5,
+      "y": 167.8,
+      "z": 12.15
+    },
+    {
+      "x": 125.2,
+      "y": 167.8,
+      "z": 12.09
+    },
+    {
+      "x": 138.0,
+      "y": 167.8,
+      "z": 12.04
+    },
+    {
+      "x": 150.8,
+      "y": 167.8,
+      "z": 11.81
+    },
+    {
+      "x": 163.5,
+      "y": 167.8,
+      "z": 11.73
+    },
+    {
+      "x": 176.2,
+      "y": 167.8,
+      "z": 11.48
+    },
+    {
+      "x": 189.0,
+      "y": 167.8,
       "z": 11.43
+    },
+    {
+      "x": 201.8,
+      "y": 167.8,
+      "z": 11.3
+    },
+    {
+      "x": 214.5,
+      "y": 167.8,
+      "z": 11.36
+    },
+    {
+      "x": 227.2,
+      "y": 167.8,
+      "z": 11.23
+    },
+    {
+      "x": 240.0,
+      "y": 167.8,
+      "z": 11.21
+    },
+    {
+      "x": -15.0,
+      "y": 180.0,
+      "z": 11.99
+    },
+    {
+      "x": -2.2,
+      "y": 180.0,
+      "z": 12.1
+    },
+    {
+      "x": 10.5,
+      "y": 180.0,
+      "z": 12.09
+    },
+    {
+      "x": 23.2,
+      "y": 180.0,
+      "z": 11.97
+    },
+    {
+      "x": 36.0,
+      "y": 180.0,
+      "z": 11.91
+    },
+    {
+      "x": 48.8,
+      "y": 180.0,
+      "z": 12.01
+    },
+    {
+      "x": 61.5,
+      "y": 180.0,
+      "z": 11.93
+    },
+    {
+      "x": 74.2,
+      "y": 180.0,
+      "z": 11.95
+    },
+    {
+      "x": 87.0,
+      "y": 180.0,
+      "z": 11.86
+    },
+    {
+      "x": 99.8,
+      "y": 180.0,
+      "z": 11.91
+    },
+    {
+      "x": 112.5,
+      "y": 180.0,
+      "z": 12.12
+    },
+    {
+      "x": 125.2,
+      "y": 180.0,
+      "z": 12.07
+    },
+    {
+      "x": 138.0,
+      "y": 180.0,
+      "z": 11.87
+    },
+    {
+      "x": 150.8,
+      "y": 180.0,
+      "z": 11.86
+    },
+    {
+      "x": 163.5,
+      "y": 180.0,
+      "z": 11.69
+    },
+    {
+      "x": 176.2,
+      "y": 180.0,
+      "z": 11.64
+    },
+    {
+      "x": 189.0,
+      "y": 180.0,
+      "z": 11.43
+    },
+    {
+      "x": 201.8,
+      "y": 180.0,
+      "z": 11.5
+    },
+    {
+      "x": 214.5,
+      "y": 180.0,
+      "z": 11.3
+    },
+    {
+      "x": 227.2,
+      "y": 180.0,
+      "z": 11.41
+    },
+    {
+      "x": 240.0,
+      "y": 180.0,
+      "z": 11.32
     }
   ]
 }
