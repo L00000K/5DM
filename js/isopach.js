@@ -178,6 +178,51 @@ export class IsopachMap {
       ctx.fillText(bh.id, px, py - 5);
     });
 
+    // ── Contour lines (5 levels) ─────────────────────────────────────────────
+    if (vMin < vMax) {
+      const nContours = 5;
+      ctx.lineWidth = 0.8;
+      ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+      ctx.font = '7px monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+      for (let ci = 1; ci < nContours; ci++) {
+        const cLevel = vMin + (vMax - vMin) * ci / nContours;
+        // Simple cell-edge contouring: draw short line segments where level crosses cell edges
+        ctx.beginPath();
+        for (let iy = 0; iy < ny - 1; iy++) {
+          for (let ix = 0; ix < nx - 1; ix++) {
+            const v00 = vals[ix     + iy * nx];
+            const v10 = vals[(ix+1) + iy * nx];
+            const v01 = vals[ix     + (iy+1) * nx];
+            const v11 = vals[(ix+1) + (iy+1) * nx];
+            if (v00 == null || v10 == null || v01 == null || v11 == null) continue;
+
+            const px0 = PAD + ix * cellPxW;
+            const py0 = PAD + (ny - 1 - iy) * cellPxH;
+
+            // Check bottom edge (v00 → v10)
+            if ((v00 - cLevel) * (v10 - cLevel) < 0) {
+              const t = (cLevel - v00) / (v10 - v00);
+              ctx.moveTo(px0 + t * cellPxW, py0);
+              ctx.lineTo(px0 + t * cellPxW, py0 - cellPxH * 0.3);
+            }
+            // Check left edge (v00 → v01)
+            if ((v00 - cLevel) * (v01 - cLevel) < 0) {
+              const t = (cLevel - v00) / (v01 - v00);
+              ctx.moveTo(px0, py0 - t * cellPxH);
+              ctx.lineTo(px0 + cellPxW * 0.3, py0 - t * cellPxH);
+            }
+          }
+        }
+        ctx.stroke();
+        // Label at leftmost crossing in top row
+        const labelVal = mode === 'settle' ? `${cLevel.toFixed(0)}`
+                       : mode === 'cert'   ? `${(cLevel*100).toFixed(0)}%`
+                       : `${cLevel.toFixed(1)}`;
+        ctx.fillText(labelVal, PAD + 2, PAD + (ny - 1 - Math.floor(ny * ci / nContours)) * cellPxH + 8);
+      }
+    }
+
     // ── Frame ────────────────────────────────────────────────────────────────
     ctx.strokeStyle = '#c8cdd6'; ctx.lineWidth = 1;
     ctx.strokeRect(PAD, PAD, drawW, drawH);

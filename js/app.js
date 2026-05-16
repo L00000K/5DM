@@ -430,6 +430,7 @@ async function loadDemoSite(demoName) {
     updateBHTable();
     updateBHChart();
     updateStratColumn();
+    updateBHUnitStats();
     setEnabled('btn-run-ai', true);
     setEnabled('btn-build-model', true);
     setEnabled('btn-export-bh-csv', true);
@@ -503,6 +504,7 @@ function initRunAI() {
       updateLegend();
       updateBHTable();
       updateBHChart();
+      updateBHUnitStats();
       AppState.bhLogView?.draw(classified.filter(b => !b.synthetic), units);
       log(`Analysis complete — ${units.length} units classified.`, 'ok');
       setEnabled('btn-build-model', true);
@@ -725,6 +727,7 @@ function initProjectConfig() {
       updateBHTable();
       updateBHChart();
       updateStratColumn();
+      updateBHUnitStats();
       renderPropertiesTable(AppState.geoUnits, () => updateLegend());
       AppState.bhLogView?.draw(AppState.classifiedBH.filter(b => !b.synthetic), AppState.geoUnits);
       setEnabled('btn-run-ai', true);
@@ -1711,6 +1714,66 @@ function _cssEsc(s) {
 }
 
 // ── Unit statistics ───────────────────────────────────────────────────────────
+// ── BH-derived unit parameter statistics ─────────────────────────────────────
+function updateBHUnitStats() {
+  const el = document.getElementById('bh-unit-stats');
+  if (!el) return;
+  const bhs = AppState.classifiedBH.filter(b => !b.synthetic);
+  const geoUnits = AppState.geoUnits;
+  if (!bhs.length || !geoUnits.length) {
+    el.innerHTML = '<p class="hint">Load borehole data to see statistics.</p>';
+    return;
+  }
+
+  // Accumulate per unit: thickness, sptN, certainty
+  const acc = {};
+  geoUnits.forEach(u => { acc[u.code] = { thickArr: [], sptArr: [], certArr: [] }; });
+
+  for (const bh of bhs) {
+    for (const l of bh.layers) {
+      const code = l.unitCode;
+      if (!code || !acc[code]) continue;
+      const thick = (l.base - l.top);
+      if (thick > 0) acc[code].thickArr.push(thick);
+      if (l.sptN != null && l.sptN > 0) acc[code].sptArr.push(l.sptN);
+      if (l.certainty != null) acc[code].certArr.push(l.certainty);
+    }
+  }
+
+  const mean = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+  const std  = (arr, m) => arr.length > 1
+    ? Math.sqrt(arr.reduce((s, v) => s + (v - m) ** 2, 0) / arr.length) : 0;
+  const fmt  = (v, dp = 1) => v != null ? v.toFixed(dp) : '—';
+
+  el.innerHTML = '';
+  for (const unit of geoUnits) {
+    const s = acc[unit.code];
+    if (!s || !s.thickArr.length) continue;
+    const mThick = mean(s.thickArr), sdThick = std(s.thickArr, mThick);
+    const mSPT   = mean(s.sptArr),   sdSPT   = std(s.sptArr, mSPT);
+    const mCert  = mean(s.certArr);
+
+    const div = document.createElement('div');
+    div.className = 'stat-row';
+    div.innerHTML = `
+      <div class="stat-hdr">
+        <span class="stat-swatch" style="background:${unit.color}"></span>
+        <span class="stat-code">${escHtml(unit.code)}</span>
+        <span class="stat-name">${escHtml(unit.name)}</span>
+        <span class="stat-val" style="margin-left:auto;font-size:10px;color:var(--text-dim)">${s.thickArr.length} int.</span>
+      </div>
+      <div class="stat-grid">
+        <span class="stat-lbl">Thickness</span>
+        <span class="stat-val">${fmt(mThick)} ± ${fmt(sdThick)} m</span>
+        ${mSPT != null ? `<span class="stat-lbl">SPT N</span>
+        <span class="stat-val">${fmt(mSPT, 0)} ± ${fmt(sdSPT, 0)}</span>` : ''}
+        ${mCert != null ? `<span class="stat-lbl">Certainty</span>
+        <span class="stat-val">${(mCert * 100).toFixed(0)}%</span>` : ''}
+      </div>`;
+    el.appendChild(div);
+  }
+}
+
 function updateUnitStats() {
   const el = document.getElementById('unit-stats');
   if (!el) return;
