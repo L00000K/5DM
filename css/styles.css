@@ -1743,6 +1743,90 @@ input[type="range"] {
   border-radius: var(--radius-sm);
 }
 
+/* ── Properties tab ── */
+#tab-properties { padding: 0; overflow: hidden; min-height: 0; }
+.props-table-wrap {
+  overflow: auto;
+  flex: 1;
+}
+.props-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.props-table th {
+  background: var(--bg-surface);
+  padding: 4px 6px;
+  text-align: right;
+  font-weight: 600;
+  color: var(--text-mid);
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.props-table th:first-child,
+.props-table th:nth-child(2) { text-align: left; }
+.props-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--bg-surface);
+  border-right: 1px solid var(--bg-surface);
+  vertical-align: middle;
+  text-align: right;
+}
+.props-table td:first-child { text-align: left; white-space: nowrap; }
+.props-swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.props-name-cell {
+  text-align: left;
+  min-width: 60px;
+  cursor: text;
+}
+.props-name-cell:focus {
+  outline: 1px solid var(--accent);
+  background: var(--accent-glow);
+  border-radius: 2px;
+}
+.props-input {
+  width: 52px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 11px;
+  text-align: right;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+.props-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+
+/* ── Plan view panel ── */
+.plan-view-slider { height: 16px; }
+
+/* ── Legend rename hint ── */
+.legend-name {
+  cursor: default;
+}
+.legend-name[contenteditable="true"] {
+  outline: 1px solid var(--accent);
+  background: var(--accent-glow);
+  border-radius: 2px;
+  cursor: text;
+  padding: 0 3px;
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   #app-main {

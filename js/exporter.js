@@ -1,6 +1,7 @@
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { OBJExporter  } from 'three/addons/exporters/OBJExporter.js';
-import { AppState, log, updateBHChart } from './app.js';
+import { AppState, log } from './app.js';
+import { exportPropertiesCSV } from './properties.js';
 
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
@@ -53,6 +54,48 @@ export function initExporter() {
     };
     downloadBlob(new Blob([JSON.stringify(payload)], { type: 'application/json' }), 'geomodel-voxels.json');
     log('JSON exported.', 'ok');
+  });
+
+  // ── Export formation contacts as CSV ─────────────────────────────────────
+  document.getElementById('btn-export-contacts')?.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('No voxel grid to export.', 'warn'); return; }
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds } = grid;
+    const unitById = {};
+    AppState.geoUnits.forEach(u => { unitById[u.id] = u; });
+
+    const rows = ['Unit_Code,Unit_Name,IX,IY,X,Y,Top_Z_mAOD'];
+    for (let iy = 0; iy < ny; iy++) {
+      for (let ix = 0; ix < nx; ix++) {
+        // Per unit: find topmost voxel (highest iz)
+        const topByUnit = {};
+        for (let iz = nz - 1; iz >= 0; iz--) {
+          const uid = unitIds[ix + iy * nx + iz * nx * ny];
+          if (uid && topByUnit[uid] === undefined) topByUnit[uid] = iz;
+        }
+        for (const [uid, iz] of Object.entries(topByUnit)) {
+          const unit = unitById[uid];
+          if (!unit) continue;
+          const x   = (O.x + (ix + 0.5) * cs).toFixed(2);
+          const y   = (O.z + (iy + 0.5) * cs).toFixed(2);
+          const top = (O.y + (parseInt(iz) + 1) * ch).toFixed(2);
+          rows.push([
+            unit.code,
+            `"${(unit.name ?? '').replace(/"/g, '""')}"`,
+            ix, iy, x, y, top,
+          ].join(','));
+        }
+      }
+    }
+    downloadBlob(new Blob([rows.join('\n')], { type: 'text/csv' }), 'formation-contacts.csv');
+    log(`Formation contacts exported — ${rows.length - 1} contact points.`, 'ok');
+  });
+
+  // ── Export unit properties as CSV ─────────────────────────────────────────
+  document.getElementById('btn-export-props')?.addEventListener('click', () => {
+    if (!AppState.geoUnits.length) { log('No units to export.', 'warn'); return; }
+    exportPropertiesCSV(AppState.geoUnits);
+    log('Unit properties CSV exported.', 'ok');
   });
 
   // ── Export borehole logs as CSV ──────────────────────────────────────────

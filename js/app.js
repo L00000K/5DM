@@ -11,6 +11,8 @@ import { parseGeoMap } from './geo-map.js';
 import { FenceSection } from './fence-section.js';
 import { IsopachMap  } from './isopach.js';
 import { ModelReport } from './report.js';
+import { PlanView } from './plan-view.js';
+import { renderPropertiesTable } from './properties.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -32,6 +34,7 @@ export const AppState = {
   topoPoints: null,
   fenceSection: null,
   isopachMap: null,
+  planView: null,
   report: null,
 };
 
@@ -226,8 +229,11 @@ function initReset() {
     setEnabled('btn-export-obj', false);
     setEnabled('btn-export-json', false);
     setEnabled('btn-export-bh-csv', false);
+    setEnabled('btn-export-props', false);
     setEnabled('btn-isopach', false);
     setEnabled('btn-model-report', false);
+    setEnabled('btn-plan-view', false);
+    setEnabled('btn-export-contacts', false);
     updateStratColumn();
     if (AppState.scene) AppState.scene.clear();
     showWelcome();
@@ -294,6 +300,7 @@ async function loadDemoSite(demoName) {
     setEnabled('btn-run-ai', true);
     setEnabled('btn-build-model', true);
     setEnabled('btn-export-bh-csv', true);
+    setEnabled('btn-export-props', true);
     log(`${data.site?.name ?? demoName} — ${AppState.rawBoreholes.length} boreholes loaded.`, 'ok');
 
     setTimeout(() => document.getElementById('btn-build-model').click(), 200);
@@ -356,6 +363,7 @@ function initRunAI() {
       AppState.geoUnits = units;
       AppState.classifiedBH = classified;
       setEnabled('btn-export-bh-csv', true);
+      setEnabled('btn-export-props', true);
       updateLegend();
       updateBHTable();
       updateBHChart();
@@ -399,6 +407,8 @@ function initBuildModel() {
       setEnabled('btn-apply-constraints', true);
       setEnabled('btn-isopach', true);
       setEnabled('btn-model-report', true);
+      setEnabled('btn-plan-view', true);
+      setEnabled('btn-export-contacts', true);
       AppState.report?.compute(AppState.voxelGrid, AppState.classifiedBH, AppState.geoUnits);
       updateStratColumn();
 
@@ -423,6 +433,68 @@ function initBuildModel() {
       console.error(err);
       setEnabled('btn-build-model', true);
     }
+  });
+}
+
+// ── Plan view (horizontal slice) ──────────────────────────────────────────────
+function initPlanView() {
+  AppState.planView = new PlanView();
+
+  document.getElementById('btn-plan-view')?.addEventListener('click', () => {
+    if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
+    AppState.planView.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
+  });
+}
+
+// ── Unit properties tab ───────────────────────────────────────────────────────
+function initPropertiesTab() {
+  const refresh = () => renderPropertiesTable(AppState.geoUnits, () => updateLegend());
+
+  document.querySelectorAll('.tab-btn[data-tab="properties"]').forEach(btn => {
+    btn.addEventListener('click', refresh);
+  });
+
+  document.getElementById('btn-export-props')?.addEventListener('click', () => {
+    // handled in exporter.js
+  });
+}
+
+// ── Rename legend units on double-click ───────────────────────────────────────
+function initLegendRename() {
+  // Delegated listener on the legend container
+  const legend = document.getElementById('unit-legend');
+  legend?.addEventListener('dblclick', e => {
+    const nameEl = e.target.closest('.legend-name');
+    if (!nameEl) return;
+    const item = nameEl.closest('.legend-item');
+    if (!item) return;
+    const code = item.dataset.code;
+    const unit = AppState.geoUnits.find(u => u.code === code);
+    if (!unit) return;
+    nameEl.contentEditable = 'true';
+    nameEl.focus();
+    const range = document.createRange();
+    range.selectNodeContents(nameEl);
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+
+    const commit = () => {
+      nameEl.contentEditable = 'false';
+      const newName = nameEl.textContent.trim();
+      if (newName) unit.name = newName;
+      else nameEl.textContent = unit.name;
+      // Refresh stats that show unit name
+      updateUnitStats();
+    };
+    nameEl.addEventListener('blur',    commit, { once: true });
+    nameEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); nameEl.blur(); }
+      if (e.key === 'Escape') {
+        nameEl.textContent = unit.name;
+        nameEl.contentEditable = 'false';
+      }
+    }, { once: true });
+    e.stopPropagation();
   });
 }
 
@@ -1104,6 +1176,9 @@ async function init() {
   initMeasureTool();
   initModelReport();
   initAnnotations();
+  initPlanView();
+  initPropertiesTab();
+  initLegendRename();
   initWelcomeOverlay();
 
   // Sample tile buttons (left panel)

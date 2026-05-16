@@ -33,9 +33,10 @@
     <aside id="left-panel">
       <div class="panel-tabs" role="tablist">
         <button class="tab-btn active" data-tab="data" role="tab">Data</button>
-        <button class="tab-btn" data-tab="constraints" role="tab">Constraints</button>
-        <button class="tab-btn" data-tab="analysis" role="tab">Analysis</button>
+        <button class="tab-btn" data-tab="constraints" role="tab">Rules</button>
+        <button class="tab-btn" data-tab="analysis" role="tab">Log</button>
         <button class="tab-btn" data-tab="bhdata" role="tab">Table</button>
+        <button class="tab-btn" data-tab="properties" role="tab">Props</button>
       </div>
 
       <!-- DATA TAB -->
@@ -241,6 +242,17 @@
         </div>
       </div>
 
+      <!-- PROPERTIES TAB -->
+      <div class="tab-content" id="tab-properties" role="tabpanel">
+        <p class="hint" style="padding:8px 8px 4px">Edit geotechnical parameters per unit. Double-click unit names in the legend to rename.</p>
+        <div id="props-table-wrap" class="props-table-wrap">
+          <p class="hint" style="padding:8px">Load borehole data to see unit properties.</p>
+        </div>
+        <div class="panel-actions" style="padding:8px 8px 0;gap:6px">
+          <button id="btn-export-props" class="btn-secondary btn-sm" disabled>⬇ Props CSV</button>
+        </div>
+      </div>
+
       <!-- Action buttons -->
       <div class="panel-actions">
         <button id="btn-run-ai" class="btn-primary" disabled>Run AI Analysis →</button>
@@ -307,6 +319,23 @@
               <div class="wsb-meta">10 BH · 120×80 m · urban brownfield</div>
             </button>
           </div>
+        </div>
+      </div>
+
+      <!-- Plan View panel -->
+      <div id="plan-view-panel" class="fence-panel" hidden>
+        <div class="fence-panel-hdr">
+          <span class="fence-title">Plan View</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="plan-view-elev-lbl">Elevation:</span>
+            <input type="range" id="plan-view-elevation" class="plan-view-slider" style="width:100px">
+            <span id="plan-view-elev-lbl" class="range-readout" style="width:72px;text-align:left">— mAOD</span>
+            <button id="plan-view-export" class="btn-ghost btn-sm" title="Export PNG">⬇ PNG</button>
+            <button id="plan-view-close" class="slicer-close-btn" title="Close">✕</button>
+          </div>
+        </div>
+        <div class="fence-canvas-wrap">
+          <canvas id="plan-view-canvas" class="fence-canvas"></canvas>
         </div>
       </div>
 
@@ -503,6 +532,7 @@
           <p class="hint">Build model to see volumes</p>
         </div>
         <button id="btn-isopach" class="btn-secondary btn-sm" disabled style="margin-top:8px;width:100%">⊞ Isopach Map</button>
+        <button id="btn-plan-view" class="btn-secondary btn-sm" disabled style="margin-top:4px;width:100%">⊟ Plan View</button>
       </div>
 
       <div class="panel-section">
@@ -540,8 +570,11 @@
         <button id="btn-export-gltf" class="btn-secondary" disabled>⬇ GLTF</button>
         <button id="btn-export-obj"  class="btn-secondary" disabled>⬇ OBJ</button>
         <button id="btn-export-json" class="btn-secondary" disabled>⬇ JSON</button>
-        <div class="settings-divider">Borehole Data</div>
+        <div class="settings-divider">Analysis Data</div>
+        <button id="btn-export-contacts" class="btn-secondary" disabled>⬇ Formation Contacts</button>
         <button id="btn-export-bh-csv" class="btn-secondary" disabled>⬇ BH Logs CSV</button>
+        <div class="settings-divider">Unit Properties</div>
+        <button id="btn-export-props" class="btn-secondary" disabled>⬇ Unit Properties CSV</button>
       </div>
 
     </aside>
