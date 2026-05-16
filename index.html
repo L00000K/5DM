@@ -370,6 +370,7 @@
       <div class="viewer-controls">
         <button id="btn-screenshot" class="btn-open-slicer" title="Save screenshot (PNG)">📷</button>
         <button id="btn-measure" class="btn-open-slicer" title="Measure distance between two points (M)">📏 Measure</button>
+        <button id="btn-annotate" class="btn-open-slicer" title="Place annotation label (A)">✎ Label</button>
         <button id="btn-open-slicer" class="btn-open-slicer">✂ Section</button>
         <button id="btn-vbh" class="btn-open-slicer" title="Virtual Borehole — click on model (K)">⊕ VBH</button>
         <div class="view-mode-ctrl">
@@ -396,6 +397,10 @@
         <div class="log-popup-body">
           <div id="log-strips" class="log-strips"></div>
           <div id="log-labels" class="log-labels"></div>
+          <div id="log-spt" class="log-spt" hidden></div>
+        </div>
+        <div class="log-popup-spt-legend" id="log-spt-legend" hidden>
+          <span class="log-spt-legend-lbl">SPT N →</span>
         </div>
       </div>
 
@@ -515,6 +520,19 @@
         <div id="unit-stats" class="unit-stats">
           <p class="hint">Build model to see statistics</p>
         </div>
+      </div>
+
+      <div class="panel-section">
+        <h3>Model Quality</h3>
+        <canvas id="coverage-canvas" class="coverage-canvas"></canvas>
+        <div id="quality-stats" class="quality-stats"></div>
+        <button id="btn-model-report" class="btn-secondary btn-sm" disabled style="margin-top:8px;width:100%">⬇ Export Report HTML</button>
+      </div>
+
+      <div class="panel-section">
+        <h3>Stratigraphy</h3>
+        <canvas id="strat-canvas" class="strat-canvas" hidden></canvas>
+        <p class="hint" id="strat-hint">Build model to see stratigraphic column</p>
       </div>
 
       <div class="panel-section export-section">

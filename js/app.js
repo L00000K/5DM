@@ -10,6 +10,7 @@ import { parseConstraints, applyConstraints, constraintSummary } from './constra
 import { parseGeoMap } from './geo-map.js';
 import { FenceSection } from './fence-section.js';
 import { IsopachMap  } from './isopach.js';
+import { ModelReport } from './report.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -31,13 +32,16 @@ export const AppState = {
   topoPoints: null,
   fenceSection: null,
   isopachMap: null,
+  report: null,
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
 export function log(msg, type = 'info') {
-  const el = document.createElement('div');
+  const el  = document.createElement('div');
   el.className = `log-entry log-${type}`;
-  el.textContent = msg;
+  const now = new Date();
+  const ts  = now.toTimeString().slice(0, 8);
+  el.innerHTML = `<span class="log-ts">${ts}</span>${escHtml(msg)}`;
   const logEl = document.getElementById('status-log');
   logEl.appendChild(el);
   logEl.scrollTop = logEl.scrollHeight;
@@ -223,6 +227,8 @@ function initReset() {
     setEnabled('btn-export-json', false);
     setEnabled('btn-export-bh-csv', false);
     setEnabled('btn-isopach', false);
+    setEnabled('btn-model-report', false);
+    updateStratColumn();
     if (AppState.scene) AppState.scene.clear();
     showWelcome();
     switchTab('data');
@@ -284,6 +290,7 @@ async function loadDemoSite(demoName) {
     updateInfoPanel();
     updateBHTable();
     updateBHChart();
+    updateStratColumn();
     setEnabled('btn-run-ai', true);
     setEnabled('btn-build-model', true);
     setEnabled('btn-export-bh-csv', true);
@@ -391,6 +398,9 @@ function initBuildModel() {
       setEnabled('btn-build-model', true);
       setEnabled('btn-apply-constraints', true);
       setEnabled('btn-isopach', true);
+      setEnabled('btn-model-report', true);
+      AppState.report?.compute(AppState.voxelGrid, AppState.classifiedBH, AppState.geoUnits);
+      updateStratColumn();
 
       // Auto-apply pre-set constraints
       const constraintText = document.getElementById('constraints-text').value.trim();
@@ -413,6 +423,114 @@ function initBuildModel() {
       console.error(err);
       setEnabled('btn-build-model', true);
     }
+  });
+}
+
+// ── Model quality / coverage report ──────────────────────────────────────────
+function initModelReport() {
+  AppState.report = new ModelReport();
+
+  document.getElementById('btn-model-report')?.addEventListener('click', () => {
+    if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
+    AppState.report.exportHTML(AppState.voxelGrid, AppState.classifiedBH, AppState.geoUnits);
+    log('Report HTML downloaded.', 'ok');
+  });
+}
+
+// ── 3D Annotation labels ──────────────────────────────────────────────────────
+function initAnnotations() {
+  const btn = document.getElementById('btn-annotate');
+  const toggle = () => {
+    if (!AppState.scene) return;
+    AppState.scene.setAnnotationMode(!AppState.scene._annotationMode);
+    if (AppState.scene._annotationMode) {
+      if (AppState.scene._vbhMode) { AppState.scene.setVBHMode(false); btn?.classList.remove('active'); }
+      if (AppState.scene._measureMode) AppState.scene.setMeasureMode(false);
+    }
+  };
+  btn?.addEventListener('click', toggle);
+  window.addEventListener('geomodel:toggle-annotate', toggle);
+}
+
+// ── Stratigraphic column ──────────────────────────────────────────────────────
+function updateStratColumn() {
+  const canvas = document.getElementById('strat-canvas');
+  const hint   = document.getElementById('strat-hint');
+  if (!canvas) return;
+  const geoUnits = AppState.geoUnits;
+  const grid     = AppState.voxelGrid;
+  if (!geoUnits.length) {
+    canvas.hidden = true;
+    if (hint) hint.hidden = false;
+    return;
+  }
+  if (hint) hint.hidden = true;
+  canvas.hidden = false;
+
+  // Compute mean thickness per unit from grid (or equal height if no grid)
+  const thickByUnit = {};
+  if (grid) {
+    const { nx, ny, nz, cellHeight: ch, unitIds } = grid;
+    const counts = {};
+    geoUnits.forEach(u => { counts[u.id] = 0; });
+    for (let iz = 0; iz < nz; iz++) {
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          const uid = unitIds[ix + iy * nx + iz * nx * ny];
+          if (uid && counts[uid] !== undefined) counts[uid]++;
+        }
+      }
+    }
+    // Convert column-voxel counts to mean thickness per unit
+    geoUnits.forEach(u => {
+      thickByUnit[u.id] = counts[u.id] > 0 ? (counts[u.id] / (nx * ny)) * ch : 0.5;
+    });
+  } else {
+    geoUnits.forEach(u => { thickByUnit[u.id] = 1; });
+  }
+
+  const totalThick = Object.values(thickByUnit).reduce((a, b) => a + b, 0);
+  const W = canvas.parentElement?.clientWidth ?? 200;
+  const H = Math.max(geoUnits.length * 16, 80);
+  canvas.width  = W;
+  canvas.height = H;
+
+  const ctx     = canvas.getContext('2d');
+  const BARW    = 28;
+  const LBLX    = BARW + 8;
+  const PAD     = 4;
+  ctx.clearRect(0, 0, W, H);
+
+  let y = PAD;
+  geoUnits.forEach(unit => {
+    const thick = thickByUnit[unit.id] ?? 1;
+    const frac  = totalThick > 0 ? thick / totalThick : 1 / geoUnits.length;
+    const barH  = Math.max(14, frac * (H - PAD * 2));
+
+    ctx.fillStyle = unit.color;
+    ctx.fillRect(PAD, y, BARW, barH);
+    ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 0.5;
+    ctx.strokeRect(PAD, y, BARW, barH);
+
+    ctx.fillStyle = '#1c2a38';
+    ctx.font = 'bold 10px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(unit.code, LBLX + PAD, y + barH * 0.5);
+
+    ctx.fillStyle = '#8898a8';
+    ctx.font = '9px Inter, sans-serif';
+    const nameX = LBLX + PAD + 30;
+    if (nameX < W - 4) ctx.fillText(unit.name.slice(0, 18), nameX, y + barH * 0.5);
+
+    if (grid) {
+      ctx.fillStyle = '#c8cdd6';
+      ctx.font = '8px Inter, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(`${thick.toFixed(1)}m`, W - 4, y + barH * 0.5);
+    }
+
+    y += barH;
   });
 }
 
@@ -984,6 +1102,8 @@ async function init() {
   initScreenshot();
   initBackgroundToggle();
   initMeasureTool();
+  initModelReport();
+  initAnnotations();
   initWelcomeOverlay();
 
   // Sample tile buttons (left panel)

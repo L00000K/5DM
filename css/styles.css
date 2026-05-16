@@ -1609,6 +1609,140 @@ input[type="range"] {
   border-radius: var(--radius-sm);
 }
 
+/* ── Status log timestamps ── */
+.log-ts {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  margin-right: 6px;
+  font-family: var(--font-mono);
+  opacity: 0.7;
+}
+
+/* ── SPT N bars in log popup ── */
+.log-spt {
+  display: flex;
+  flex-direction: column;
+  min-width: 56px;
+  border-left: 1px solid var(--border);
+  background: #f8f9fa;
+}
+.log-spt-bar {
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+  border-bottom: 1px solid rgba(0,0,0,0.04);
+  box-sizing: border-box;
+  overflow: hidden;
+  background: #f5f7fa;
+  flex-shrink: 0;
+}
+.log-spt-fill {
+  height: 55%;
+  background: var(--accent);
+  border-radius: 0 2px 2px 0;
+  flex-shrink: 0;
+  min-width: 2px;
+  opacity: 0.75;
+}
+.log-spt-val {
+  font-size: 8px;
+  color: var(--text-mid);
+  margin-left: 3px;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+.log-popup-spt-legend {
+  padding: 3px 8px;
+  border-top: 1px solid var(--border);
+  font-size: 9px;
+  color: var(--text-dim);
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ── 3D annotation labels ── */
+.annotation-label {
+  position: absolute;
+  background: rgba(28,42,56,0.88);
+  color: #fff;
+  border-radius: 4px;
+  padding: 4px 8px 4px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transform: translate(-50%, calc(-100% - 6px));
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  z-index: 60;
+  user-select: none;
+}
+.annotation-label::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: rgba(28,42,56,0.88);
+  border-bottom: none;
+}
+.annotation-text {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.annotation-close {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.6);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.annotation-close:hover { color: #fff; }
+
+/* ── Model quality / coverage map ── */
+.coverage-canvas {
+  width: 100%;
+  display: block;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.quality-stats {
+  font-size: 12px;
+  margin-top: 8px;
+}
+.quality-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--bg-surface);
+}
+.quality-lbl { color: var(--text-dim); font-size: 11px; }
+.quality-val { color: var(--text-primary); font-weight: 600; font-size: 12px; }
+.quality-orange { color: #f07030; }
+.quality-gap {
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(240,112,48,0.5);
+  border-bottom: none;
+}
+.quality-suggest .quality-lbl { color: #f07030; }
+.quality-suggest .quality-val { color: #f07030; font-size: 10px; font-weight: 500; }
+
+/* ── Stratigraphic column ── */
+.strat-canvas {
+  width: 100%;
+  display: block;
+  border-radius: var(--radius-sm);
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   #app-main {

@@ -53,12 +53,14 @@ class SceneManager {
       }
     );
 
-    this._vbhMode      = false;
-    this._viewMode     = 'voxels';
-    this._bhData       = [];
-    this._measureMode  = false;
-    this._measurePts   = [];
-    this._measureLines = [];
+    this._vbhMode        = false;
+    this._viewMode       = 'voxels';
+    this._bhData         = [];
+    this._measureMode    = false;
+    this._measurePts     = [];
+    this._measureLines   = [];
+    this._annotationMode = false;
+    this._annotations    = [];
 
     this._resizeObserver = new ResizeObserver(() => this._onResize());
     this._resizeObserver.observe(this._canvas.parentElement);
@@ -74,6 +76,7 @@ class SceneManager {
     this._initBHClick();
     this._initKeyboard();
     this._initMeasure();
+    this._initAnnotationMode();
   }
 
   // ── Lights ────────────────────────────────────────────────────────────────
@@ -120,6 +123,7 @@ class SceneManager {
     this._renderer.render(this._scene, this._camera);
     this._updateScaleBar();
     this._updateNorthArrow();
+    this._updateAnnotations();
   }
 
   // ── Scale bar (updates every frame) ──────────────────────────────────────
@@ -418,6 +422,7 @@ class SceneManager {
         to:    bhData.groundLevel - l.top,
         thick: l.base - l.top,
         cert:  l.certainty ?? 1,
+        sptN:  l.sptN ?? null,
       }));
     } else if (grid) {
       title    = 'Virtual BH';
@@ -438,8 +443,16 @@ class SceneManager {
 
     const strips = popup.querySelector('#log-strips');
     const labels = popup.querySelector('#log-labels');
+    const sptDiv = popup.querySelector('#log-spt');
     strips.innerHTML = '';
     labels.innerHTML = '';
+    if (sptDiv) sptDiv.innerHTML = '';
+
+    const hasSPT = layers.some(l => l.sptN !== null && l.sptN !== undefined);
+    if (sptDiv) sptDiv.hidden = !hasSPT;
+    const sptLegend = popup.querySelector('#log-spt-legend');
+    if (sptLegend) sptLegend.hidden = !hasSPT;
+    const maxN = hasSPT ? Math.max(...layers.map(l => l.sptN ?? 0), 60) : 60;
 
     layers.forEach(layer => {
       const pxH = Math.max(4, (layer.thick / totalThick) * LOG_H);
@@ -455,6 +468,18 @@ class SceneManager {
       lbl.innerHTML = `<span class="log-lbl-code">${layer.unit.code}</span>` +
                       `<span class="log-lbl-depth">${layer.from?.toFixed(1)}–${layer.to?.toFixed(1)}</span>`;
       labels.appendChild(lbl);
+
+      if (hasSPT && sptDiv) {
+        const sptBar = document.createElement('div');
+        sptBar.className = 'log-spt-bar';
+        sptBar.style.height = `${pxH}px`;
+        if (layer.sptN !== null && layer.sptN !== undefined) {
+          const pct = Math.min(100, (layer.sptN / maxN) * 100);
+          sptBar.innerHTML = `<div class="log-spt-fill" style="width:${pct}%"></div>` +
+                             `<span class="log-spt-val">${layer.sptN}</span>`;
+        }
+        sptDiv.appendChild(sptBar);
+      }
     });
 
     const rect = this._canvas.getBoundingClientRect();
@@ -514,9 +539,11 @@ class SceneManager {
         case 'b': case 'B': this.setViewMode('both');     break;
         case 'k': case 'K': window.dispatchEvent(new CustomEvent('geomodel:toggle-vbh')); break;
         case 'm': case 'M': window.dispatchEvent(new CustomEvent('geomodel:toggle-measure')); break;
+        case 'a': case 'A': window.dispatchEvent(new CustomEvent('geomodel:toggle-annotate')); break;
         case 'Escape':
           this.setVBHMode(false);
           this.setMeasureMode(false);
+          this.setAnnotationMode(false);
           this._hideLogPopup();
           break;
       }
@@ -529,6 +556,7 @@ class SceneManager {
     this._surfaces.clear();
     this._clearTopo();
     this._clearMeasure();
+    this.clearAnnotations();
     if (this._bhSticks) {
       this._scene.remove(this._bhSticks);
       this._bhSticks.traverse(obj => { obj.geometry?.dispose(); obj.material?.dispose(); });
@@ -575,9 +603,28 @@ class SceneManager {
         tooltip.hidden = false;
         tooltip.style.left = `${evt.clientX - rect.left + 14}px`;
         tooltip.style.top  = `${evt.clientY - rect.top  -  8}px`;
+        // Find top elevation of this unit at this XY column
+        let unitTopStr = '—';
+        if (this._modelBounds?.grid && hit.object.userData.unitCode) {
+          const g    = this._modelBounds.grid;
+          const code = hit.object.userData.unitCode;
+          const ub   = {};
+          this._builder.units.forEach(u => { ub[u.id] = u; });
+          const ix = Math.floor((hit.point.x - g.origin.x) / g.cellSize);
+          const iy = Math.floor((hit.point.z - g.origin.z) / g.cellSize);
+          if (ix >= 0 && ix < g.nx && iy >= 0 && iy < g.ny) {
+            let topIz = -1;
+            for (let iz = g.nz - 1; iz >= 0; iz--) {
+              const u = ub[g.unitIds[ix + iy * g.nx + iz * g.nx * g.ny]];
+              if (u?.code === code) { topIz = iz; break; }
+            }
+            if (topIz >= 0) unitTopStr = `${(g.origin.y + (topIz + 1) * g.cellHeight).toFixed(1)} mAOD`;
+          }
+        }
         tooltip.innerHTML = `
           <div class="tooltip-title">${unit?.name ?? hit.object.userData.unitCode}</div>
           <div class="tooltip-row"><span>Code</span><span class="tooltip-val">${hit.object.userData.unitCode}</span></div>
+          <div class="tooltip-row"><span>Top of unit</span><span class="tooltip-val">${unitTopStr}</span></div>
           <div class="tooltip-row"><span>Certainty</span><span class="tooltip-val">${cert}</span></div>
           <div class="tooltip-row"><span>Pos</span><span class="tooltip-val">(${hit.point.x.toFixed(0)}, ${hit.point.y.toFixed(0)}, ${hit.point.z.toFixed(0)})</span></div>`;
       } else {
@@ -727,6 +774,65 @@ class SceneManager {
     if (tt) tt.hidden = true;
   }
 
+  // ── Annotation labels ─────────────────────────────────────────────────────
+  setAnnotationMode(active) {
+    this._annotationMode = active;
+    const cur = active ? 'text' : (this._vbhMode || this._measureMode ? 'crosshair' : '');
+    this._canvas.style.cursor = cur;
+    document.getElementById('btn-annotate')?.classList.toggle('active', active);
+  }
+
+  _initAnnotationMode() {
+    this._canvas.addEventListener('click', e => {
+      if (!this._annotationMode) return;
+      if (this._measureMode || this._vbhMode) return;
+      e.stopPropagation();
+      const rect = this._canvas.getBoundingClientRect();
+      const pt = this._canvasToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      if (!pt) return;
+      const text = prompt('Enter annotation label:', '');
+      if (!text?.trim()) return;
+      this._addAnnotation(pt, text.trim());
+      this.setAnnotationMode(false);
+    });
+  }
+
+  _addAnnotation(pos, text) {
+    const viewer = document.getElementById('viewer-panel');
+    if (!viewer) return;
+    const div = document.createElement('div');
+    div.className = 'annotation-label';
+    div.innerHTML = `<span class="annotation-text">${_escHtml(text)}</span>` +
+                    `<button class="annotation-close" title="Remove">×</button>`;
+    viewer.appendChild(div);
+    div.querySelector('.annotation-close')?.addEventListener('click', () => {
+      try { viewer.removeChild(div); } catch (_) {}
+      this._annotations = this._annotations.filter(a => a.div !== div);
+    });
+    this._annotations.push({ pos: pos.clone(), div });
+  }
+
+  _updateAnnotations() {
+    if (!this._annotations.length) return;
+    const rect = this._canvas.getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    for (const ann of this._annotations) {
+      const p = ann.pos.clone().project(this._camera);
+      if (p.z > 1) { ann.div.style.display = 'none'; continue; }
+      ann.div.style.display = 'block';
+      ann.div.style.left = `${Math.round((p.x + 1) / 2 * w)}px`;
+      ann.div.style.top  = `${Math.round((-p.y + 1) / 2 * h)}px`;
+    }
+  }
+
+  clearAnnotations() {
+    const viewer = document.getElementById('viewer-panel');
+    for (const ann of this._annotations) {
+      try { viewer?.removeChild(ann.div); } catch (_) {}
+    }
+    this._annotations = [];
+  }
+
   // ── Screenshot ───────────────────────────────────────────────────────────
   takeScreenshot(filename = 'geomodel.png') {
     this._renderer.render(this._scene, this._camera);
@@ -749,4 +855,8 @@ class SceneManager {
   get threeCamera() { return this._camera; }
   get voxelGroup()  { return this._builder.group; }
   get slicer()      { return this._slicer; }
+}
+
+function _escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
