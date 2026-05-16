@@ -225,6 +225,12 @@
           </div>
         </div>
 
+        <div id="variogram-panel" style="display:none;margin-top:6px">
+          <div class="settings-divider">Variogram Diagnostics</div>
+          <canvas id="variogram-canvas" width="240" height="100" style="width:100%;max-height:100px;background:var(--bg-surface);border-radius:var(--radius)"></canvas>
+          <p class="hint" style="font-size:10px;margin-top:3px">Empirical γ(h) — computed from BH data when Kriging is active.</p>
+        </div>
+
         <div class="settings-divider">Semantic Information</div>
         <div class="field-group">
           <label for="input-unit-desc">Unit Descriptions</label>
@@ -841,8 +847,18 @@
     <div class="modal-content" style="max-width:560px">
       <h2 id="modal-unit-title">Geological Units</h2>
       <p>Define the geological units for this project. Units can also be discovered automatically during AI analysis.</p>
-      <div id="unit-editor-list" style="max-height:340px;overflow-y:auto;margin:12px 0"></div>
-      <div class="modal-actions" style="justify-content:space-between">
+      <div id="unit-editor-list" style="max-height:300px;overflow-y:auto;margin:12px 0"></div>
+      <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:4px">
+        <p style="font-size:11px;color:var(--text-mid);margin-bottom:6px">Reclassify BH layers — replace all occurrences of one unit code with another:</p>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input type="text" id="ue-from-code" class="input-sm" placeholder="From code" maxlength="8" style="width:80px">
+          <span style="color:var(--text-mid);font-size:13px">→</span>
+          <input type="text" id="ue-to-code" class="input-sm" placeholder="To code" maxlength="8" style="width:80px">
+          <button id="btn-reclassify" class="btn-secondary btn-sm">Reclassify</button>
+          <span id="reclassify-result" style="font-size:11px;color:var(--text-dim)"></span>
+        </div>
+      </div>
+      <div class="modal-actions" style="justify-content:space-between;margin-top:10px">
         <button id="btn-add-unit" class="btn-secondary">+ Add Unit</button>
         <div style="display:flex;gap:8px">
           <button id="btn-unit-editor-apply" class="btn-primary">Apply</button>

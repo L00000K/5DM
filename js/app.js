@@ -136,7 +136,120 @@ function initInterpolationSettings() {
   });
 
   document.querySelectorAll('input[name="interp-method"]').forEach(radio => {
-    radio.addEventListener('change', () => { AppState.interpMethod = radio.value; });
+    radio.addEventListener('change', () => {
+      AppState.interpMethod = radio.value;
+      const vPanel = document.getElementById('variogram-panel');
+      if (vPanel) vPanel.style.display = radio.value === 'kriging' ? 'block' : 'none';
+      if (radio.value === 'kriging' && AppState.classifiedBH.length) {
+        _renderVariogram(AppState.classifiedBH);
+      }
+    });
+  });
+}
+
+// ── Empirical variogram computation and rendering ──────────────────────────────
+function _renderVariogram(boreholes) {
+  const canvas = document.getElementById('variogram-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.clientWidth || 240;
+  const H = canvas.clientHeight || 100;
+  canvas.width  = W;
+  canvas.height = H;
+
+  // Compute empirical variogram: γ(h) = 0.5 × mean[(u(x+h) - u(x))²]
+  // Treat unit code as a numeric indicator (1 if same unit, 0 if different)
+  const pts = [];
+  boreholes.forEach(bh => {
+    bh.layers?.forEach(l => {
+      if (!l.unitCode) return;
+      const mid = (l.top + l.base) / 2;
+      pts.push({ x: bh.x, y: bh.y, z: bh.groundLevel - mid, code: l.unitCode });
+    });
+  });
+
+  if (pts.length < 4) {
+    ctx.fillStyle = '#556677';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Not enough data for variogram', W * 0.5, H * 0.5);
+    return;
+  }
+
+  // Pair up all points, compute separation h and indicator variance
+  const BINS   = 10;
+  const maxH   = Math.max(...boreholes.map(b =>
+    Math.hypot(b.x - boreholes[0].x, b.y - boreholes[0].y))) || 100;
+  const binW   = maxH / BINS;
+  const gammas = new Float64Array(BINS);
+  const counts = new Float64Array(BINS);
+
+  for (let i = 0; i < pts.length; i++) {
+    for (let j = i + 1; j < pts.length; j++) {
+      const h   = Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y);
+      const bin = Math.min(BINS - 1, Math.floor(h / binW));
+      const diff = pts[i].code === pts[j].code ? 0 : 1;
+      gammas[bin] += diff * diff;
+      counts[bin]++;
+    }
+  }
+
+  const vals = Array.from({ length: BINS }, (_, i) =>
+    counts[i] > 0 ? gammas[i] / (2 * counts[i]) : null
+  ).filter(v => v !== null);
+
+  if (!vals.length) return;
+  const maxV = Math.max(...vals);
+
+  // Draw
+  ctx.clearRect(0, 0, W, H);
+  const PAD = { l: 28, r: 8, t: 8, b: 20 };
+  const cW  = W - PAD.l - PAD.r;
+  const cH  = H - PAD.t - PAD.b;
+
+  // Axes
+  ctx.strokeStyle = '#3a4d62'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(PAD.l, PAD.t);
+  ctx.lineTo(PAD.l, PAD.t + cH);
+  ctx.lineTo(PAD.l + cW, PAD.t + cH);
+  ctx.stroke();
+
+  // Labels
+  ctx.fillStyle = '#8a9bb0'; ctx.font = '8px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText((maxV).toFixed(2), PAD.l - 2, PAD.t + 8);
+  ctx.fillText('0', PAD.l - 2, PAD.t + cH);
+  ctx.textAlign = 'center';
+  ctx.fillText(`0`, PAD.l, PAD.t + cH + 12);
+  ctx.fillText(`${maxH.toFixed(0)}m`, PAD.l + cW, PAD.t + cH + 12);
+  ctx.fillText('γ(h)', PAD.l - 20, PAD.t + cH * 0.5);
+
+  // Sill line at γ = 0.5 (indicator variogram sill)
+  const sillY = PAD.t + cH * (1 - 0.5 / maxV);
+  ctx.strokeStyle = '#4a6070'; ctx.setLineDash([3, 3]); ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(PAD.l, sillY);
+  ctx.lineTo(PAD.l + cW, sillY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Points
+  const xStep = cW / (vals.length - 1 || 1);
+  ctx.strokeStyle = '#5ab8e0'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  vals.forEach((v, i) => {
+    const px = PAD.l + i * xStep;
+    const py = PAD.t + cH * (1 - v / maxV);
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  });
+  ctx.stroke();
+
+  ctx.fillStyle = '#5ab8e0';
+  vals.forEach((v, i) => {
+    const px = PAD.l + i * xStep;
+    const py = PAD.t + cH * (1 - v / maxV);
+    ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI * 2); ctx.fill();
   });
 }
 
@@ -395,6 +508,7 @@ function initRunAI() {
       setEnabled('btn-build-model', true);
       setEnabled('btn-run-ai', true);
       setEnabled('btn-interpret-geology', true);
+      saveSession(AppState);
     } catch (err) {
       log(`AI analysis failed: ${err.message}`, 'error');
       analysisLog('Error', err.message, 'error');
@@ -467,6 +581,9 @@ function initBuildModel() {
       }
 
       if (AppState.topoPoints) AppState.scene.showTopography(AppState.topoPoints);
+
+      // Auto-save session after successful model build
+      saveSession(AppState);
     } catch (err) {
       showBuildProgress(false);
       log(`Build failed: ${err.message}`, 'error');
@@ -967,6 +1084,34 @@ function initUnitEditor() {
   btnApply?.addEventListener('click', apply);
   btnClose?.addEventListener('click', () => { modal.hidden = true; });
   modal.querySelector('.modal-backdrop')?.addEventListener('click', () => { modal.hidden = true; });
+
+  // Reclassify: replace all BH layer unitCodes from → to
+  document.getElementById('btn-reclassify')?.addEventListener('click', () => {
+    const fromCode = document.getElementById('ue-from-code')?.value.trim().toUpperCase();
+    const toCode   = document.getElementById('ue-to-code')?.value.trim().toUpperCase();
+    const resultEl = document.getElementById('reclassify-result');
+    if (!fromCode || !toCode) { if (resultEl) resultEl.textContent = 'Enter both codes.'; return; }
+    if (fromCode === toCode)  { if (resultEl) resultEl.textContent = 'Codes are the same.'; return; }
+
+    let count = 0;
+    for (const bh of AppState.classifiedBH) {
+      for (const layer of bh.layers) {
+        if (layer.unitCode === fromCode) { layer.unitCode = toCode; count++; }
+      }
+    }
+
+    // Remove the 'from' unit if no layers remain using it and it's not the 'to' unit
+    const stillUsed = AppState.classifiedBH.some(bh => bh.layers.some(l => l.unitCode === fromCode));
+    if (!stillUsed) {
+      AppState.geoUnits = AppState.geoUnits.filter(u => u.code !== fromCode);
+    }
+
+    updateLegend();
+    updateBHTable();
+    renderPropertiesTable(AppState.geoUnits, () => updateLegend());
+    if (resultEl) resultEl.textContent = `${count} layer(s) reclassified`;
+    log(`Reclassified ${count} layer(s): ${fromCode} → ${toCode}`, count > 0 ? 'ok' : 'warn');
+  });
 }
 
 // ── Log sub-tab switcher (BH / CPT) ───────────────────────────────────────────
