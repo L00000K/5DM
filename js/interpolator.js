@@ -700,6 +700,89 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
   };
 }
 
+// ── Monte Carlo Uncertainty Quantification ───────────────────────────────────
+// Runs N realisations of the IDW model with perturbed layer boundaries
+// Returns { unitIds, certainty, blendUnitIds, blendRatios } — certainty is
+// now the fraction of realisations that agreed with the majority vote.
+export async function buildVoxelGridMonteCarlo(boreholes, geoUnits, cellSizeH, options = {}) {
+  const N = options.nRealisations ?? 20;
+  const perturbSigma = options.perturbSigmaM ?? 0.5; // boundary perturbation std dev (m)
+  const onProgress = options.onProgress;
+
+  // Run N realisations with perturbed layer boundaries
+  log(`Monte Carlo: running ${N} realisations (σ=${perturbSigma}m boundary perturbation)…`, 'info');
+
+  // Build first realisation normally to get grid dimensions
+  const base = await buildVoxelGrid(boreholes, geoUnits, cellSizeH, {
+    ...options, method: 'idw', onProgress: null,
+  });
+  const { nx, ny, nz } = base;
+  const total = nx * ny * nz;
+  const nUnits = geoUnits.length + 1;
+
+  // Vote accumulators: per voxel, per unit index, count of realisations
+  const votes = new Array(nUnits).fill(null).map(() => new Float32Array(total));
+
+  // First realisation
+  for (let i = 0; i < total; i++) {
+    const uid = base.unitIds[i];
+    if (uid < nUnits) votes[uid][i]++;
+  }
+
+  // Subsequent realisations with perturbed boundaries
+  for (let r = 1; r < N; r++) {
+    const perturbed = boreholes.map(bh => {
+      const newLayers = bh.layers.map((l, li) => {
+        const dTop  = li === 0 ? 0 : (Math.random() - 0.5) * 2 * perturbSigma;
+        const dBase = (Math.random() - 0.5) * 2 * perturbSigma;
+        return {
+          ...l,
+          top:  Math.max(0, l.top  + dTop),
+          base: Math.max(l.top + 0.01, l.base + dBase),
+        };
+      });
+      return { ...bh, layers: newLayers };
+    });
+
+    const grid = await buildVoxelGrid(perturbed, geoUnits, cellSizeH, {
+      ...options, method: 'idw', onProgress: null,
+    });
+
+    for (let i = 0; i < total; i++) {
+      const uid = grid.unitIds[i];
+      if (uid < nUnits) votes[uid][i]++;
+    }
+
+    if (onProgress) onProgress(r / N);
+    await new Promise(res => setTimeout(res, 0));
+  }
+
+  // Extract majority vote and certainty (= fraction of realisations in agreement)
+  const unitIds      = new Uint8Array(total);
+  const certainty    = new Float32Array(total);
+  const blendUnitIds = new Uint8Array(total);
+  const blendRatios  = new Float32Array(total);
+
+  for (let i = 0; i < total; i++) {
+    let best1 = 0, best2 = 0;
+    let cnt1  = -1, cnt2  = -1;
+    for (let u = 0; u < nUnits; u++) {
+      const v = votes[u][i];
+      if      (v > cnt1) { cnt2 = cnt1; best2 = best1; cnt1 = v; best1 = u; }
+      else if (v > cnt2) { cnt2 = v;    best2 = u; }
+    }
+    unitIds[i]      = best1;
+    certainty[i]    = Math.max(0.05, cnt1 / N);
+    blendUnitIds[i] = best2;
+    blendRatios[i]  = cnt2 / N;
+  }
+
+  if (onProgress) onProgress(1);
+  log(`Monte Carlo complete — mean certainty ${(Array.from(certainty).reduce((a,b)=>a+b,0)/total*100).toFixed(0)}%`, 'ok');
+
+  return { ...base, unitIds, certainty, blendUnitIds, blendRatios };
+}
+
 export function voxelIndex(ix, iy, iz, grid) {
   return ix + iy * grid.nx + iz * grid.nx * grid.ny;
 }

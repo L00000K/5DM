@@ -3,7 +3,7 @@ import { initUploader } from './data-parser.js';
 import { initTextInput } from './text-input.js';
 import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel, oracleRefinement, generateReportNarrative } from './claude-client.js';
 import { exportConfig, importConfig } from './project-config.js';
-import { buildVoxelGrid } from './interpolator.js';
+import { buildVoxelGrid, buildVoxelGridMonteCarlo } from './interpolator.js';
 import { initScene } from './scene.js';
 import { initLayerControls } from './layer-controls.js';
 import { initExporter } from './exporter.js';
@@ -63,6 +63,8 @@ export const AppState = {
   varNugget: null,
   compositingEnabled: false,
   compositingInterval: 1.0,
+  monteCarloEnabled: false,
+  mcRealisations: 20,
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
@@ -175,6 +177,14 @@ function initInterpolationSettings() {
   });
   document.getElementById('ni-oracle-toggle')?.addEventListener('change', e => {
     AppState.oracleEnabled = e.target.checked;
+  });
+
+  // Monte Carlo toggle
+  document.getElementById('mc-enabled')?.addEventListener('change', e => {
+    AppState.monteCarloEnabled = e.target.checked;
+  });
+  document.getElementById('mc-n')?.addEventListener('change', e => {
+    AppState.mcRealisations = parseInt(e.target.value) || 20;
   });
 
   // Compositing toggle
@@ -679,26 +689,36 @@ function initBuildModel() {
         log(`Compositing BH data at ${interval}m intervals → ${bhForModel.reduce((s,b)=>s+b.layers.length,0)} intervals`, 'info');
       }
 
-      AppState.voxelGrid = await buildVoxelGrid(
-        bhForModel, AppState.geoUnits, AppState.cellSizeH,
-        { kNeighbors: AppState.kNeighbors, idwPower: AppState.idwPower,
-          method: AppState.interpMethod, cellSizeZ: AppState.cellSizeZ,
-          stratOrder: _stratOrder,
-          anisoAzimuth:  AppState.anisoAzimuth,
-          anisoRatio:    AppState.anisoRatio,
-          trendOrder:    AppState.trendOrder,
-          semanticModel: AppState.semanticModel,
-          semanticWeight: AppState.semanticWeight ?? 0.3,
-          siteHistory, unitDescriptions: unitDescs,
-          niEpochs: AppState.niEpochs ?? 400,
-          oracleApiKey: AppState.oracleEnabled && apiKey ? apiKey : null,
-          oracleRefineFn: oracleRefinement,
-          demoMode: !apiKey,
-          varRange:  AppState.varRange,
-          varSill:   AppState.varSill,
-          varNugget: AppState.varNugget,
-          onProgress: p => setBuildProgress(p) }
-      );
+      const gridOptions = {
+        kNeighbors: AppState.kNeighbors, idwPower: AppState.idwPower,
+        method: AppState.interpMethod, cellSizeZ: AppState.cellSizeZ,
+        stratOrder: _stratOrder,
+        anisoAzimuth:  AppState.anisoAzimuth,
+        anisoRatio:    AppState.anisoRatio,
+        trendOrder:    AppState.trendOrder,
+        semanticModel: AppState.semanticModel,
+        semanticWeight: AppState.semanticWeight ?? 0.3,
+        siteHistory, unitDescriptions: unitDescs,
+        niEpochs: AppState.niEpochs ?? 400,
+        oracleApiKey: AppState.oracleEnabled && apiKey ? apiKey : null,
+        oracleRefineFn: oracleRefinement,
+        demoMode: !apiKey,
+        varRange:  AppState.varRange,
+        varSill:   AppState.varSill,
+        varNugget: AppState.varNugget,
+        onProgress: p => setBuildProgress(p),
+      };
+
+      if (AppState.monteCarloEnabled) {
+        AppState.voxelGrid = await buildVoxelGridMonteCarlo(
+          bhForModel, AppState.geoUnits, AppState.cellSizeH,
+          { ...gridOptions, nRealisations: AppState.mcRealisations ?? 20, perturbSigmaM: 0.5 }
+        );
+      } else {
+        AppState.voxelGrid = await buildVoxelGrid(
+          bhForModel, AppState.geoUnits, AppState.cellSizeH, gridOptions
+        );
+      }
       showBuildProgress(false);
       updateInfoPanel();
       AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
