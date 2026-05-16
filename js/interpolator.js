@@ -86,10 +86,14 @@ class TinyMLP {
 }
 
 // ── BH data at a query depth ──────────────────────────────────────────────────
-function getCandidates(boreholes, x, y, z) {
+function getCandidates(boreholes, x, y, z, sinAz = 0, cosAz = 1, anisoRatio = 1) {
   const out = [];
   for (const bh of boreholes) {
-    const dist2d = Math.hypot(bh.x - x, bh.y - y);
+    // Anisotropic distance: scale perpendicular-to-strike by 1/ratio
+    const dx = bh.x - x, dy = bh.y - y;
+    const dAlong = dx * sinAz + dy * cosAz;         // along strike
+    const dPerp  = dx * cosAz - dy * sinAz;         // across strike
+    const dist2d = Math.hypot(dAlong, dPerp / anisoRatio);
     const depth  = (bh.groundLevel ?? 0) - z;
     if (!bh.layers.length || depth < 0) continue;
     let layer;
@@ -290,6 +294,11 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
   const method      = options.method ?? 'idw';
   const onProgress  = options.onProgress ?? null;
   const stratRanks  = buildStratRankMap(options.stratOrder ?? []);
+  // Anisotropy: anisoAzimuth = strike direction (degrees from North), anisoRatio > 1 = elongated along strike
+  const anisoAz    = ((options.anisoAzimuth ?? 0) * Math.PI) / 180;
+  const anisoRatio = Math.max(1, options.anisoRatio ?? 1);
+  const anisoSinAz = Math.sin(anisoAz);
+  const anisoCosAz = Math.cos(anisoAz);
 
   // ── 1. Bounding box ────────────────────────────────────────────────────────
   const xs  = boreholes.map(b => b.x);
@@ -373,7 +382,7 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
         if (method === 'nn' && nnPredict) {
           result = nnPredict(x, y, z);
         } else {
-          const cands = getCandidates(boreholes, x, y, z);
+          const cands = getCandidates(boreholes, x, y, z, anisoSinAz, anisoCosAz, anisoRatio);
           cands.sort((a, b) => a.dist - b.dist);
           const nb = cands.slice(0, kNeighbors);
 

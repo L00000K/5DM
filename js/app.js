@@ -50,6 +50,8 @@ export const AppState = {
   cptLogs: [],
   report: null,
   stratOrder: [],
+  anisoAzimuth: 0,
+  anisoRatio: 1,
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
@@ -145,6 +147,17 @@ function initInterpolationSettings() {
         _renderVariogram(AppState.classifiedBH);
       }
     });
+  });
+
+  const azInput   = document.getElementById('aniso-azimuth');
+  const ratSlider = document.getElementById('aniso-ratio');
+  const ratVal    = document.getElementById('aniso-ratio-val');
+  azInput?.addEventListener('input', () => {
+    AppState.anisoAzimuth = parseFloat(azInput.value) || 0;
+  });
+  ratSlider?.addEventListener('input', () => {
+    AppState.anisoRatio = parseFloat(ratSlider.value) || 1;
+    if (ratVal) ratVal.textContent = parseFloat(ratSlider.value).toFixed(1);
   });
 }
 
@@ -543,6 +556,8 @@ function initBuildModel() {
         { kNeighbors: AppState.kNeighbors, idwPower: AppState.idwPower,
           method: AppState.interpMethod, cellSizeZ: AppState.cellSizeZ,
           stratOrder: _stratOrder,
+          anisoAzimuth: AppState.anisoAzimuth,
+          anisoRatio:   AppState.anisoRatio,
           onProgress: p => setBuildProgress(p) }
       );
       showBuildProgress(false);
@@ -712,7 +727,13 @@ function initProjectConfig() {
       AppState.cellSizeZ    = cfg.cellSizeZ;
       AppState.kNeighbors   = cfg.kNeighbors;
       AppState.idwPower     = cfg.idwPower;
-      AppState.interpMethod = cfg.interpMethod;
+      AppState.interpMethod  = cfg.interpMethod;
+      AppState.anisoAzimuth  = cfg.anisoAzimuth  ?? 0;
+      AppState.anisoRatio    = cfg.anisoRatio    ?? 1;
+      const azEl = document.getElementById('aniso-azimuth');
+      if (azEl) azEl.value = AppState.anisoAzimuth;
+      const arEl = document.getElementById('aniso-ratio');
+      if (arEl) { arEl.value = AppState.anisoRatio; const arv = document.getElementById('aniso-ratio-val'); if (arv) arv.textContent = AppState.anisoRatio.toFixed(1); }
 
       const ct = document.getElementById('constraints-text');
       if (ct && cfg.constraints) ct.value = cfg.constraints;
@@ -1246,7 +1267,13 @@ function initSession() {
     AppState.cellSizeZ   = data.cellSizeZ ?? 0.25;
     AppState.kNeighbors  = data.kNeighbors ?? 5;
     AppState.idwPower    = data.idwPower ?? 2;
-    AppState.interpMethod = data.interpMethod ?? 'idw';
+    AppState.interpMethod  = data.interpMethod ?? 'idw';
+    AppState.anisoAzimuth  = data.anisoAzimuth  ?? 0;
+    AppState.anisoRatio    = data.anisoRatio    ?? 1;
+    const azEl2 = document.getElementById('aniso-azimuth');
+    if (azEl2) azEl2.value = AppState.anisoAzimuth;
+    const arEl2 = document.getElementById('aniso-ratio');
+    if (arEl2) { arEl2.value = AppState.anisoRatio; const arv2 = document.getElementById('aniso-ratio-val'); if (arv2) arv2.textContent = AppState.anisoRatio.toFixed(1); }
 
     const ct = document.getElementById('constraints-text');
     if (ct && data.constraintsText) ct.value = data.constraintsText;

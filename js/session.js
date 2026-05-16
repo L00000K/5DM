@@ -22,6 +22,8 @@ export function saveSession(state) {
     kNeighbors:      state.kNeighbors,
     idwPower:        state.idwPower,
     interpMethod:    state.interpMethod,
+    anisoAzimuth:    state.anisoAzimuth ?? 0,
+    anisoRatio:      state.anisoRatio   ?? 1,
     constraintsText: document.getElementById('constraints-text')?.value ?? '',
   };
   try {
