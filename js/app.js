@@ -384,6 +384,7 @@ function initReset() {
     setEnabled('btn-export-surfaces', false);
     setEnabled('btn-param-apply', false);
     setEnabled('btn-param-reset', false);
+    setEnabled('btn-build-isosurfaces', false);
     updateStratColumn();
     if (AppState.scene) AppState.scene.clear();
     showWelcome();
@@ -586,6 +587,7 @@ function initBuildModel() {
       setEnabled('btn-export-surfaces', true);
       setEnabled('btn-param-apply', true);
       setEnabled('btn-param-reset', true);
+      setEnabled('btn-build-isosurfaces', true);
       AppState.report?.compute(AppState.voxelGrid, AppState.classifiedBH, AppState.geoUnits);
       AppState._origUnitIds = null; // invalidate topo clip cache after rebuild
       AppState._onTopoClipUpdate?.();
@@ -1750,6 +1752,46 @@ function _cssEsc(s) {
 
 // ── Unit statistics ───────────────────────────────────────────────────────────
 // ── Geotechnical risk assessment ─────────────────────────────────────────────
+// ── Marching-cubes isosurfaces ────────────────────────────────────────────────
+function initIsosurfaces() {
+  const btn = document.getElementById('btn-build-isosurfaces');
+  if (!btn) return;
+  let built = false;
+  let visible = false;
+
+  btn.addEventListener('click', async () => {
+    if (!AppState.voxelGrid || !AppState.scene) { log('Build the 3D model first.', 'warn'); return; }
+
+    if (built) {
+      // Toggle visibility
+      visible = !visible;
+      AppState.scene.setIsosurfacesVisible(visible);
+      btn.classList.toggle('active', visible);
+      log(`Isosurfaces ${visible ? 'shown' : 'hidden'}.`, 'info');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = '⬡ Building…';
+    log('Building marching-cubes isosurfaces…', 'info');
+    await new Promise(r => setTimeout(r, 0));
+
+    const op = parseFloat(document.getElementById('surface-opacity')?.value ?? 55) / 100;
+    AppState.scene.buildIsosurfaces(
+      AppState.voxelGrid, AppState.geoUnits, op,
+      p => { btn.textContent = `⬡ ${(p * 100).toFixed(0)}%`; },
+    );
+
+    built = true;
+    visible = true;
+    AppState.scene.setIsosurfacesVisible(true);
+    btn.disabled = false;
+    btn.textContent = '⬡ Isosurfaces';
+    btn.classList.add('active');
+    log(`Isosurfaces built for ${AppState.geoUnits.length} unit(s).`, 'ok');
+  });
+}
+
 // ── Parameter View (color voxels by engineering parameter) ────────────────────
 function initParameterView() {
   const PARAM_LABELS = {
@@ -2342,6 +2384,7 @@ async function init() {
   initUnitEditor();
   initRiskAssessment();
   initParameterView();
+  initIsosurfaces();
   initBHLogView();
   initLogSubTabs();
   initCPTImport();

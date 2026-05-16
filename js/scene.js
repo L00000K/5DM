@@ -244,6 +244,19 @@ class SceneManager {
 
   setSurfaceOpacity(op) {
     this._surfaces.setOpacity(op);
+    this._surfaces.setMCOpacity(op);
+  }
+
+  buildIsosurfaces(grid, geoUnits, opacity, onProgress) {
+    this._surfaces.buildIsosurfaces(grid, geoUnits, opacity, onProgress);
+  }
+
+  setIsosurfacesVisible(v) {
+    this._surfaces.setMCVisible(v);
+  }
+
+  setIsosurfaceUnitVisible(code, v) {
+    this._surfaces.setMCUnitVisible(code, v);
   }
 
   // ── Vertical exaggeration ─────────────────────────────────────────────────

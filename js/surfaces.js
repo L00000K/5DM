@@ -1,10 +1,13 @@
 import * as THREE from 'three';
+import { marchingCubes, smooth3D } from './marching-cubes.js';
 
 export class SurfaceManager {
   constructor(scene) {
     this._scene   = scene;
-    this._meshes  = {};
+    this._meshes  = {};       // top-surface meshes
+    this._mcMeshes = {};      // marching-cubes isosurface meshes
     this._visible = false;
+    this._mcVisible = false;
   }
 
   build(grid, geoUnits) {
@@ -108,6 +111,72 @@ export class SurfaceManager {
     }
   }
 
+  // ── Marching-cubes isosurface build ─────────────────────────────────────────
+  // Called asynchronously — pass onProgress(0..1) for progress feedback.
+  buildIsosurfaces(grid, geoUnits, opacity = 0.6, onProgress = null) {
+    this._clearMC();
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin, unitIds } = grid;
+    const total = nx * ny * nz;
+
+    let done = 0;
+    for (const unit of geoUnits) {
+      // Binary scalar field: 1.0 inside this unit, 0.0 outside
+      const field = new Float32Array(total);
+      for (let i = 0; i < total; i++) field[i] = unitIds[i] === unit.id ? 1.0 : 0.0;
+
+      // 2-pass smoothing to get a gradient transition at boundaries
+      const smoothed = smooth3D(smooth3D(field, nx, ny, nz, 1), nx, ny, nz, 1);
+
+      const pos = marchingCubes(smoothed, nx, ny, nz, 0.5, origin, cs, ch);
+      if (!pos.length) { done++; onProgress?.(done / geoUnits.length); continue; }
+
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geom.computeVertexNormals();
+
+      const color = new THREE.Color(unit.color).convertSRGBToLinear();
+      const mat = new THREE.MeshLambertMaterial({
+        color,
+        transparent: true,
+        opacity,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+
+      const mesh = new THREE.Mesh(geom, mat);
+      mesh.userData.unitCode = unit.code;
+      mesh.visible = this._mcVisible;
+      this._mcMeshes[unit.code] = mesh;
+      this._scene.add(mesh);
+
+      done++;
+      onProgress?.(done / geoUnits.length);
+    }
+  }
+
+  setMCVisible(v) {
+    this._mcVisible = v;
+    for (const mesh of Object.values(this._mcMeshes)) mesh.visible = v;
+  }
+
+  setMCUnitVisible(code, v) {
+    const mesh = this._mcMeshes[code];
+    if (mesh) mesh.visible = this._mcVisible && v;
+  }
+
+  setMCOpacity(op) {
+    for (const mesh of Object.values(this._mcMeshes)) mesh.material.opacity = op;
+  }
+
+  _clearMC() {
+    for (const mesh of Object.values(this._mcMeshes)) {
+      this._scene.remove(mesh);
+      mesh.geometry.dispose();
+      mesh.material.dispose();
+    }
+    this._mcMeshes = {};
+  }
+
   setVisible(v) {
     this._visible = v;
     for (const mesh of Object.values(this._meshes)) {
@@ -127,7 +196,7 @@ export class SurfaceManager {
   }
 
   getMeshes() {
-    return Object.values(this._meshes);
+    return [...Object.values(this._meshes), ...Object.values(this._mcMeshes)];
   }
 
   clear() {
@@ -137,5 +206,6 @@ export class SurfaceManager {
       mesh.material.dispose();
     }
     this._meshes = {};
+    this._clearMC();
   }
 }
