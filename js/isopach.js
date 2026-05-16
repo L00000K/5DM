@@ -70,7 +70,7 @@ export class IsopachMap {
     // For unit-specific modes, require a valid unit selection
     const targetId = parseInt(this._select?.value ?? geoUnits[0]?.id ?? 0);
     const unit     = geoUnits.find(u => u.id === targetId);
-    if (!unit && (mode === 'thick' || mode === 'topZ' || mode === 'baseZ')) return;
+    if (!unit && ['thick', 'topZ', 'baseZ', 'depth-to-top'].includes(mode)) return;
 
     // Build unitById lookup for settle mode
     const unitById = {};
@@ -103,6 +103,22 @@ export class IsopachMap {
           for (let iz = 0; iz < nz; iz++) {
             if (unitIds[ix + iy * nx + iz * nx * ny] === targetId) {
               v = O.y + iz * ch; break;
+            }
+          }
+        } else if (mode === 'depth-to-top') {
+          // Find surface elevation (highest non-empty voxel in column)
+          let surfElev = NaN;
+          for (let iz = nz - 1; iz >= 0; iz--) {
+            if (unitIds[ix + iy * nx + iz * nx * ny]) {
+              surfElev = O.y + iz * ch + ch; break;
+            }
+          }
+          // Find top of target unit
+          for (let iz = nz - 1; iz >= 0; iz--) {
+            if (unitIds[ix + iy * nx + iz * nx * ny] === targetId) {
+              const topElev = O.y + iz * ch + ch;
+              v = isNaN(surfElev) ? NaN : surfElev - topElev;
+              break;
             }
           }
         } else if (mode === 'settle') {
@@ -148,9 +164,10 @@ export class IsopachMap {
         const v = vals[ix + iy * nx];
         if (isNaN(v)) continue;
         const norm = (v - vMin) / vRange;
-        ctx.fillStyle = mode === 'thick'   ? isopachColor(unit.color, norm)
-                      : mode === 'cert'    ? certColor(norm)
-                      : mode === 'settle'  ? settleColor(norm)
+        ctx.fillStyle = mode === 'thick'         ? isopachColor(unit.color, norm)
+                      : mode === 'depth-to-top' ? isopachColor(unit.color, 1 - norm) // shallow = bright
+                      : mode === 'cert'         ? certColor(norm)
+                      : mode === 'settle'       ? settleColor(norm)
                       : elevColor(norm);
         ctx.fillRect(
           PAD + ix * cellPxW,
@@ -240,10 +257,11 @@ export class IsopachMap {
     ctx.strokeStyle = '#c8cdd6'; ctx.strokeRect(lgX, lgY, lgW, lgH);
     ctx.fillStyle = '#4a6275'; ctx.font = '10px Inter, sans-serif';
 
-    const modeLabel = mode === 'thick'  ? `${unit?.code} thickness`
-                    : mode === 'topZ'   ? `${unit?.code} top Z (mAOD)`
-                    : mode === 'baseZ'  ? `${unit?.code} base Z (mAOD)`
-                    : mode === 'settle' ? `Settlement (mm) · FD=${foundElev.toFixed(1)} mAOD · q=${appliedKPa} kPa`
+    const modeLabel = mode === 'thick'         ? `${unit?.code} thickness`
+                    : mode === 'topZ'          ? `${unit?.code} top Z (mAOD)`
+                    : mode === 'baseZ'         ? `${unit?.code} base Z (mAOD)`
+                    : mode === 'depth-to-top'  ? `Depth to top of ${unit?.code} (m)`
+                    : mode === 'settle'        ? `Settlement (mm) · FD=${foundElev.toFixed(1)} mAOD · q=${appliedKPa} kPa`
                     : 'Mean certainty (0–1)';
 
     const loStr = mode === 'settle' ? `${vMin.toFixed(0)} mm`
