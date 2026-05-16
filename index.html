@@ -240,6 +240,11 @@
               <span class="method-desc">Kriging with polynomial drift — models regional dip/tilt</span>
             </label>
             <label class="method-option">
+              <input type="radio" name="interp-method" value="rbf">
+              <span class="method-label">RBF (Multiquadric)</span>
+              <span class="method-desc">Smooth implicit surface fitting — similar to Leapfrog's implicit engine</span>
+            </label>
+            <label class="method-option">
               <input type="radio" name="interp-method" value="neural-implicit">
               <span class="method-label">Neural Implicit Field ✦ AI</span>
               <span class="method-desc">Learns F(x,y,z,text)→unit from BH data; Claude refines uncertain zones</span>

@@ -1649,7 +1649,7 @@ function initModelReport() {
     if (btn) btn.disabled = true;
     if (out) { out.style.display = 'block'; out.innerHTML = '<p class="hint" style="font-size:10px">Running comparison…</p>'; }
 
-    const METHODS = ['idw', 'kriging', 'gp', 'nn'];
+    const METHODS = ['idw', 'kriging', 'gp', 'nn', 'rbf'];
     const results = [];
     const siteHistory = document.getElementById('input-site-history')?.value ?? '';
 
@@ -1695,7 +1695,7 @@ function initModelReport() {
 
     results.sort((a, b) => (b.accuracy ?? 0) - (a.accuracy ?? 0));
 
-    const LABELS = { idw: 'IDW', kriging: 'Kriging', gp: 'GP', nn: 'NN' };
+    const LABELS = { idw: 'IDW', kriging: 'Kriging', gp: 'GP', nn: 'NN', rbf: 'RBF' };
     const rows = results.map((r, i) => {
       const acc   = r.accuracy != null ? `${r.accuracy}%` : '—';
       const cert  = r.avgCert  != null ? `${r.avgCert}%`  : '—';

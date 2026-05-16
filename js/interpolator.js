@@ -396,6 +396,68 @@ function trainNN(boreholes, geoUnits, bounds, epochs = 500) {
   };
 }
 
+// ── RBF (multiquadric) interpolation ─────────────────────────────────────────
+// Fits a smooth indicator surface per unit using multiquadric RBF weights
+// then takes the unit with the largest positive indicator value at query.
+// More accurate than IDW for capturing smooth geological contacts.
+function rbfVote(neighbours, qx, qy, unitIndex, unknownId, epsilon = null) {
+  const n = neighbours.length;
+  if (n < 2) return null;
+
+  // Collect unique unit codes
+  const codes = [...new Set(neighbours.map(nb => nb.unitCode))];
+  if (!codes.length) return null;
+
+  // RBF epsilon: if not provided, use mean inter-point distance
+  if (epsilon === null) {
+    let dSum = 0, dCnt = 0;
+    for (let i = 0; i < n; i++)
+      for (let j = i + 1; j < n; j++) {
+        dSum += Math.hypot(neighbours[i].x - neighbours[j].x, neighbours[i].y - neighbours[j].y);
+        dCnt++;
+      }
+    epsilon = dCnt > 0 ? dSum / dCnt : 1;
+  }
+
+  // Multiquadric RBF: φ(r) = sqrt(1 + (r/ε)²)
+  const phi = (r) => Math.sqrt(1 + (r / epsilon) ** 2);
+
+  // Build Gram matrix K[i][j] = φ(dist(i,j))
+  const K = [];
+  for (let i = 0; i < n; i++) {
+    K[i] = new Array(n);
+    for (let j = 0; j < n; j++) {
+      const d = Math.hypot(neighbours[i].x - neighbours[j].x, neighbours[i].y - neighbours[j].y);
+      K[i][j] = phi(d);
+    }
+  }
+
+  // Evaluate each unit's indicator: 1 at points of that unit, 0 elsewhere
+  const unitScores = {};
+  let totalPositive = 0;
+
+  for (const code of codes) {
+    // RHS indicator: 1 if neighbour is this code, 0 otherwise
+    const f = neighbours.map(nb => nb.unitCode === code ? nb.layerCert : 0);
+    // Solve K*w = f (via simple Jacobi/direct for small n)
+    let w;
+    try { w = solveLinear(K.map(r => [...r]), f); } catch { continue; }
+    // Evaluate at query point
+    const kq = neighbours.map(nb => phi(Math.hypot(nb.x - qx, nb.y - qy)));
+    const val = kq.reduce((s, k, i) => s + k * w[i], 0);
+    unitScores[code] = Math.max(0, val);
+    totalPositive += unitScores[code];
+  }
+
+  if (!totalPositive) return null;
+
+  const sorted = Object.entries(unitScores).sort((a, b) => b[1] - a[1]);
+  const [bc, bv] = sorted[0];
+  const [sc, sv = 0] = sorted[1] ?? [];
+  const cert = Math.min(1, (bv / totalPositive) * 0.8 + 0.1);
+  return makeResult(bc, sc, bv / (bv + sv + 1e-9), totalPositive, sv, cert, unitIndex, unknownId);
+}
+
 // ── Nearest-BH surface fallback ───────────────────────────────────────────────
 function nearestFallback(boreholes, x, y, unitIndex, unknownId) {
   const best = boreholes
@@ -507,6 +569,7 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
   const methodLabel = {
     idw: 'IDW', kriging: 'Kriging', gp: 'Gauss. Process', nn: 'Neural Net',
     uk: `UK (order ${trendOrder})`, 'neural-implicit': 'Neural Implicit Field',
+    rbf: 'RBF (multiquadric)',
   }[method] ?? method;
   log(`Grid ${nx}×${ny}×${nz} = ${(nx * ny * nz).toLocaleString()} voxels @ ${cellSize} m | ${methodLabel} K=${kNeighbors}`, 'info');
 
@@ -633,6 +696,9 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
                   ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
           } else if (method === 'gp') {
             result = gpVote(nb, x, y, unitIndex, unknownId, gpLen)
+                  ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
+          } else if (method === 'rbf') {
+            result = rbfVote(nb, x, y, unitIndex, unknownId, null)
                   ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
           } else {
             result = idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
