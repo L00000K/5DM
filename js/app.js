@@ -1,7 +1,7 @@
 import { initApiKeyModal } from './api-key.js';
 import { initUploader } from './data-parser.js';
 import { initTextInput } from './text-input.js';
-import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters } from './claude-client.js';
+import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel } from './claude-client.js';
 import { exportConfig, importConfig } from './project-config.js';
 import { buildVoxelGrid } from './interpolator.js';
 import { initScene } from './scene.js';
@@ -53,6 +53,8 @@ export const AppState = {
   anisoAzimuth: 0,
   anisoRatio: 1,
   trendOrder: 1,
+  semanticModel: null,
+  semanticWeight: 0.3,
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
@@ -393,6 +395,7 @@ function initReset() {
     setEnabled('btn-param-apply', false);
     setEnabled('btn-param-reset', false);
     setEnabled('btn-build-isosurfaces', false);
+    setEnabled('btn-semantic-model', false);
     updateStratColumn();
     if (AppState.scene) AppState.scene.clear();
     showWelcome();
@@ -464,6 +467,7 @@ async function loadDemoSite(demoName) {
     setEnabled('btn-export-props', true);
     setEnabled('btn-auto-params', true);
     setEnabled('btn-interpret-geology', true);
+    setEnabled('btn-semantic-model', true);
     log(`${data.site?.name ?? demoName} — ${AppState.rawBoreholes.length} boreholes loaded.`, 'ok');
 
     setTimeout(() => document.getElementById('btn-build-model').click(), 200);
@@ -537,6 +541,7 @@ function initRunAI() {
       setEnabled('btn-build-model', true);
       setEnabled('btn-run-ai', true);
       setEnabled('btn-interpret-geology', true);
+      setEnabled('btn-semantic-model', true);
       saveSession(AppState);
     } catch (err) {
       log(`AI analysis failed: ${err.message}`, 'error');
@@ -567,9 +572,11 @@ function initBuildModel() {
         { kNeighbors: AppState.kNeighbors, idwPower: AppState.idwPower,
           method: AppState.interpMethod, cellSizeZ: AppState.cellSizeZ,
           stratOrder: _stratOrder,
-          anisoAzimuth: AppState.anisoAzimuth,
-          anisoRatio:   AppState.anisoRatio,
-          trendOrder:   AppState.trendOrder,
+          anisoAzimuth:  AppState.anisoAzimuth,
+          anisoRatio:    AppState.anisoRatio,
+          trendOrder:    AppState.trendOrder,
+          semanticModel: AppState.semanticModel,
+          semanticWeight: AppState.semanticWeight ?? 0.3,
           onProgress: p => setBuildProgress(p) }
       );
       showBuildProgress(false);
@@ -1958,6 +1965,39 @@ function initIsosurfaces() {
   });
 }
 
+// ── Semantic Knowledge Model ───────────────────────────────────────────────────
+function initSemanticModel() {
+  const weightSlider = document.getElementById('semantic-weight');
+  const weightVal    = document.getElementById('semantic-weight-val');
+  weightSlider?.addEventListener('input', () => {
+    AppState.semanticWeight = parseFloat(weightSlider.value) / 100;
+    if (weightVal) weightVal.textContent = weightSlider.value + '%';
+  });
+
+  document.getElementById('btn-semantic-model')?.addEventListener('click', async () => {
+    if (!AppState.geoUnits.length) { log('Run AI analysis first to define geological units.', 'warn'); return; }
+    setEnabled('btn-semantic-model', false);
+    log('Generating semantic knowledge model…', 'info');
+    try {
+      const siteCtx = document.getElementById('input-site-history')?.value ?? '';
+      const result  = await generateSemanticModel(
+        AppState.geoUnits, AppState.classifiedBH, siteCtx,
+        AppState.apiKey, AppState.demoMode
+      );
+      AppState.semanticModel = result;
+      analysisLog('Semantic Knowledge Model', result.model_narrative ?? 'Model generated.', 'ok');
+      if (result.synthetic_anchors?.length) {
+        log(`Semantic model: ${result.synthetic_anchors.length} synthetic anchor(s) ready.`, 'ok');
+      }
+      log('Semantic model ready — rebuild the 3D model to apply.', 'ok');
+    } catch (err) {
+      log(`Semantic model error: ${err.message}`, 'error');
+    } finally {
+      setEnabled('btn-semantic-model', true);
+    }
+  });
+}
+
 // ── Parameter View (color voxels by engineering parameter) ────────────────────
 function initParameterView() {
   const PARAM_LABELS = {
@@ -2661,6 +2701,7 @@ async function init() {
   initAutoParams();
   initUnitEditor();
   initRiskAssessment();
+  initSemanticModel();
   initParameterView();
   initIsosurfaces();
   initScenarioManager();

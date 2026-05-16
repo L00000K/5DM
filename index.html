@@ -274,6 +274,20 @@
           <p class="hint">1 = isotropic. 5 = search 5× farther along strike than across.</p>
         </div>
 
+        <div class="settings-divider">Semantic Knowledge</div>
+        <div class="field-group">
+          <p class="hint" style="margin-bottom:4px">AI analyses the classified dataset and embeds geological knowledge (unit depth profiles, transition probabilities, synthetic anchors) into the interpolation.</p>
+          <button id="btn-semantic-model" class="btn-secondary btn-sm" disabled style="width:100%">Generate Semantic Model</button>
+        </div>
+        <div class="field-group">
+          <label for="semantic-weight">Semantic weight</label>
+          <div class="range-row">
+            <input type="range" id="semantic-weight" min="0" max="100" value="30" step="5">
+            <span id="semantic-weight-val" class="range-readout">30%</span>
+          </div>
+          <p class="hint">0% = pure spatial interpolation. 100% = full semantic guidance.</p>
+        </div>
+
         <div class="settings-divider">Structural Orientation Data</div>
         <div class="field-group">
           <label>Strike/Dip Measurements</label>

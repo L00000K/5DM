@@ -547,12 +547,12 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
         if (method === 'nn' && nnPredict) {
           result = nnPredict(x, y, z);
         } else {
-          const cands = getCandidates(boreholes, x, y, z, anisoSinAz, anisoCosAz, anisoRatio);
+          const cands = getCandidates(allBoreholes, x, y, z, anisoSinAz, anisoCosAz, anisoRatio);
           cands.sort((a, b) => a.dist - b.dist);
           const nb = cands.slice(0, kNeighbors);
 
           if (!nb.length) {
-            result = nearestFallback(boreholes, x, y, unitIndex, unknownId);
+            result = nearestFallback(allBoreholes, x, y, unitIndex, unknownId);
           } else if (method === 'kriging') {
             result = krigingVote(nb, x, y, unitIndex, unknownId, range, sill)
                   ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
@@ -575,6 +575,37 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
             winCode, depth, x, y, boreholes, stratRanks, typicalSpacing * 2,
           );
           cert *= penalty;
+        }
+
+        // Transition probability prior (Markov chain top-down)
+        if (iz < nz - 1 && semanticWeight > 0) {
+          const aboveUid  = unitIds[ix + iy * nx + (iz + 1) * nx * ny];
+          const aboveCode = aboveUid ? geoUnits.find(u => u.id === aboveUid)?.code : null;
+          if (aboveCode) {
+            const fromI = unitCodeToIdx[aboveCode];
+            const toI   = unitCodeToIdx[geoUnits.find(u => u.id === result.unitId)?.code];
+            if (fromI !== undefined && toI !== undefined) {
+              const transProb   = transMatrix[fromI][toI];
+              const uniformProb = 1 / geoUnits.length;
+              // Scale: above-average transition boosts cert; below-average penalises
+              const transScale = 0.5 + (transProb / uniformProb) * 0.5;
+              cert = Math.min(1, cert * (1 - semanticWeight + semanticWeight * Math.min(transScale, 2)));
+            }
+          }
+        }
+
+        // Depth exclusion priors from semantic model
+        if (semanticWeight > 0) {
+          const vDepth = maxGL - (oz + iz * cellH + cellH * 0.5);
+          const winCode = geoUnits.find(u => u.id === result.unitId)?.code ?? '';
+          for (const ex of depthExclusions) {
+            if (ex.unit_code !== winCode) continue;
+            const tooShallow = ex.exclude_above_m != null && vDepth < ex.exclude_above_m;
+            const tooDeep    = ex.exclude_below_m != null && vDepth > ex.exclude_below_m;
+            if (tooShallow || tooDeep) {
+              cert = Math.min(1, cert * (1 - semanticWeight * (ex.confidence ?? 0.5)));
+            }
+          }
         }
 
         unitIds[idx]      = result.unitId;
