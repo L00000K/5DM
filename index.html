@@ -23,6 +23,9 @@
     </div>
     <div class="header-actions">
       <button id="btn-api-key" class="btn-ghost" title="Configure Anthropic API Key">⚙ API Key</button>
+      <button id="btn-export-config" class="btn-ghost" title="Export project as .geomodel file">⬇ Config</button>
+      <button id="btn-import-config" class="btn-ghost" title="Load a .geomodel project file">⬆ Config</button>
+      <input type="file" id="file-import-config" accept=".geomodel,.json" hidden>
       <button id="btn-save-session" class="btn-ghost" title="Save session to browser storage">💾 Save</button>
       <button id="btn-load-session" class="btn-ghost" title="Restore saved session">📂 Load</button>
       <button id="btn-shortcuts" class="btn-ghost" title="Keyboard shortcuts">? Help</button>
@@ -278,6 +281,7 @@
       <!-- Action buttons -->
       <div class="panel-actions">
         <button id="btn-run-ai" class="btn-primary" disabled>Run AI Analysis →</button>
+        <button id="btn-interpret-geology" class="btn-secondary" disabled title="Use Claude to interpret site geology, generate constraints and hazard flags">🧠 Interpret Geology</button>
         <button id="btn-build-model" class="btn-primary" disabled>Build 3D Model →</button>
       </div>
 

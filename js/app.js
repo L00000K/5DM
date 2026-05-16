@@ -1,7 +1,8 @@
 import { initApiKeyModal } from './api-key.js';
 import { initUploader } from './data-parser.js';
 import { initTextInput } from './text-input.js';
-import { runAIAnalysis } from './claude-client.js';
+import { runAIAnalysis, interpretGeology, inferStratOrderFromData } from './claude-client.js';
+import { exportConfig, importConfig } from './project-config.js';
 import { buildVoxelGrid } from './interpolator.js';
 import { initScene } from './scene.js';
 import { initLayerControls } from './layer-controls.js';
@@ -228,6 +229,7 @@ function initReset() {
 
     updateInfoPanel();
     setEnabled('btn-run-ai', false);
+    setEnabled('btn-interpret-geology', false);
     setEnabled('btn-build-model', false);
     setEnabled('btn-apply-constraints', false);
     setEnabled('btn-export-gltf', false);
@@ -309,6 +311,7 @@ async function loadDemoSite(demoName) {
     setEnabled('btn-build-model', true);
     setEnabled('btn-export-bh-csv', true);
     setEnabled('btn-export-props', true);
+    setEnabled('btn-interpret-geology', true);
     log(`${data.site?.name ?? demoName} — ${AppState.rawBoreholes.length} boreholes loaded.`, 'ok');
 
     setTimeout(() => document.getElementById('btn-build-model').click(), 200);
@@ -378,6 +381,7 @@ function initRunAI() {
       log(`Analysis complete — ${units.length} units classified.`, 'ok');
       setEnabled('btn-build-model', true);
       setEnabled('btn-run-ai', true);
+      setEnabled('btn-interpret-geology', true);
     } catch (err) {
       log(`AI analysis failed: ${err.message}`, 'error');
       analysisLog('Error', err.message, 'error');
@@ -445,6 +449,156 @@ function initBuildModel() {
       log(`Build failed: ${err.message}`, 'error');
       console.error(err);
       setEnabled('btn-build-model', true);
+    }
+  });
+}
+
+// ── Geological interpretation (AI semantic layer) ─────────────────────────────
+function initInterpretGeology() {
+  const btn = document.getElementById('btn-interpret-geology');
+  if (!btn) return;
+
+  btn.addEventListener('click', async () => {
+    const siteHistory  = document.getElementById('input-site-history')?.value ?? '';
+    const unitDescs    = Array.from(document.querySelectorAll('#desc-list .desc-item'))
+      .map(el => el.textContent.trim()).join('\n');
+
+    if (!AppState.geoUnits.length) { log('Load borehole data and run AI Analysis first.', 'warn'); return; }
+
+    btn.disabled = true;
+    log('Requesting geological interpretation from Claude…', 'info');
+    switchTab('analysis');
+
+    try {
+      const result = await interpretGeology(
+        siteHistory, unitDescs, AppState.geoUnits,
+        AppState.apiKey, AppState.demoMode
+      );
+
+      // Show interpretation in analysis log
+      analysisLog('Geological Interpretation',
+        result.interpretation_summary + '\n\n' +
+        `Stratigraphic order (top to bottom): ${(result.stratigraphic_order ?? []).join(' › ')}\n` +
+        (result.interpolation_advice ? `\nAdvice: ${result.interpolation_advice}` : ''), 'ai');
+
+      // Show hazards
+      if (result.hazards?.length) {
+        analysisLog('Geohazards',
+          result.hazards.map(h => `⚠ ${h.type.toUpperCase()}: ${h.description}`).join('\n'), 'warn');
+      }
+
+      // Auto-populate constraints textarea
+      if (result.constraints?.length) {
+        const ct = document.getElementById('constraints-text');
+        if (ct) {
+          const existing = ct.value.trim();
+          const newRules = result.constraints.join('\n');
+          ct.value = existing ? existing + '\n' + newRules : newRules;
+        }
+        analysisLog('Generated Constraints',
+          result.constraints.map(c => `• ${c}`).join('\n') + '\n\nAdded to Rules tab.', 'ok');
+      }
+
+      // Apply colour suggestions if provided
+      if (result.colour_suggestions) {
+        let coloured = 0;
+        for (const [code, hex] of Object.entries(result.colour_suggestions)) {
+          const unit = AppState.geoUnits.find(u => u.code === code);
+          if (unit && /^#[0-9a-f]{6}$/i.test(hex)) { unit.color = hex; coloured++; }
+        }
+        if (coloured) { updateLegend(); updateStratColumn(); }
+      }
+
+      // Infer stratigraphic order from data and show
+      if (AppState.classifiedBH.length) {
+        const { order, pairs } = inferStratOrderFromData(AppState.classifiedBH, AppState.geoUnits);
+        const topPairs = pairs.slice(0, 6).map(p => `${p.above} → ${p.below} (${p.count}×)`).join(', ');
+        if (topPairs) {
+          analysisLog('Data-Derived Stratigraphy',
+            `Observed sequence (top→base): ${order.join(' › ')}\nTop observed pairs: ${topPairs}`, 'ai');
+        }
+      }
+
+      log('Geological interpretation complete.', 'ok');
+    } catch (err) {
+      log(`Interpretation failed: ${err.message}`, 'error');
+      analysisLog('Error', err.message, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
+// ── Project config file export / import ───────────────────────────────────────
+function initProjectConfig() {
+  // Export
+  document.getElementById('btn-export-config')?.addEventListener('click', () => {
+    if (!AppState.geoUnits.length && !AppState.classifiedBH.length) {
+      log('Nothing to export — load data first.', 'warn'); return;
+    }
+    const config = exportConfig(AppState);
+    const blob   = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+    const url    = URL.createObjectURL(blob);
+    const a      = document.createElement('a');
+    a.href = url;
+    a.download = `geomodel-project-${new Date().toISOString().slice(0, 10)}.geomodel`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    log('Project config exported.', 'ok');
+  });
+
+  // Import
+  const fileInput = document.getElementById('file-import-config');
+  document.getElementById('btn-import-config')?.addEventListener('click', () => fileInput?.click());
+
+  fileInput?.addEventListener('change', async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const cfg  = importConfig(data);
+
+      AppState.geoUnits     = cfg.geoUnits;
+      AppState.classifiedBH = cfg.classifiedBH;
+      AppState.rawBoreholes = cfg.classifiedBH;
+      AppState.cellSizeH    = cfg.cellSizeH;
+      AppState.cellSizeZ    = cfg.cellSizeZ;
+      AppState.kNeighbors   = cfg.kNeighbors;
+      AppState.idwPower     = cfg.idwPower;
+      AppState.interpMethod = cfg.interpMethod;
+
+      const ct = document.getElementById('constraints-text');
+      if (ct && cfg.constraints) ct.value = cfg.constraints;
+
+      const sh = document.getElementById('input-site-history');
+      if (sh && cfg.siteHistory) sh.value = cfg.siteHistory;
+
+      const gwt = document.getElementById('gwt-elevation');
+      if (gwt && cfg.gwtElevation != null) {
+        gwt.value = cfg.gwtElevation;
+        AppState.scene?.setGroundwaterTable(cfg.gwtElevation);
+      }
+
+      updateLegend();
+      updateInfoPanel();
+      updateBHTable();
+      updateBHChart();
+      updateStratColumn();
+      renderPropertiesTable(AppState.geoUnits, () => updateLegend());
+      setEnabled('btn-run-ai', true);
+      setEnabled('btn-build-model', AppState.classifiedBH.length > 0);
+      setEnabled('btn-export-bh-csv', AppState.classifiedBH.length > 0);
+      setEnabled('btn-export-props', AppState.geoUnits.length > 0);
+      hideWelcome();
+      log(`Project loaded: ${AppState.geoUnits.length} units, ${AppState.classifiedBH.length} BH. Click "Build 3D Model".`, 'ok');
+      switchTab('data');
+      fileInput.value = '';
+      setTimeout(() => {
+        if (AppState.classifiedBH.length) document.getElementById('btn-build-model')?.click();
+      }, 100);
+    } catch (err) {
+      log(`Config import failed: ${err.message}`, 'error');
     }
   });
 }
@@ -1613,6 +1767,8 @@ async function init() {
   initGWT();
   initCameraPresets();
   initSession();
+  initProjectConfig();
+  initInterpretGeology();
   initSettlement();
   initBearingCapacity();
   initPileCapacity();

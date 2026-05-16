@@ -122,6 +122,132 @@ function demoClassify(layer, geoUnits) {
   return { unit_code: 'UNKN', confidence: 0.3 };
 }
 
+// ── Geological interpretation: semantic knowledge → structured constraints ────
+export async function interpretGeology(siteHistory, unitDescriptions, geoUnits, apiKey, demoMode) {
+  const unitContext = geoUnits.length
+    ? geoUnits.map(u => `${u.code}: ${u.name}${u.description ? ' — ' + u.description : ''}`).join('\n')
+    : '(no units defined yet)';
+
+  if (demoMode || !apiKey) {
+    return _demoInterpretation(geoUnits);
+  }
+
+  const messages = [{
+    role: 'user',
+    content: `You are a senior engineering geologist in the UK. Analyse the following site information and provide a rigorous geological interpretation that can be used to constrain a 3D ground model.
+
+GEOLOGICAL UNITS IN MODEL:
+${unitContext}
+
+UNIT DESCRIPTIONS:
+${unitDescriptions || '(none provided)'}
+
+SITE HISTORY / CONTEXT:
+${siteHistory || '(none provided)'}
+
+Produce a structured geological interpretation. Respond with JSON ONLY (no markdown):
+{
+  "interpretation_summary": "2–4 sentence geological narrative for the site",
+  "stratigraphic_order": ["youngest_unit_code", "...", "oldest_unit_code"],
+  "stratigraphic_notes": {"UNIT_CODE": "one sentence on origin and character"},
+  "constraints": [
+    "natural language constraint rules e.g. 'Made Ground not deeper than 4m'",
+    "e.g. 'Chalk is above 30mAOD'",
+    "e.g. 'Alluvial Clay exists only in the south half'"
+  ],
+  "hazards": [
+    {"type": "settlement|liquefaction|contamination|collapse|groundwater|slope", "description": "brief description", "unit_code": "code or null"}
+  ],
+  "colour_suggestions": {"UNIT_CODE": "#hexcolour"},
+  "interpolation_advice": "one sentence on recommended cell size, search radius or method",
+  "confidence": 0.0
+}
+`
+  }];
+
+  try {
+    return await callClaude(messages, apiKey);
+  } catch (err) {
+    throw new Error(`Geological interpretation failed: ${err.message}`);
+  }
+}
+
+function _demoInterpretation(geoUnits) {
+  const codes = geoUnits.map(u => u.code);
+  const order = codes.length ? [...codes] : ['MG', 'RTD', 'ACL', 'CH'];
+  return {
+    interpretation_summary:
+      'The site comprises superficial deposits overlying bedrock in a typical UK lowland sequence. ' +
+      'Made Ground is present across the site reflecting historical development. ' +
+      'Alluvial deposits infill a palaeochannel feature in the northern third of the site. ' +
+      'Chalk bedrock is encountered at depth with variable head deposits in between.',
+    stratigraphic_order: order,
+    stratigraphic_notes: Object.fromEntries(geoUnits.map(u => [u.code, `${u.name}: typical UK engineering unit.`])),
+    constraints: [
+      geoUnits[0] ? `${geoUnits[0].name} not deeper than 5m` : 'Made Ground not deeper than 5m',
+      geoUnits[geoUnits.length - 1]
+        ? `${geoUnits[geoUnits.length - 1].name} is above 20mAOD`
+        : 'Chalk is above 20mAOD',
+    ],
+    hazards: [
+      { type: 'settlement', description: 'Soft alluvial deposits may produce differential settlement.', unit_code: geoUnits[1]?.code ?? null },
+      { type: 'groundwater', description: 'Shallow groundwater likely in alluvial sequence.', unit_code: null },
+    ],
+    colour_suggestions: {},
+    interpolation_advice: 'Use IDW with 5 neighbours and 1 m horizontal cell size for this site scale.',
+    confidence: 0.7,
+  };
+}
+
+// ── Infer stratigraphic order from borehole data (no AI needed) ───────────────
+export function inferStratOrderFromData(classifiedBH, geoUnits) {
+  // Build directed graph: A above B ↔ edge A → B
+  const unitCodes = new Set(geoUnits.map(u => u.code));
+  const pairCount = {}; // `${above}→${below}`: count
+
+  for (const bh of classifiedBH) {
+    const layers = [...bh.layers].sort((a, b) => a.top - b.top); // top-most first
+    for (let i = 0; i < layers.length - 1; i++) {
+      const a = layers[i].unitCode;
+      const b = layers[i + 1].unitCode;
+      if (!a || !b || a === b || !unitCodes.has(a) || !unitCodes.has(b)) continue;
+      const key = `${a}→${b}`;
+      pairCount[key] = (pairCount[key] ?? 0) + 1;
+    }
+  }
+
+  // Simple topological sort using pair counts
+  const inDegree = {};
+  const adj = {};
+  geoUnits.forEach(u => { inDegree[u.code] = 0; adj[u.code] = []; });
+
+  for (const [key, cnt] of Object.entries(pairCount)) {
+    const [a, b] = key.split('→');
+    if (!adj[a]) continue;
+    if (!adj[a].includes(b)) { adj[a].push(b); inDegree[b] = (inDegree[b] ?? 0) + 1; }
+  }
+
+  // Kahn's algorithm
+  const queue  = geoUnits.map(u => u.code).filter(c => (inDegree[c] ?? 0) === 0);
+  const order  = [];
+  while (queue.length) {
+    const node = queue.shift();
+    order.push(node);
+    (adj[node] ?? []).forEach(nb => {
+      inDegree[nb]--;
+      if (inDegree[nb] === 0) queue.push(nb);
+    });
+  }
+  // Append any remaining (cycles)
+  geoUnits.forEach(u => { if (!order.includes(u.code)) order.push(u.code); });
+
+  const pairs = Object.entries(pairCount)
+    .map(([key, count]) => { const [above, below] = key.split('→'); return { above, below, count }; })
+    .sort((a, b) => b.count - a.count);
+
+  return { order, pairs };
+}
+
 // ── Main entry: run full analysis pipeline ─────────────────────────────────────
 export async function runAIAnalysis(boreholes, apiKey, demoMode) {
   // Step 1: discover / confirm units
