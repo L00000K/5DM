@@ -481,6 +481,7 @@ function initReset() {
     setEnabled('btn-model-report', false);
     setEnabled('btn-ai-narrative', false);
     setEnabled('btn-validate-model', false);
+    setEnabled('btn-compare-methods', false);
     setEnabled('btn-assess-risk', false);
     setEnabled('btn-plan-view', false);
     setEnabled('btn-export-contacts', false);
@@ -718,6 +719,7 @@ function initBuildModel() {
       setEnabled('btn-model-report', true);
       setEnabled('btn-ai-narrative', true);
       setEnabled('btn-validate-model', true);
+      setEnabled('btn-compare-methods', true);
       setEnabled('btn-assess-risk', true);
       setEnabled('btn-plan-view', true);
       setEnabled('btn-export-contacts', true);
@@ -1618,6 +1620,77 @@ function initModelReport() {
       log(`Model validation: ${result.accuracy}% accuracy across ${result.total} BH layer samples.`,
         +result.accuracy >= 70 ? 'ok' : 'warn');
     }
+  });
+
+  document.getElementById('btn-compare-methods')?.addEventListener('click', async () => {
+    if (!AppState.classifiedBH.length) { log('Run AI analysis first.', 'warn'); return; }
+    const btn = document.getElementById('btn-compare-methods');
+    const out  = document.getElementById('method-comparison-results');
+    if (btn) btn.disabled = true;
+    if (out) { out.style.display = 'block'; out.innerHTML = '<p class="hint" style="font-size:10px">Running comparison…</p>'; }
+
+    const METHODS = ['idw', 'kriging', 'gp', 'nn'];
+    const results = [];
+    const siteHistory = document.getElementById('input-site-history')?.value ?? '';
+
+    for (const method of METHODS) {
+      try {
+        log(`Comparing method: ${method.toUpperCase()}…`, 'info');
+        const grid = await buildVoxelGrid(
+          AppState.classifiedBH, AppState.geoUnits, AppState.cellSizeH,
+          {
+            kNeighbors: AppState.kNeighbors, idwPower: AppState.idwPower,
+            method, cellSizeZ: AppState.cellSizeZ,
+            anisoAzimuth: AppState.anisoAzimuth, anisoRatio: AppState.anisoRatio,
+            trendOrder: AppState.trendOrder,
+            varRange: AppState.varRange, varSill: AppState.varSill, varNugget: AppState.varNugget,
+          }
+        );
+        const { nx, ny, nz, origin: O, cellSize: cs, cellHeight: ch, unitIds, certainty } = grid;
+        const bhs = AppState.classifiedBH.filter(b => !b.synthetic && b.layers?.length);
+        const unitById = {};
+        AppState.geoUnits.forEach(u => { unitById[u.id] = u; });
+        let correct = 0, total = 0, certSum = 0;
+        for (const bh of bhs) {
+          const ix = Math.max(0, Math.min(nx-1, Math.round((bh.x - O.x) / cs - 0.5)));
+          const iy = Math.max(0, Math.min(ny-1, Math.round((bh.y - O.z) / cs - 0.5)));
+          for (const layer of bh.layers) {
+            if (!layer.unitCode) continue;
+            const elev = (bh.groundLevel ?? 0) - (layer.top + layer.base) / 2;
+            const iz   = Math.max(0, Math.min(nz-1, Math.round((elev - O.y) / ch - 0.5)));
+            const flat = ix + iy * nx + iz * nx * ny;
+            const pred = unitById[unitIds[flat]];
+            total++;
+            certSum += certainty[flat];
+            if (pred?.code === layer.unitCode) correct++;
+          }
+        }
+        const accuracy = total > 0 ? (correct / total * 100).toFixed(1) : '0';
+        const avgCert  = total > 0 ? (certSum / total * 100).toFixed(1) : '0';
+        results.push({ method, accuracy: +accuracy, avgCert: +avgCert });
+      } catch (err) {
+        results.push({ method, accuracy: null, avgCert: null, err: err.message });
+      }
+    }
+
+    results.sort((a, b) => (b.accuracy ?? 0) - (a.accuracy ?? 0));
+
+    const LABELS = { idw: 'IDW', kriging: 'Kriging', gp: 'GP', nn: 'NN' };
+    const rows = results.map((r, i) => {
+      const acc   = r.accuracy != null ? `${r.accuracy}%` : '—';
+      const cert  = r.avgCert  != null ? `${r.avgCert}%`  : '—';
+      const accColor = r.accuracy >= 80 ? 'var(--green)' : r.accuracy >= 60 ? '#c8a855' : '#d04040';
+      const best  = i === 0 ? ' ★' : '';
+      return `<tr><td>${LABELS[r.method] ?? r.method}${best}</td><td style="color:${accColor};font-weight:600">${acc}</td><td>${cert}</td></tr>`;
+    }).join('');
+
+    if (out) out.innerHTML = `<table style="width:100%;font-size:10px;border-collapse:collapse">
+      <thead><tr style="color:var(--text-muted)"><th style="text-align:left;padding-bottom:3px">Method</th><th>Accuracy</th><th>Certainty</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table><p class="hint" style="font-size:9px;margin-top:4px">★ Best accuracy — consider switching to this method</p>`;
+
+    log(`Method comparison complete. Best: ${results[0]?.method?.toUpperCase() ?? '—'} (${results[0]?.accuracy ?? 0}%)`, 'ok');
+    if (btn) btn.disabled = false;
   });
 }
 

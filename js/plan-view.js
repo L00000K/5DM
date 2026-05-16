@@ -225,6 +225,37 @@ export class PlanView {
       }
     }
 
+    // Certainty threshold contour overlay
+    // Draws a dashed red boundary around zones where certainty < 0.4
+    const CERT_THRESHOLD = 0.4;
+    ctx.strokeStyle = 'rgba(220,50,50,0.65)';
+    ctx.lineWidth   = 0.8;
+    ctx.setLineDash([3, 2]);
+    for (let iy = 0; iy < ny; iy++) {
+      for (let ix = 0; ix < nx; ix++) {
+        const flat  = ix + iy * nx + iz * nx * ny;
+        const c     = certainty[flat];
+        if (!unitIds[flat] || c >= CERT_THRESHOLD) continue;
+        const px = PAD + ix * cellPxW;
+        const py = PAD + (ny - 1 - iy) * cellPxH;
+        const w  = Math.ceil(cellPxW + 0.5);
+        const h  = Math.ceil(cellPxH + 0.5);
+        // Only draw the edges that border a confident cell (to form a contour)
+        const left  = ix === 0       || certainty[ix-1 + iy*nx + iz*nx*ny] >= CERT_THRESHOLD;
+        const right = ix === nx - 1  || certainty[ix+1 + iy*nx + iz*nx*ny] >= CERT_THRESHOLD;
+        const down  = iy === 0       || certainty[ix + (iy-1)*nx + iz*nx*ny] >= CERT_THRESHOLD;
+        const up    = iy === ny - 1  || certainty[ix + (iy+1)*nx + iz*nx*ny] >= CERT_THRESHOLD;
+        ctx.beginPath();
+        if (left)  { ctx.moveTo(px,   py);   ctx.lineTo(px,   py+h); }
+        if (right) { ctx.moveTo(px+w, py);   ctx.lineTo(px+w, py+h); }
+        if (up)    { ctx.moveTo(px,   py);   ctx.lineTo(px+w, py);   }
+        if (down)  { ctx.moveTo(px,   py+h); ctx.lineTo(px+w, py+h); }
+        ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1;
+
     // Borehole markers
     (boreholes ?? []).filter(b => !b.synthetic).forEach(bh => {
       const ix = Math.floor((bh.x - O.x) / cs);
