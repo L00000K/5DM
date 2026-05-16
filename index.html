@@ -57,6 +57,22 @@
         </div>
         <div id="bh-file-list" class="file-list"></div>
 
+        <!-- CPT data (collapsible) -->
+        <div class="collapsible-hdr" id="cpt-toggle">
+          <span>CPT Data <span class="badge-opt">AGS/CSV optional</span></span>
+          <span class="collapse-arrow">›</span>
+        </div>
+        <div id="cpt-section" class="collapsible-body" hidden>
+          <div class="drop-zone drop-zone-sm" id="drop-cpt" tabindex="0" role="button">
+            <div class="drop-icon" style="font-size:18px">⬇</div>
+            <div class="drop-label" style="font-size:12px">CPT Logs</div>
+            <div class="drop-hint">AGS (CPTG) · CSV (depth, qc, fs)</div>
+            <input type="file" id="file-cpt" accept=".ags,.csv,.txt" hidden multiple>
+          </div>
+          <div id="cpt-file-info" class="file-list"></div>
+          <p class="hint">Plots qc/fs profiles in Logs tab; Ic used to constrain model</p>
+        </div>
+
         <!-- Lab data (collapsible) -->
         <div class="collapsible-hdr" id="lab-toggle">
           <span>Lab Data <span class="badge-opt">CSV optional</span></span>
@@ -282,17 +298,39 @@
 
       <!-- BH LOG STRIPS TAB -->
       <div class="tab-content" id="tab-logs" role="tabpanel">
-        <p class="hint" style="padding:8px 8px 4px">Graphical borehole log strips with geological units and SPT N values.</p>
-        <div style="padding:6px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <label style="font-size:11px;color:var(--text-mid)">Scale (px/m):
-            <input type="range" id="bh-log-scale" min="8" max="60" value="20" step="2" style="width:80px;vertical-align:middle">
-            <span id="bh-log-scale-lbl" style="font-size:11px;color:var(--text-mid)">20</span>
-          </label>
-          <button id="btn-bh-log-export" class="btn-secondary btn-sm" disabled>⬇ Export SVG</button>
+        <div style="display:flex;gap:4px;padding:6px 8px;border-bottom:1px solid var(--border)">
+          <button class="log-sub-tab active" data-log-tab="bh">BH Logs</button>
+          <button class="log-sub-tab" data-log-tab="cpt">CPT Profiles</button>
         </div>
-        <div id="bh-log-wrap" style="overflow:auto;flex:1;min-height:0;padding:0 4px 8px">
-          <svg id="bh-log-svg" xmlns="http://www.w3.org/2000/svg" style="display:block"></svg>
-          <p id="bh-log-hint" class="hint" style="padding:8px">Load classified borehole data to see log strips.</p>
+
+        <div id="log-sub-bh">
+          <p class="hint" style="padding:6px 8px 2px">Graphical log strips with geological units and SPT N values.</p>
+          <div style="padding:4px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <label style="font-size:11px;color:var(--text-mid)">Scale (px/m):
+              <input type="range" id="bh-log-scale" min="8" max="60" value="20" step="2" style="width:80px;vertical-align:middle">
+              <span id="bh-log-scale-lbl" style="font-size:11px;color:var(--text-mid)">20</span>
+            </label>
+            <button id="btn-bh-log-export" class="btn-secondary btn-sm" disabled>⬇ SVG</button>
+          </div>
+          <div id="bh-log-wrap" style="overflow:auto;max-height:420px;padding:0 4px 8px">
+            <svg id="bh-log-svg" xmlns="http://www.w3.org/2000/svg" style="display:block"></svg>
+            <p id="bh-log-hint" class="hint" style="padding:8px">Load classified borehole data to see log strips.</p>
+          </div>
+        </div>
+
+        <div id="log-sub-cpt" hidden>
+          <p class="hint" style="padding:6px 8px 2px">CPT qc and fs profiles with Robertson SBT classification.</p>
+          <div style="padding:4px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <label style="font-size:11px;color:var(--text-mid)">Scale (px/m):
+              <input type="range" id="cpt-log-scale" min="8" max="60" value="20" step="2" style="width:80px;vertical-align:middle">
+              <span id="cpt-log-scale-lbl" style="font-size:11px;color:var(--text-mid)">20</span>
+            </label>
+            <button id="btn-cpt-log-export" class="btn-secondary btn-sm" disabled>⬇ SVG</button>
+          </div>
+          <div id="cpt-log-wrap" style="overflow:auto;max-height:420px;padding:0 4px 8px">
+            <svg id="cpt-log-svg" xmlns="http://www.w3.org/2000/svg" style="display:block"></svg>
+            <p id="cpt-log-hint" class="hint" style="padding:8px">Load CPT data (in Data tab) to see profiles.</p>
+          </div>
         </div>
       </div>
 

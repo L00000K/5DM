@@ -1142,6 +1142,24 @@ input[type="range"] {
 .modal-actions { display: flex; gap: 8px; }
 .modal-note { font-size: 11px !important; color: var(--text-dim) !important; }
 
+/* ── Log sub-tabs ── */
+.log-sub-tab {
+  padding: 4px 10px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-surface);
+  color: var(--text-mid);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.log-sub-tab.active,
+.log-sub-tab:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
 /* ── Unit Editor Modal ── */
 .unit-editor-row {
   display: flex;

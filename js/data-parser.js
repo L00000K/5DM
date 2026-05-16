@@ -34,6 +34,103 @@ export function parseAGS(text) {
   return buildBoreholes(groups);
 }
 
+// ── CPT parser — AGS CPTG group or CSV ────────────────────────────────────────
+// Returns CPTLog[]: { id, x, y, groundLevel, depths[], qc[], fs[], Rf[], Ic[] }
+export function parseCPT(text) {
+  const isAGS = text.slice(0, 200).includes('"GROUP"') || text.slice(0, 200).includes('"CPTG"');
+  if (isAGS) return _parseCPTfromAGS(text);
+  return _parseCPTfromCSV(text);
+}
+
+function _parseCPTfromAGS(text) {
+  const lines  = text.split(/\r?\n/);
+  const groups = {};
+  let current  = null;
+  let headings = [];
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || line.startsWith('!')) continue;
+    const cells = parseAGSLine(line);
+    if (!cells.length) continue;
+    const tag = cells[0].toUpperCase().replace(/"/g, '');
+    if (tag === 'GROUP') { current = stripQuotes(cells[1]||'').toUpperCase(); groups[current]=[]; headings=[]; }
+    else if (tag === 'HEADING') { headings = cells.slice(1).map(stripQuotes); }
+    else if (tag === 'DATA' && current && headings.length) {
+      const row = {};
+      cells.slice(1).forEach((c,i) => { row[headings[i]] = stripQuotes(c); });
+      groups[current].push(row);
+    }
+  }
+
+  const loca = groups['LOCA'] ?? [];
+  const cptg = groups['CPTG'] ?? [];
+  const logs  = {};
+
+  loca.forEach(loc => {
+    const id = loc['LOCA_ID'] || loc['HOLE_ID'] || 'CPT';
+    logs[id] = {
+      id, x: parseFloat(loc['LOCA_NATE']||'0'), y: parseFloat(loc['LOCA_NATN']||'0'),
+      groundLevel: parseFloat(loc['LOCA_GL']||'0'),
+      depths: [], qc: [], fs: [], Rf: [], Ic: [],
+    };
+  });
+
+  cptg.forEach(r => {
+    const id  = r['LOCA_ID'] || r['HOLE_ID'];
+    let log = logs[id];
+    if (!log) { log = logs[id] = { id, x: 0, y: 0, groundLevel: 0, depths: [], qc: [], fs: [], Rf: [], Ic: [] }; }
+    const d  = parseFloat(r['CPTG_DPTH'] || r['DEPT'] || '0');
+    const qc = parseFloat(r['CPTG_RES']  || r['QC']   || '0');  // MPa
+    const fs = parseFloat(r['CPTG_FRES'] || r['FS']   || '0');  // kPa
+    const Rf = qc > 0 ? (fs / 1000 / qc) * 100 : 0;             // %
+    const Ic = _calcIc(qc * 1000, fs, 1.0); // normalised SBT index (approx)
+    log.depths.push(d); log.qc.push(qc); log.fs.push(fs/1000); log.Rf.push(Rf); log.Ic.push(Ic);
+  });
+
+  return Object.values(logs).filter(l => l.depths.length > 0);
+}
+
+function _parseCPTfromCSV(text) {
+  const rows = text.split(/\r?\n/).map(r => r.trim()).filter(Boolean);
+  if (!rows.length) return [];
+  const sep = rows[0].includes('\t') ? '\t' : ',';
+  const hdr = rows[0].split(sep).map(h => h.trim().toLowerCase().replace(/[^a-z0-9_]/g,'_'));
+  const col = k => hdr.indexOf(k);
+
+  const logMap = {};
+  for (let i = 1; i < rows.length; i++) {
+    const c   = rows[i].split(sep).map(v => v.trim().replace(/^"|"$/g,''));
+    const id  = c[col('id')] || c[col('cpt_id')] || c[col('hole_id')] || 'CPT-1';
+    if (!logMap[id]) {
+      logMap[id] = {
+        id,
+        x: parseFloat(c[col('x')]||c[col('easting')]||'0'),
+        y: parseFloat(c[col('y')]||c[col('northing')]||'0'),
+        groundLevel: parseFloat(c[col('ground_level')]||c[col('gl')]||'0'),
+        depths: [], qc: [], fs: [], Rf: [], Ic: [],
+      };
+    }
+    const log = logMap[id];
+    const d   = parseFloat(c[col('depth')]||c[col('d')]||c[col('z')]||'0');
+    const qc  = parseFloat(c[col('qc')]||c[col('qc_mpa')]||'0');
+    const fs  = parseFloat(c[col('fs')]||c[col('fs_kpa')]||'0') / 1000; // convert to MPa if in kPa
+    const Rf  = qc > 0 ? (fs / qc) * 100 : 0;
+    log.depths.push(d); log.qc.push(qc); log.fs.push(fs);
+    log.Rf.push(Rf); log.Ic.push(_calcIc(qc * 1000, fs * 1000, 1.0));
+  }
+  return Object.values(logMap).filter(l => l.depths.length > 0);
+}
+
+// Robertson SBT index Ic (approximate, σ'v ≈ 100 kPa)
+function _calcIc(qcKpa, fsKpa, sigmaV_atm) {
+  const Qt = (qcKpa / 1000 - sigmaV_atm) / sigmaV_atm;  // normalised tip
+  const Fr = Qt > 0.001 ? (fsKpa / (qcKpa - sigmaV_atm * 1000)) * 100 : 0;
+  const Ic = Math.sqrt((3.47 - Math.log10(Math.max(0.001, Qt))) ** 2 +
+                       (1.22 + Math.log10(Math.max(0.001, Fr))) ** 2);
+  return isFinite(Ic) ? Math.min(4, Ic) : 2;
+}
+
 function parseAGSLine(line) {
   const cells = [];
   let inQ = false, cur = '';

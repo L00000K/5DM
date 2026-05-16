@@ -20,6 +20,8 @@ import { calculateBearingCapacity, renderBearingResults } from './bearing.js';
 import { calculatePileCapacity, renderPileResults } from './pile.js';
 import { parseLabCSV } from './lab-import.js';
 import { BHLogView } from './bh-log-view.js';
+import { CPTLogView } from './cpt-log-view.js';
+import { parseCPT } from './data-parser.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -43,6 +45,8 @@ export const AppState = {
   isopachMap: null,
   planView: null,
   bhLogView: null,
+  cptLogView: null,
+  cptLogs: [],
   report: null,
   stratOrder: [],
 };
@@ -138,7 +142,7 @@ function initInterpolationSettings() {
 
 // ── Collapsible sections ───────────────────────────────────────────────────────
 function initCollapsibles() {
-  [['topo-toggle', 'topo-section'], ['geomap-toggle', 'geomap-section']].forEach(([tid, sid]) => {
+  [['topo-toggle', 'topo-section'], ['geomap-toggle', 'geomap-section'], ['cpt-toggle', 'cpt-section']].forEach(([tid, sid]) => {
     const toggle  = document.getElementById(tid);
     const section = document.getElementById(sid);
     if (!toggle || !section) return;
@@ -961,6 +965,64 @@ function initUnitEditor() {
   btnApply?.addEventListener('click', apply);
   btnClose?.addEventListener('click', () => { modal.hidden = true; });
   modal.querySelector('.modal-backdrop')?.addEventListener('click', () => { modal.hidden = true; });
+}
+
+// ── Log sub-tab switcher (BH / CPT) ───────────────────────────────────────────
+function initLogSubTabs() {
+  document.querySelectorAll('.log-sub-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.log-sub-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const key = btn.dataset.logTab;
+      document.getElementById('log-sub-bh').hidden  = (key !== 'bh');
+      document.getElementById('log-sub-cpt').hidden = (key !== 'cpt');
+    });
+  });
+}
+
+// ── CPT data import ───────────────────────────────────────────────────────────
+function initCPTImport() {
+  AppState.cptLogView = new CPTLogView();
+  const drop = document.getElementById('drop-cpt');
+  const file = document.getElementById('file-cpt');
+  const info = document.getElementById('cpt-file-info');
+
+  const process = async files => {
+    let all = [];
+    for (const f of files) {
+      try {
+        const text = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = e => res(e.target.result);
+          r.onerror = () => rej(new Error(`Cannot read ${f.name}`));
+          r.readAsText(f);
+        });
+        const logs = parseCPT(text);
+        if (logs.length) {
+          all = all.concat(logs);
+          log(`${f.name}: ${logs.length} CPT log(s) parsed`, 'ok');
+        } else {
+          log(`${f.name}: no CPT data found`, 'warn');
+        }
+      } catch (err) {
+        log(`CPT parse error: ${err.message}`, 'error');
+      }
+    }
+    if (all.length) {
+      AppState.cptLogs = all;
+      if (info) info.textContent = `${all.length} CPT log(s) loaded`;
+      AppState.cptLogView.draw(all);
+    }
+  };
+
+  drop?.addEventListener('click', () => file?.click());
+  drop?.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('drag-over'); });
+  drop?.addEventListener('dragleave', () => drop.classList.remove('drag-over'));
+  drop?.addEventListener('drop', e => {
+    e.preventDefault(); drop.classList.remove('drag-over');
+    process(Array.from(e.dataTransfer?.files ?? []));
+  });
+  file?.addEventListener('change', () => { if (file.files.length) process(Array.from(file.files)); });
 }
 
 // ── Borehole Log Strip View ────────────────────────────────────────────────────
@@ -1964,6 +2026,8 @@ async function init() {
   initAutoParams();
   initUnitEditor();
   initBHLogView();
+  initLogSubTabs();
+  initCPTImport();
   initWelcomeOverlay();
 
   // Sample tile buttons (left panel)
