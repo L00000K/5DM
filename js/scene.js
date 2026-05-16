@@ -567,6 +567,7 @@ class SceneManager {
     this._clearTopo();
     this._clearMeasure();
     this.clearAnnotations();
+    this.setGroundwaterTable(null);
     if (this._bhSticks) {
       this._scene.remove(this._bhSticks);
       this._bhSticks.traverse(obj => { obj.geometry?.dispose(); obj.material?.dispose(); });
@@ -851,6 +852,61 @@ class SceneManager {
     a.href = url;
     a.download = filename;
     a.click();
+  }
+
+  // ── Groundwater table plane ───────────────────────────────────────────────
+  setGroundwaterTable(elevM) {
+    if (this._gwtMesh) {
+      this._scene.remove(this._gwtMesh);
+      this._gwtMesh.geometry.dispose();
+      this._gwtMesh.material.dispose();
+      this._gwtMesh = null;
+    }
+    if (elevM === null || elevM === undefined || !this._modelBounds?.grid) return;
+    const g  = this._modelBounds.grid;
+    const cx = g.origin.x + g.worldWidth * 0.5;
+    const cz = g.origin.z + g.worldDepth * 0.5;
+    const extra = g.cellSize * 2;
+    const geom = new THREE.PlaneGeometry(g.worldWidth + extra, g.worldDepth + extra);
+    const mat  = new THREE.MeshBasicMaterial({
+      color: 0x4499dd, transparent: true, opacity: 0.22,
+      side: THREE.DoubleSide, depthWrite: false,
+    });
+    this._gwtMesh = new THREE.Mesh(geom, mat);
+    this._gwtMesh.rotation.x = -Math.PI / 2;
+    this._gwtMesh.position.set(cx, elevM, cz);
+    this._scene.add(this._gwtMesh);
+  }
+
+  // ── Preset camera views ───────────────────────────────────────────────────
+  setCameraView(preset) {
+    const b = this._modelBounds;
+    if (!b) return;
+    const { cx, cy, cz, size } = b;
+    let pos, up;
+    switch (preset) {
+      case 'plan':
+        pos = [cx, cy + size * 2.2, cz + 0.001];
+        up  = [0, 0, -1];
+        break;
+      case 'ns':
+        pos = [cx, cy + size * 0.25, cz - size * 1.6];
+        up  = [0, 1, 0];
+        break;
+      case 'ew':
+        pos = [cx + size * 1.6, cy + size * 0.25, cz];
+        up  = [0, 1, 0];
+        break;
+      default: // '3d'
+        pos = [cx + size * 0.8, cy + size * 0.5, cz + size * 0.8];
+        up  = [0, 1, 0];
+        break;
+    }
+    this._camera.position.set(...pos);
+    this._camera.up.set(...up);
+    this._camera.lookAt(cx, cy, cz);
+    this._controls.target.set(cx, cy, cz);
+    this._controls.update();
   }
 
   // ── Background ────────────────────────────────────────────────────────────

@@ -4,19 +4,23 @@
 
 export class PlanView {
   constructor() {
-    this._panel     = document.getElementById('plan-view-panel');
-    this._canvas    = document.getElementById('plan-view-canvas');
-    this._ctx       = this._canvas?.getContext('2d');
-    this._slider    = document.getElementById('plan-view-elevation');
-    this._elevLabel = document.getElementById('plan-view-elev-lbl');
-    this._closeBtn  = document.getElementById('plan-view-close');
-    this._exportBtn = document.getElementById('plan-view-export');
-    this._visible   = false;
-    this._lastArgs  = null;
+    this._panel      = document.getElementById('plan-view-panel');
+    this._canvas     = document.getElementById('plan-view-canvas');
+    this._ctx        = this._canvas?.getContext('2d');
+    this._slider     = document.getElementById('plan-view-elevation');
+    this._elevLabel  = document.getElementById('plan-view-elev-lbl');
+    this._closeBtn   = document.getElementById('plan-view-close');
+    this._exportBtn  = document.getElementById('plan-view-export');
+    this._modeSelect = document.getElementById('plan-view-mode');
+    this._visible    = false;
+    this._lastArgs   = null;
 
     this._closeBtn?.addEventListener('click', () => this.hide());
     this._exportBtn?.addEventListener('click', () => this._exportPNG());
     this._slider?.addEventListener('input', () => {
+      if (this._lastArgs) this._redraw();
+    });
+    this._modeSelect?.addEventListener('change', () => {
       if (this._lastArgs) this._redraw();
     });
 
@@ -54,8 +58,9 @@ export class PlanView {
     const args = this._lastArgs;
     if (!args || !this._canvas || !this._ctx) return;
     const { grid, geoUnits, boreholes } = args;
-    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds } = grid;
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty } = grid;
 
+    const mode = this._modeSelect?.value ?? 'unit';
     const elev = parseFloat(this._slider?.value ?? O.y);
     const iz   = Math.max(0, Math.min(nz - 1, Math.floor((elev - O.y) / ch)));
     if (this._elevLabel) this._elevLabel.textContent = `${elev.toFixed(1)} mAOD`;
@@ -80,13 +85,21 @@ export class PlanView {
     ctx.fillStyle = '#f0f2f5'; ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = '#ffffff'; ctx.fillRect(PAD, PAD, drawW, drawH);
 
-    // Draw unit cells
     for (let iy = 0; iy < ny; iy++) {
       for (let ix = 0; ix < nx; ix++) {
-        const uid  = unitIds[ix + iy * nx + iz * nx * ny];
-        const unit = unitMap[uid];
-        if (!unit) continue;
-        ctx.fillStyle = unit.color;
+        const flat  = ix + iy * nx + iz * nx * ny;
+        const uid   = unitIds[flat];
+        const unit  = unitMap[uid];
+        if (!uid) continue;
+        let color;
+        if (mode === 'unit') {
+          color = unit?.color ?? '#888';
+        } else {
+          const cert = certainty[flat];
+          const g = Math.round(cert * 200);
+          color = `rgb(${Math.round(255 - cert * 150)},${g + 55},${Math.round(cert * 100 + 50)})`;
+        }
+        ctx.fillStyle = color;
         ctx.fillRect(
           PAD + ix * cellPxW,
           PAD + (ny - 1 - iy) * cellPxH,
@@ -113,29 +126,43 @@ export class PlanView {
       ctx.fillText(bh.id, px, py - 5);
     });
 
-    // Frame
     ctx.strokeStyle = '#c8cdd6'; ctx.lineWidth = 1;
     ctx.strokeRect(PAD, PAD, drawW, drawH);
 
-    // Title
     ctx.fillStyle = '#8898a8';
     ctx.font = 'bold 11px Inter, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`Plan View — Elevation ${elev.toFixed(1)} mAOD`, PAD, PAD - 6);
+    const modeLabel = mode === 'unit' ? 'Geology' : 'Certainty';
+    ctx.fillText(`Plan View (${modeLabel}) — ${elev.toFixed(1)} mAOD`, PAD, PAD - 6);
 
-    // Unit colour legend row
+    // Legend
     const lgY = PAD + drawH + 10;
-    let lx    = PAD;
-    ctx.font = '9px Inter, sans-serif';
-    ctx.textBaseline = 'middle';
-    for (const u of geoUnits) {
-      if (lx > W - 50) break;
-      ctx.fillStyle = u.color;
-      ctx.fillRect(lx, lgY - 4, 10, 8);
-      ctx.fillStyle = '#4a6275';
-      ctx.textAlign = 'left';
-      ctx.fillText(u.code, lx + 13, lgY);
-      lx += 14 + ctx.measureText(u.code).width + 8;
+    if (mode === 'unit') {
+      let lx = PAD;
+      ctx.font = '9px Inter, sans-serif';
+      ctx.textBaseline = 'middle';
+      for (const u of geoUnits) {
+        if (lx > W - 50) break;
+        ctx.fillStyle = u.color;
+        ctx.fillRect(lx, lgY - 4, 10, 8);
+        ctx.fillStyle = '#4a6275';
+        ctx.textAlign = 'left';
+        ctx.fillText(u.code, lx + 13, lgY);
+        lx += 14 + ctx.measureText(u.code).width + 8;
+      }
+    } else {
+      // Certainty gradient bar
+      const lgW = drawW, lgH = 10;
+      for (let i = 0; i < lgW; i++) {
+        const cert = i / lgW;
+        const g = Math.round(cert * 200);
+        ctx.fillStyle = `rgb(${Math.round(255-cert*150)},${g+55},${Math.round(cert*100+50)})`;
+        ctx.fillRect(PAD + i, lgY - 2, 1, lgH);
+      }
+      ctx.strokeStyle = '#c8cdd6'; ctx.strokeRect(PAD, lgY - 2, lgW, lgH);
+      ctx.fillStyle = '#4a6275'; ctx.font = '9px Inter, sans-serif';
+      ctx.textAlign = 'left';  ctx.fillText('Low', PAD, lgY + lgH + 8);
+      ctx.textAlign = 'right'; ctx.fillText('High certainty', PAD + lgW, lgY + lgH + 8);
     }
   }
 

@@ -13,6 +13,7 @@ import { IsopachMap  } from './isopach.js';
 import { ModelReport } from './report.js';
 import { PlanView } from './plan-view.js';
 import { renderPropertiesTable } from './properties.js';
+import { saveSession, loadSession, hasSavedSession } from './session.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -536,6 +537,86 @@ function initShortcutsModal() {
       show();
     }
   });
+}
+
+// ── Groundwater table ─────────────────────────────────────────────────────────
+function initGWT() {
+  const input = document.getElementById('gwt-elevation');
+  const clear = document.getElementById('btn-gwt-clear');
+
+  input?.addEventListener('change', () => {
+    if (!AppState.scene) return;
+    const val = parseFloat(input.value);
+    AppState.scene.setGroundwaterTable(isNaN(val) ? null : val);
+    if (!isNaN(val)) log(`GWT set at ${val.toFixed(1)} mAOD`, 'ok');
+  });
+  clear?.addEventListener('click', () => {
+    if (input) input.value = '';
+    AppState.scene?.setGroundwaterTable(null);
+  });
+}
+
+// ── Camera preset views ────────────────────────────────────────────────────────
+function initCameraPresets() {
+  document.querySelectorAll('.cam-preset-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!AppState.scene) return;
+      AppState.scene.setCameraView(btn.dataset.preset);
+    });
+  });
+}
+
+// ── Session save / load ────────────────────────────────────────────────────────
+function initSession() {
+  const saveBtn = document.getElementById('btn-save-session');
+  const loadBtn = document.getElementById('btn-load-session');
+
+  saveBtn?.addEventListener('click', () => {
+    if (!AppState.geoUnits.length && !AppState.classifiedBH.length) {
+      log('Nothing to save.', 'warn'); return;
+    }
+    const ok = saveSession(AppState);
+    log(ok ? 'Session saved (browser storage).' : 'Save failed — storage may be full.', ok ? 'ok' : 'error');
+  });
+
+  loadBtn?.addEventListener('click', async () => {
+    if (!hasSavedSession()) { log('No saved session found.', 'warn'); return; }
+    const data = loadSession();
+    if (!data) { log('Could not read saved session.', 'error'); return; }
+
+    AppState.geoUnits    = data.geoUnits ?? [];
+    AppState.classifiedBH = data.classifiedBH ?? [];
+    AppState.rawBoreholes = data.classifiedBH ?? [];
+    AppState.cellSizeH   = data.cellSizeH ?? 1;
+    AppState.cellSizeZ   = data.cellSizeZ ?? 0.25;
+    AppState.kNeighbors  = data.kNeighbors ?? 5;
+    AppState.idwPower    = data.idwPower ?? 2;
+    AppState.interpMethod = data.interpMethod ?? 'idw';
+
+    const ct = document.getElementById('constraints-text');
+    if (ct && data.constraintsText) ct.value = data.constraintsText;
+
+    updateLegend();
+    updateInfoPanel();
+    updateBHTable();
+    updateBHChart();
+    updateStratColumn();
+    setEnabled('btn-run-ai', AppState.classifiedBH.length > 0);
+    setEnabled('btn-build-model', AppState.classifiedBH.length > 0);
+    setEnabled('btn-export-bh-csv', true);
+    setEnabled('btn-export-props', true);
+    hideWelcome();
+    log(`Session restored — ${AppState.classifiedBH.length} BH, ${AppState.geoUnits.length} units. Click "Build 3D Model" to regenerate.`, 'ok');
+    switchTab('data');
+
+    setTimeout(() => {
+      if (AppState.classifiedBH.length) document.getElementById('btn-build-model')?.click();
+    }, 100);
+  });
+
+  if (hasSavedSession()) {
+    log('A saved session is available. Click "📂 Load" to restore it.', 'info');
+  }
 }
 
 // ── Plan view (horizontal slice) ──────────────────────────────────────────────
@@ -1284,6 +1365,9 @@ async function init() {
   initTopoClip();
   initCursorCoords();
   initShortcutsModal();
+  initGWT();
+  initCameraPresets();
+  initSession();
   initWelcomeOverlay();
 
   // Sample tile buttons (left panel)

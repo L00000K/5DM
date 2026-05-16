@@ -1815,6 +1815,23 @@ input[type="range"] {
 /* ── Plan view panel ── */
 .plan-view-slider { height: 16px; }
 
+/* ── Camera preset buttons ── */
+.cam-preset-btn {
+  background: rgba(28,42,56,0.7);
+  color: rgba(255,255,255,0.85);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--radius-sm);
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.cam-preset-btn:hover {
+  background: rgba(28,42,56,0.9);
+  color: #fff;
+}
+
 /* ── Cursor world coordinates ── */
 .cursor-coords {
   position: absolute;
