@@ -1,7 +1,7 @@
 import { initApiKeyModal } from './api-key.js';
 import { initUploader } from './data-parser.js';
 import { initTextInput } from './text-input.js';
-import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel, oracleRefinement } from './claude-client.js';
+import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel, oracleRefinement, generateReportNarrative } from './claude-client.js';
 import { exportConfig, importConfig } from './project-config.js';
 import { buildVoxelGrid } from './interpolator.js';
 import { initScene } from './scene.js';
@@ -465,6 +465,7 @@ function initReset() {
     setEnabled('btn-auto-params', false);
     setEnabled('btn-isopach', false);
     setEnabled('btn-model-report', false);
+    setEnabled('btn-ai-narrative', false);
     setEnabled('btn-validate-model', false);
     setEnabled('btn-assess-risk', false);
     setEnabled('btn-plan-view', false);
@@ -692,6 +693,7 @@ function initBuildModel() {
       setEnabled('btn-apply-constraints', true);
       setEnabled('btn-isopach', true);
       setEnabled('btn-model-report', true);
+      setEnabled('btn-ai-narrative', true);
       setEnabled('btn-validate-model', true);
       setEnabled('btn-assess-risk', true);
       setEnabled('btn-plan-view', true);
@@ -1545,11 +1547,43 @@ function initModelReport() {
 
   document.getElementById('btn-model-report')?.addEventListener('click', () => {
     if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
-    // Compute fresh risk report for inclusion in the HTML export
     const gwt       = parseFloat(document.getElementById('gwt-elevation')?.value ?? '') || null;
     const riskRpt   = assessRisk(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH, gwt);
     AppState.report.exportHTML(AppState.voxelGrid, AppState.classifiedBH, AppState.geoUnits, riskRpt);
     log('Report HTML downloaded.', 'ok');
+  });
+
+  document.getElementById('btn-ai-narrative')?.addEventListener('click', async () => {
+    if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
+    const btn = document.getElementById('btn-ai-narrative');
+    if (btn) btn.disabled = true;
+    log('Generating AI narrative…', 'info');
+    const siteCtx = document.getElementById('input-site-history')?.value ?? '';
+    const apiKey  = sessionStorage.getItem('anthropic_api_key') ?? '';
+    try {
+      const result = await generateReportNarrative(
+        AppState.geoUnits, AppState.classifiedBH, AppState.voxelGrid,
+        siteCtx, apiKey, !apiKey,
+      );
+      if (result) {
+        const el = document.getElementById('ai-narrative-output');
+        if (el) {
+          el.style.display = 'block';
+          el.innerHTML = `
+            <div style="margin-bottom:8px;font-size:12px;color:var(--text-mid);font-weight:600">AI-Generated Geotechnical Interpretation</div>
+            <div style="font-size:11px;line-height:1.6;color:var(--text-main);margin-bottom:8px">${escHtml(result.narrative)}</div>
+            ${result.key_findings?.length ? `<div style="font-size:11px;font-weight:600;color:var(--accent-cyan);margin-bottom:3px">Key Findings</div><ul style="font-size:11px;margin:0 0 6px;padding-left:16px;color:var(--text-mid)">${result.key_findings.map(f=>`<li>${escHtml(f)}</li>`).join('')}</ul>` : ''}
+            ${result.geotechnical_risks?.length ? `<div style="font-size:11px;font-weight:600;color:#d04040;margin-bottom:3px">Geotechnical Risks</div><ul style="font-size:11px;margin:0 0 6px;padding-left:16px;color:var(--text-mid)">${result.geotechnical_risks.map(r=>`<li>${escHtml(r)}</li>`).join('')}</ul>` : ''}
+            ${result.recommendations?.length ? `<div style="font-size:11px;font-weight:600;color:var(--green);margin-bottom:3px">Recommendations</div><ul style="font-size:11px;margin:0;padding-left:16px;color:var(--text-mid)">${result.recommendations.map(r=>`<li>${escHtml(r)}</li>`).join('')}</ul>` : ''}
+          `;
+        }
+        log('AI narrative generated.', 'ok');
+      }
+    } catch (err) {
+      log(`Narrative generation failed: ${err.message}`, 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   });
 
   document.getElementById('btn-validate-model')?.addEventListener('click', () => {

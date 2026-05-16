@@ -594,6 +594,89 @@ function _demoOracleResults(clusters, geoUnits) {
   });
 }
 
+// ── Generate AI geotechnical narrative for report ─────────────────────────────
+// Returns { narrative, key_findings, geotechnical_risks, recommendations } or null
+export async function generateReportNarrative(geoUnits, classifiedBH, voxelGrid, siteContext, apiKey, demoMode) {
+  if (demoMode || !apiKey) return _demoNarrative(geoUnits, classifiedBH);
+
+  const { nx, ny, nz, cellSize: cs, cellHeight: ch, unitIds, certainty } = voxelGrid;
+  const counts = {}, certSums = {};
+  geoUnits.forEach(u => { counts[u.id] = 0; certSums[u.id] = 0; });
+  for (let i = 0; i < unitIds.length; i++) {
+    const uid = unitIds[i];
+    if (uid && counts[uid] !== undefined) { counts[uid]++; certSums[uid] += certainty[i]; }
+  }
+  const total    = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+  const cellVol  = cs * cs * ch;
+  const bhCount  = classifiedBH.filter(b => !b.synthetic).length;
+  const maxDepth = Math.max(...classifiedBH.filter(b=>!b.synthetic)
+    .map(b => b.layers.length ? Math.max(...b.layers.map(l=>l.base)) : 0), 0);
+
+  const unitSummary = geoUnits.map(u => {
+    const n    = counts[u.id] ?? 0;
+    const vol  = Math.round(n * cellVol);
+    const pct  = (n / total * 100).toFixed(1);
+    const cert = n > 0 ? ((certSums[u.id] / n) * 100).toFixed(0) : '0';
+    const p    = u.params ?? {};
+    return `${u.code} (${u.name}): ${pct}% of model volume (${vol.toLocaleString()} m³), avg certainty ${cert}%, Cu=${p.cu ?? '—'}kPa, SPT_N=${p.N_spt ?? '—'}, φ=${p.phi ?? '—'}°`;
+  }).join('\n');
+
+  const siteInfo = [
+    `Boreholes: ${bhCount}`,
+    `Max depth: ${maxDepth.toFixed(1)} m`,
+    `Model grid: ${nx}×${ny}×${nz} voxels at ${cs}m horizontal × ${ch.toFixed(2)}m vertical`,
+    `Site context: ${siteContext || 'Not provided'}`,
+  ].join('\n');
+
+  const messages = [{
+    role: 'user',
+    content: `You are a senior geotechnical engineer. Write a professional geotechnical interpretation for this ground investigation. Be concise but technically rigorous.
+
+SITE INFORMATION:
+${siteInfo}
+
+GEOLOGICAL UNITS AND MODEL STATISTICS:
+${unitSummary}
+
+Respond ONLY with JSON:
+{
+  "narrative": "2-3 paragraph professional geotechnical description of the ground conditions",
+  "key_findings": ["bullet 1", "bullet 2", ...],
+  "geotechnical_risks": ["risk 1 with severity", ...],
+  "recommendations": ["recommendation 1", ...]
+}`,
+  }];
+
+  try {
+    const result = await callClaude(messages, apiKey);
+    if (!result?.narrative) throw new Error('No narrative in response');
+    return result;
+  } catch {
+    return _demoNarrative(geoUnits, classifiedBH);
+  }
+}
+
+function _demoNarrative(geoUnits, classifiedBH) {
+  const codes = geoUnits.filter(u => u.code !== 'UNKN').map(u => u.name).join(', ');
+  const bhCount = classifiedBH.filter(b => !b.synthetic).length;
+  return {
+    narrative: `The ground investigation comprised ${bhCount} boreholes revealing a sequence of ${codes}. The geological model was constructed using spatial interpolation of classified borehole logs. [Provide an API key for a site-specific AI-generated geotechnical narrative.]`,
+    key_findings: [
+      'Ground conditions characterised from borehole logs',
+      'Model built using spatial interpolation',
+      'Unit certainty varies with borehole density',
+    ],
+    geotechnical_risks: [
+      'Variable ground conditions — review cross-sections at structure locations',
+      'Uncertainty increases between boreholes',
+    ],
+    recommendations: [
+      'Verify model against as-built records',
+      'Consider additional investigation in zones of low certainty',
+    ],
+  };
+}
+
 // ── Default units (fallback) ───────────────────────────────────────────────────
 function defaultUnits() {
   return [

@@ -50,7 +50,7 @@ export class FenceSection {
     if (!args || !this._canvas || !this._ctx) return;
 
     const { grid, geoUnits, normal, centerD, thickness, boreholes } = args;
-    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty } = grid;
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty, blendRatios } = grid;
 
     const unitById = {};
     geoUnits.forEach(u => { unitById[u.id] = u; });
@@ -104,15 +104,26 @@ export class FenceSection {
       const colX = PAD_L + ci * colPx;
 
       for (let iz = 0; iz < nz; iz++) {
-        const flat = ix + iy * nx + iz * nx * ny;
-        const unit = unitById[unitIds[flat]];
+        const flat   = ix + iy * nx + iz * nx * ny;
+        const uid    = unitIds[flat];
+        const unit   = unitById[uid];
         if (!unit) continue;
-        const cert = certainty[flat];
-        const yPx  = PAD_T + drawH - ((iz * ch + ch * 0.5) / worldH) * drawH;
-        const hPx  = Math.max(1, (ch / worldH) * drawH);
+        const cert   = certainty[flat];
+        const blend  = blendRatios ? blendRatios[flat] : 0;
+        const yPx    = PAD_T + drawH - ((iz * ch + ch * 0.5) / worldH) * drawH;
+        const hPx    = Math.max(1, (ch / worldH) * drawH);
+
         ctx.globalAlpha = Math.max(0.4, cert);
         ctx.fillStyle   = unit.color;
         ctx.fillRect(colX, yPx - hPx, Math.ceil(colPx + 0.5), Math.ceil(hPx + 0.5));
+
+        // Fuzzy boundary: if high blend ratio, overlay with a semi-transparent
+        // hatching zone at the top of the cell to indicate uncertain contact
+        if (blend > 0.25) {
+          ctx.globalAlpha = blend * 0.5;
+          ctx.fillStyle   = '#ffffff';
+          ctx.fillRect(colX, yPx - hPx, Math.ceil(colPx + 0.5), Math.max(1, hPx * 0.3));
+        }
       }
     }
     ctx.globalAlpha = 1;
