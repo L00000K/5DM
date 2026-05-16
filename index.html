@@ -703,6 +703,17 @@
           <p class="hint">Shows transparent blue plane at GWT elevation</p>
         </div>
 
+        <div class="field-group" style="margin-top:6px">
+          <button id="btn-gwt-interpolate" class="btn-secondary btn-sm" disabled style="width:100%"
+            title="Interpolate a 3D GWT surface from per-borehole water strike depths (WSTB)">
+            ≈ Interpolate GWT Surface from BH Data
+          </button>
+          <p class="hint" style="font-size:10px;margin-top:3px">
+            Uses GWT depths from AGS WSTB group or CSV <code>gwt_depth</code> column.
+            <span id="gwt-bh-count" style="color:var(--accent)"></span>
+          </p>
+        </div>
+
         <div class="field-group" style="margin-top:10px">
           <label>Surface Opacity</label>
           <div class="range-row">

@@ -588,6 +588,9 @@ function initBuildModel() {
       setEnabled('btn-param-apply', true);
       setEnabled('btn-param-reset', true);
       setEnabled('btn-build-isosurfaces', true);
+      // GWT interpolate button: only enable if BHs have gwtDepth data
+      const hasGWT = AppState.classifiedBH.some(b => b.gwtDepth != null && !b.synthetic);
+      setEnabled('btn-gwt-interpolate', hasGWT);
       AppState.report?.compute(AppState.voxelGrid, AppState.classifiedBH, AppState.geoUnits);
       AppState._origUnitIds = null; // invalidate topo clip cache after rebuild
       AppState._onTopoClipUpdate?.();
@@ -1236,6 +1239,42 @@ function initGWT() {
     if (input) input.value = '';
     AppState.scene?.setGroundwaterTable(null);
   });
+
+  let gwtSurfaceShown = false;
+  const interpBtn = document.getElementById('btn-gwt-interpolate');
+  interpBtn?.addEventListener('click', () => {
+    if (!AppState.scene || !AppState.voxelGrid) {
+      log('Build the 3D model first.', 'warn'); return;
+    }
+    const bhsWithGWT = AppState.classifiedBH.filter(b => b.gwtDepth != null && !b.synthetic);
+    if (!bhsWithGWT.length) {
+      log('No per-borehole GWT depths found. Add a "gwt_depth" column to your CSV or include an AGS WSTB group.', 'warn');
+      return;
+    }
+    if (gwtSurfaceShown) {
+      AppState.scene.toggleInterpolatedGWT(false);
+      AppState.scene._clearInterpGWT?.();
+      gwtSurfaceShown = false;
+      interpBtn.textContent = '≈ Interpolate GWT Surface from BH Data';
+      log('GWT surface removed.', 'info');
+    } else {
+      AppState.scene.showInterpolatedGWT(bhsWithGWT, AppState.voxelGrid);
+      gwtSurfaceShown = true;
+      interpBtn.textContent = '✕ Remove GWT Surface';
+      const meanElev = (bhsWithGWT.reduce((s,b)=>(s+(b.groundLevel??0)-b.gwtDepth),0)/bhsWithGWT.length).toFixed(1);
+      log(`GWT surface interpolated from ${bhsWithGWT.length} BHs · mean elevation ≈ ${meanElev} mAOD.`, 'ok');
+    }
+  });
+
+  // Update GWT BH count badge whenever data changes
+  window.addEventListener('geomodel:data-ready', _updateGWTCount);
+  function _updateGWTCount() {
+    const el = document.getElementById('gwt-bh-count');
+    if (!el) return;
+    const n = AppState.classifiedBH.filter(b => b.gwtDepth != null && !b.synthetic).length;
+    el.textContent = n > 0 ? `${n} BH${n>1?'s':''} with GWT data` : '';
+    if (interpBtn) interpBtn.disabled = !n || !AppState.voxelGrid;
+  }
 }
 
 // ── Camera preset views ────────────────────────────────────────────────────────

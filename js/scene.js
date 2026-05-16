@@ -384,6 +384,71 @@ class SceneManager {
     if (this._bhSticks) this._bhSticks.visible = visible;
   }
 
+  // ── Interpolated GWT surface ─────────────────────────────────────────────
+  // boreholes: array with .gwtDepth (m) and .groundLevel (mAOD), .x, .y (m)
+  // grid: voxel grid for bounding box / cell size
+  showInterpolatedGWT(boreholes, grid) {
+    this._clearInterpGWT();
+    const bhs = boreholes.filter(b => b.gwtDepth != null && !b.synthetic);
+    if (!bhs.length || !grid) return;
+
+    const { nx, ny, cellSize: cs, origin } = grid;
+    const GRID = Math.min(nx, ny, 48);
+    const pts   = bhs.map(b => ({ x: b.x, y: b.y, elev: (b.groundLevel ?? 0) - b.gwtDepth }));
+
+    const vW = cs * nx, vD = cs * ny;
+    const positions = new Float32Array((GRID + 1) ** 2 * 3);
+    const indices   = [];
+
+    for (let iz = 0; iz <= GRID; iz++) {
+      for (let ix = 0; ix <= GRID; ix++) {
+        const wx = origin.x + (ix / GRID) * vW;
+        const wz = origin.z + (iz / GRID) * vD;
+        // IDW from BH GWT elevations
+        let wSum = 0, vSum = 0;
+        for (const pt of pts) {
+          const d = Math.max(Math.hypot(pt.x - wx, pt.y - wz), 0.01);
+          const w = 1 / (d * d);
+          vSum += pt.elev * w;
+          wSum += w;
+        }
+        const elev = wSum > 0 ? vSum / wSum : pts[0].elev;
+        const i = (iz * (GRID + 1) + ix) * 3;
+        positions[i] = wx; positions[i+1] = elev; positions[i+2] = wz;
+      }
+    }
+    for (let iz = 0; iz < GRID; iz++) {
+      for (let ix = 0; ix < GRID; ix++) {
+        const a = iz*(GRID+1)+ix, b = a+1, c = a+GRID+1, d = c+1;
+        indices.push(a, c, b, b, c, d);
+      }
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+    this._interpGWTMesh = new THREE.Mesh(geom, new THREE.MeshLambertMaterial({
+      color: 0x3080d0, transparent: true, opacity: 0.28,
+      side: THREE.DoubleSide, depthWrite: false,
+    }));
+    this._scene.add(this._interpGWTMesh);
+    return this._interpGWTMesh;
+  }
+
+  _clearInterpGWT() {
+    if (this._interpGWTMesh) {
+      this._scene.remove(this._interpGWTMesh);
+      this._interpGWTMesh.geometry.dispose();
+      this._interpGWTMesh.material.dispose();
+      this._interpGWTMesh = null;
+    }
+  }
+
+  toggleInterpolatedGWT(visible) {
+    if (this._interpGWTMesh) this._interpGWTMesh.visible = visible;
+  }
+
   // ── Topography surface ────────────────────────────────────────────────────
   showTopography(points) {
     this._clearTopo();

@@ -183,7 +183,21 @@ function buildBoreholes(groups) {
       });
     });
 
-    if (layers.length > 0) boreholes.push({ id, x, y, groundLevel: gl, depth: dep, layers });
+    // Groundwater strike depth from WSTB group
+    let gwtDepth = null;
+    const wstbRows = (groups['WSTB'] || []).filter(r =>
+      (r['LOCA_ID'] || r['HOLE_ID']) === id
+    );
+    if (wstbRows.length) {
+      const depths = wstbRows.map(r => parseFloat(r['WSTB_DPTH'] || r['DEPT'] || '')).filter(isFinite);
+      if (depths.length) gwtDepth = Math.min(...depths);
+    }
+
+    if (layers.length > 0) {
+      const bh = { id, x, y, groundLevel: gl, depth: dep, layers };
+      if (gwtDepth != null) bh.gwtDepth = gwtDepth;
+      boreholes.push(bh);
+    }
   });
 
   return boreholes;
@@ -212,6 +226,7 @@ export function parseCSV(text) {
     description: ['description','desc','geology','lithology','log','material','unit_desc'],
     unit_code:   ['unit_code','unitcode','code','legend','geol_unit','unit'],
     certainty:   ['certainty','confidence','cert'],
+    gwt_depth:   ['gwt_depth','gwt','water_depth','water_level','swl','standing_water_level','wstb_dpth'],
   };
 
   const col = name => {
@@ -239,8 +254,13 @@ export function parseCSV(text) {
     const code = cells[col('unit_code')]   || null;
     const cert = parseFloat(cells[col('certainty')] ?? '') || null;
 
+    const gwtD = parseFloat(cells[col('gwt_depth')] ?? '') || null;
     if (!boreholeMap[id]) {
-      boreholeMap[id] = { id, x, y, groundLevel: gl, depth: dep, layers: [] };
+      const bh = { id, x, y, groundLevel: gl, depth: dep, layers: [] };
+      if (gwtD != null && isFinite(gwtD)) bh.gwtDepth = gwtD;
+      boreholeMap[id] = bh;
+    } else if (gwtD != null && isFinite(gwtD) && boreholeMap[id].gwtDepth == null) {
+      boreholeMap[id].gwtDepth = gwtD;
     }
     if (desc || code) {
       const layer = { top, base, description: desc, unitCode: code, certainty: cert };
