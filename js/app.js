@@ -1794,6 +1794,119 @@ function _cssEsc(s) {
 
 // ── Unit statistics ───────────────────────────────────────────────────────────
 // ── Geotechnical risk assessment ─────────────────────────────────────────────
+// ── Geological Scenarios ──────────────────────────────────────────────────────
+function initScenarioManager() {
+  const STORAGE_KEY = 'geomodel_scenarios';
+  const MAX_SCENARIOS = 5;
+
+  function loadScenarios() {
+    try { return JSON.parse(sessionStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
+  }
+  function saveScenarios(list) {
+    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(list)); } catch (e) {
+      log('Scenario save failed — storage full.', 'warn');
+    }
+  }
+
+  function captureState(name) {
+    return {
+      name,
+      createdAt: new Date().toISOString(),
+      geoUnits: JSON.parse(JSON.stringify(AppState.geoUnits)),
+      classifiedBH: JSON.parse(JSON.stringify(AppState.classifiedBH)),
+      cellSizeH:    AppState.cellSizeH,
+      cellSizeZ:    AppState.cellSizeZ,
+      kNeighbors:   AppState.kNeighbors,
+      idwPower:     AppState.idwPower,
+      interpMethod: AppState.interpMethod,
+      anisoAzimuth: AppState.anisoAzimuth,
+      anisoRatio:   AppState.anisoRatio,
+    };
+  }
+
+  async function restoreState(sc) {
+    AppState.geoUnits     = sc.geoUnits;
+    AppState.classifiedBH = sc.classifiedBH;
+    AppState.cellSizeH    = sc.cellSizeH;
+    AppState.cellSizeZ    = sc.cellSizeZ ?? 0.25;
+    AppState.kNeighbors   = sc.kNeighbors ?? 5;
+    AppState.idwPower     = sc.idwPower   ?? 2;
+    AppState.interpMethod = sc.interpMethod ?? 'idw';
+    AppState.anisoAzimuth = sc.anisoAzimuth ?? 0;
+    AppState.anisoRatio   = sc.anisoRatio   ?? 1;
+    updateLegend();
+    updateInfoPanel();
+    updateBHTable();
+    updateBHChart();
+    updateStratColumn();
+    setEnabled('btn-run-ai', sc.classifiedBH.length > 0);
+    setEnabled('btn-build-model', sc.classifiedBH.length > 0);
+    log(`Switched to scenario "${sc.name}". Click Build 3D Model to regenerate.`, 'ok');
+  }
+
+  function renderList() {
+    const listEl = document.getElementById('scenario-list');
+    if (!listEl) return;
+    const scenarios = loadScenarios();
+    if (!scenarios.length) {
+      listEl.innerHTML = '<p class="hint" style="padding:8px">No saved scenarios yet.</p>';
+      return;
+    }
+    listEl.innerHTML = scenarios.map((sc, i) => {
+      const date = new Date(sc.createdAt).toLocaleString('en-GB', { dateStyle:'short', timeStyle:'short' });
+      const unitCodes = sc.geoUnits.map(u => `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${u.color};margin-right:2px;vertical-align:middle"></span>${u.code}`).join(' ');
+      return `<div style="display:flex;align-items:center;gap:6px;padding:7px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:5px;background:var(--bg-surface)">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:12px;margin-bottom:2px">${sc.name}</div>
+          <div style="font-size:10px;color:var(--text-mid)">${date} · ${sc.classifiedBH?.length ?? 0} BHs · ${unitCodes}</div>
+        </div>
+        <button data-idx="${i}" class="btn-scenario-load btn-secondary btn-sm" style="white-space:nowrap">Switch</button>
+        <button data-idx="${i}" class="btn-scenario-del btn-ghost btn-sm" title="Delete" style="color:#e06040">✕</button>
+      </div>`;
+    }).join('');
+
+    listEl.querySelectorAll('.btn-scenario-load').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const sc = loadScenarios()[+btn.dataset.idx];
+        if (sc) { await restoreState(sc); }
+      });
+    });
+    listEl.querySelectorAll('.btn-scenario-del').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const list = loadScenarios();
+        list.splice(+btn.dataset.idx, 1);
+        saveScenarios(list);
+        renderList();
+        log('Scenario deleted.', 'info');
+      });
+    });
+  }
+
+  // Modal open/close
+  const modal  = document.getElementById('modal-scenarios');
+  const openBtn = document.getElementById('btn-scenario-manager');
+  const closeBtn = document.getElementById('modal-scenarios-close');
+  openBtn?.addEventListener('click', () => { renderList(); modal?.removeAttribute('hidden'); });
+  closeBtn?.addEventListener('click', () => modal?.setAttribute('hidden', ''));
+  modal?.addEventListener('click', e => { if (e.target === modal) modal.setAttribute('hidden', ''); });
+
+  // Save current state as a new scenario
+  document.getElementById('btn-scenario-save')?.addEventListener('click', () => {
+    if (!AppState.geoUnits.length) { log('Nothing to save — load data first.', 'warn'); return; }
+    const nameInput = document.getElementById('scenario-name-input');
+    const name = (nameInput?.value.trim()) || `Scenario ${new Date().toLocaleTimeString('en-GB')}`;
+    const list = loadScenarios();
+    if (list.length >= MAX_SCENARIOS) {
+      log(`Max ${MAX_SCENARIOS} scenarios. Delete one first.`, 'warn'); return;
+    }
+    list.push(captureState(name));
+    saveScenarios(list);
+    if (nameInput) nameInput.value = '';
+    renderList();
+    log(`Scenario "${name}" saved.`, 'ok');
+  });
+}
+
 // ── Marching-cubes isosurfaces ────────────────────────────────────────────────
 function initIsosurfaces() {
   const btn = document.getElementById('btn-build-isosurfaces');
@@ -2427,6 +2540,7 @@ async function init() {
   initRiskAssessment();
   initParameterView();
   initIsosurfaces();
+  initScenarioManager();
   initBHLogView();
   initLogSubTabs();
   initCPTImport();

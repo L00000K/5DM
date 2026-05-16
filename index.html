@@ -28,6 +28,7 @@
       <input type="file" id="file-import-config" accept=".geomodel,.json" hidden>
       <button id="btn-save-session" class="btn-ghost" title="Save session to browser storage">💾 Save</button>
       <button id="btn-load-session" class="btn-ghost" title="Restore saved session">📂 Load</button>
+      <button id="btn-scenario-manager" class="btn-ghost" title="Geological Scenarios — save and compare alternative interpretations">⬡ Scenarios</button>
       <button id="btn-shortcuts" class="btn-ghost" title="Keyboard shortcuts">? Help</button>
       <button id="btn-reset" class="btn-ghost" title="Reset all data">↺ Reset</button>
     </div>
@@ -946,6 +947,23 @@
           <button id="btn-unit-editor-close" class="btn-ghost">Close</button>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ── Scenario Manager Modal ── -->
+  <div id="modal-scenarios" class="modal" hidden role="dialog" aria-modal="true">
+    <div class="modal-panel" style="max-width:500px">
+      <div class="modal-header">
+        <h2 class="modal-title">Geological Scenarios</h2>
+        <button id="modal-scenarios-close" class="modal-close" aria-label="Close">✕</button>
+      </div>
+      <p class="hint" style="margin:6px 0 12px">Save alternative geological interpretations and switch between them. Each scenario stores units, BH classifications, and model settings.</p>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <input type="text" id="scenario-name-input" class="input-sm" placeholder="Scenario name…" style="flex:1">
+        <button id="btn-scenario-save" class="btn-primary btn-sm">Save Current</button>
+      </div>
+      <div id="scenario-list" style="max-height:280px;overflow-y:auto"></div>
+      <p class="hint" style="margin-top:8px;font-size:10px">Up to 5 scenarios. Switching rebuilds the 3D model from saved BH data.</p>
     </div>
   </div>
 
