@@ -276,6 +276,7 @@ async function loadDemoSite(demoName) {
 
     updateLegend();
     updateInfoPanel();
+    updateBHTable();
     setEnabled('btn-run-ai', true);
     setEnabled('btn-build-model', true);
     log(`${data.site?.name ?? demoName} — ${AppState.rawBoreholes.length} boreholes loaded.`, 'ok');
@@ -338,6 +339,7 @@ function initRunAI() {
       AppState.geoUnits = units;
       AppState.classifiedBH = classified;
       updateLegend();
+      updateBHTable();
       log(`Analysis complete — ${units.length} units classified.`, 'ok');
       setEnabled('btn-build-model', true);
       setEnabled('btn-run-ai', true);
@@ -356,12 +358,15 @@ function initBuildModel() {
     setEnabled('btn-build-model', false);
     log('Building voxel grid…', 'info');
     try {
+      showBuildProgress(true);
       await new Promise(r => setTimeout(r, 0));
-      AppState.voxelGrid = buildVoxelGrid(
+      AppState.voxelGrid = await buildVoxelGrid(
         AppState.classifiedBH, AppState.geoUnits, AppState.cellSizeH,
         { kNeighbors: AppState.kNeighbors, idwPower: AppState.idwPower,
-          method: AppState.interpMethod, cellSizeZ: AppState.cellSizeZ }
+          method: AppState.interpMethod, cellSizeZ: AppState.cellSizeZ,
+          onProgress: p => setBuildProgress(p) }
       );
+      showBuildProgress(false);
       updateInfoPanel();
       AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
       updateVolumeStats();
@@ -388,11 +393,78 @@ function initBuildModel() {
 
       if (AppState.topoPoints) AppState.scene.showTopography(AppState.topoPoints);
     } catch (err) {
+      showBuildProgress(false);
       log(`Build failed: ${err.message}`, 'error');
       console.error(err);
       setEnabled('btn-build-model', true);
     }
   });
+}
+
+// ── Screenshot ────────────────────────────────────────────────────────────────
+function initScreenshot() {
+  document.getElementById('btn-screenshot')?.addEventListener('click', () => {
+    if (!AppState.scene) return;
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    AppState.scene.takeScreenshot(`geomodel-${ts}.png`);
+    log('Screenshot saved.', 'ok');
+  });
+}
+
+// ── Background toggle ─────────────────────────────────────────────────────────
+function initBackgroundToggle() {
+  document.getElementById('dark-background')?.addEventListener('change', e => {
+    if (AppState.scene) AppState.scene.setBackground(e.target.checked);
+  });
+}
+
+// ── Borehole data table ───────────────────────────────────────────────────────
+export function updateBHTable() {
+  const wrap = document.getElementById('bh-data-table-wrap');
+  if (!wrap) return;
+  const bhs = AppState.classifiedBH.filter(b => !b.synthetic);
+  if (!bhs.length) {
+    wrap.innerHTML = '<p class="hint" style="padding:8px">No borehole data loaded.</p>';
+    return;
+  }
+  const unitByCode = {};
+  AppState.geoUnits.forEach(u => { unitByCode[u.code] = u; });
+
+  let html = '<table class="bh-table"><thead><tr>'
+    + '<th>BH ID</th><th>X</th><th>Y</th><th>GL(m)</th><th>Depth(m)</th><th>Layers</th>'
+    + '</tr></thead><tbody>';
+
+  for (const bh of bhs) {
+    const maxBase = bh.layers.length ? Math.max(...bh.layers.map(l => l.base)) : (bh.depth ?? 0);
+    const chips = bh.layers.map(l => {
+      const u = unitByCode[l.unitCode];
+      const bg = u?.color ?? '#888';
+      return `<span class="unit-chip" style="background:${bg};font-size:9px;padding:1px 5px">${escHtml(l.unitCode)}</span>`;
+    }).join('');
+    html += `<tr>
+      <td class="bh-id">${escHtml(bh.id)}</td>
+      <td>${bh.x?.toFixed(1)}</td>
+      <td>${bh.y?.toFixed(1)}</td>
+      <td>${bh.groundLevel?.toFixed(1) ?? '—'}</td>
+      <td>${maxBase.toFixed(1)}</td>
+      <td class="bh-chips">${chips}</td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+// ── Build progress bar helpers ─────────────────────────────────────────────────
+function showBuildProgress(visible) {
+  const el = document.getElementById('build-progress-wrap');
+  if (el) el.hidden = !visible;
+}
+
+function setBuildProgress(fraction) {
+  const fill = document.getElementById('build-progress-fill');
+  const pct  = document.getElementById('build-progress-pct');
+  if (fill) fill.style.width = `${(fraction * 100).toFixed(0)}%`;
+  if (pct)  pct.textContent  = `${(fraction * 100).toFixed(0)}%`;
 }
 
 // ── Update right-panel info ────────────────────────────────────────────────────
@@ -677,6 +749,8 @@ async function init() {
   initBuildModel();
   initViewModeButtons();
   initVBHButton();
+  initScreenshot();
+  initBackgroundToggle();
   initWelcomeOverlay();
 
   // Sample tile buttons (left panel)
@@ -696,8 +770,11 @@ async function init() {
   initUploader({
     onParsed(boreholes) {
       AppState.rawBoreholes = boreholes;
+      AppState.classifiedBH = boreholes.filter(b => b.classified);
       updateInfoPanel();
+      updateBHTable();
       setEnabled('btn-run-ai', boreholes.length > 0);
+      if (boreholes.some(b => b.classified)) setEnabled('btn-build-model', true);
       hideWelcome();
       log(`Parsed ${boreholes.length} boreholes.`, 'ok');
     },

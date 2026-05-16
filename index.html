@@ -35,6 +35,7 @@
         <button class="tab-btn active" data-tab="data" role="tab">Data</button>
         <button class="tab-btn" data-tab="constraints" role="tab">Constraints</button>
         <button class="tab-btn" data-tab="analysis" role="tab">Analysis</button>
+        <button class="tab-btn" data-tab="bhdata" role="tab">Table</button>
       </div>
 
       <!-- DATA TAB -->
@@ -230,6 +231,13 @@
         </div>
       </div>
 
+      <!-- BH DATA TAB -->
+      <div class="tab-content" id="tab-bhdata" role="tabpanel">
+        <div id="bh-data-table-wrap" class="bh-table-wrap">
+          <p class="hint" style="padding:8px">Load borehole data to see table.</p>
+        </div>
+      </div>
+
       <!-- Action buttons -->
       <div class="panel-actions">
         <button id="btn-run-ai" class="btn-primary" disabled>Run AI Analysis →</button>
@@ -327,6 +335,7 @@
 
       <!-- Viewer controls (bottom-left) -->
       <div class="viewer-controls">
+        <button id="btn-screenshot" class="btn-open-slicer" title="Save screenshot (PNG)">📷</button>
         <button id="btn-open-slicer" class="btn-open-slicer">✂ Section</button>
         <button id="btn-vbh" class="btn-open-slicer" title="Virtual Borehole — click on model (K)">⊕ VBH</button>
         <div class="view-mode-ctrl">
@@ -353,6 +362,17 @@
         <div class="log-popup-body">
           <div id="log-strips" class="log-strips"></div>
           <div id="log-labels" class="log-labels"></div>
+        </div>
+      </div>
+
+      <!-- Build progress overlay -->
+      <div id="build-progress-wrap" class="build-progress-wrap" hidden>
+        <div class="build-progress-inner">
+          <span class="build-progress-lbl">Building model…</span>
+          <div class="progress-bar-wrap" style="flex:1">
+            <div id="build-progress-fill" class="progress-bar-fill" style="width:0%"></div>
+          </div>
+          <span id="build-progress-pct" class="build-progress-pct">0%</span>
         </div>
       </div>
 
@@ -411,6 +431,11 @@
         <label class="inline-check" style="margin-top:8px">
           <input type="checkbox" id="show-bh-sticks" checked>
           <span>Show BH log sticks</span>
+        </label>
+
+        <label class="inline-check" style="margin-top:8px">
+          <input type="checkbox" id="dark-background">
+          <span>Dark background</span>
         </label>
 
         <div class="field-group" style="margin-top:10px">

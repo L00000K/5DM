@@ -19,6 +19,7 @@ class SceneManager {
       canvas: this._canvas,
       antialias: true,
       localClippingEnabled: true,
+      preserveDrawingBuffer: true,
     });
     this._renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
@@ -546,6 +547,23 @@ class SceneManager {
     this._canvas.addEventListener('auxclick', e => {
       if (e.button === 1) e.preventDefault();
     });
+  }
+
+  // ── Screenshot ───────────────────────────────────────────────────────────
+  takeScreenshot(filename = 'geomodel.png') {
+    this._renderer.render(this._scene, this._camera);
+    const url = this._canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+  }
+
+  // ── Background ────────────────────────────────────────────────────────────
+  setBackground(dark) {
+    this._scene.background = new THREE.Color(dark ? 0x141820 : 0xf0f2f5);
+    document.getElementById('viewer-panel').style.background = dark ? '#141820' : '';
+    document.getElementById('three-canvas').style.background = dark ? '#141820' : '';
   }
 
   // ── Getters ───────────────────────────────────────────────────────────────

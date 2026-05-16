@@ -281,12 +281,13 @@ function nearestFallback(boreholes, x, y, unitIndex, unknownId) {
 }
 
 // ── buildVoxelGrid ────────────────────────────────────────────────────────────
-export function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options = {}) {
+export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options = {}) {
   if (!boreholes.length) throw new Error('No borehole data to interpolate');
 
-  const kNeighbors = Math.max(1, options.kNeighbors ?? 5);
-  const idwPower   = Math.max(0.5, options.idwPower ?? 2);
-  const method     = options.method ?? 'idw';
+  const kNeighbors  = Math.max(1, options.kNeighbors ?? 5);
+  const idwPower    = Math.max(0.5, options.idwPower ?? 2);
+  const method      = options.method ?? 'idw';
+  const onProgress  = options.onProgress ?? null;
 
   // ── 1. Bounding box ────────────────────────────────────────────────────────
   const xs  = boreholes.map(b => b.x);
@@ -355,6 +356,10 @@ export function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options = {})
   // ── 3. Classify every voxel ────────────────────────────────────────────────
   for (let iz = 0; iz < nz; iz++) {
     const z = oz + iz * cellH + cellH * 0.5;
+    if (onProgress && iz % 3 === 0) {
+      onProgress(iz / nz);
+      await new Promise(r => setTimeout(r, 0));
+    }
     for (let iy = 0; iy < ny; iy++) {
       const y = oy + iy * cellSize + cellSize * 0.5;
       for (let ix = 0; ix < nx; ix++) {
@@ -391,6 +396,7 @@ export function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options = {})
     }
   }
 
+  if (onProgress) onProgress(1);
   return {
     nx, ny, nz,
     cellSize, cellHeight: cellH,
