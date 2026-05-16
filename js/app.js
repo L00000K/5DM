@@ -597,6 +597,8 @@ function initBuildModel() {
       setEnabled('btn-param-apply', true);
       setEnabled('btn-param-reset', true);
       setEnabled('btn-build-isosurfaces', true);
+      const fdPanel = document.getElementById('foundation-panel');
+      if (fdPanel) fdPanel.style.display = 'block';
       // GWT interpolate button: only enable if BHs have gwtDepth data
       const hasGWT = AppState.classifiedBH.some(b => b.gwtDepth != null && !b.synthetic);
       setEnabled('btn-gwt-interpolate', hasGWT);
@@ -1965,12 +1967,24 @@ function initParameterView() {
     E: 'E — Stiffness Modulus (MPa)',
     gamma: 'γ — Unit Weight (kN/m³)',
     N_spt: 'SPT N — Blow Count',
+    boundary: 'Boundary uncertainty (blend ratio 0–1)',
   };
 
   document.getElementById('btn-param-apply')?.addEventListener('click', () => {
     if (!AppState.voxelGrid || !AppState.scene) { log('Build the 3D model first.', 'warn'); return; }
     const paramName = document.getElementById('param-select')?.value;
     if (!paramName) { log('Select a parameter to display.', 'warn'); return; }
+
+    if (paramName === 'boundary') {
+      AppState.scene.colorByBoundaryUncertainty();
+      document.getElementById('param-scale-min').textContent = '0.0';
+      document.getElementById('param-scale-mid').textContent = '0.5';
+      document.getElementById('param-scale-max').textContent = '1.0';
+      document.getElementById('param-scale-label').textContent = 'Boundary uncertainty — blue=certain, red=near contact';
+      document.getElementById('param-colorscale').style.display = 'block';
+      log('Parameter view: boundary uncertainty (blend ratio)', 'ok');
+      return;
+    }
 
     const range = AppState.scene.colorByParameter(paramName, AppState.geoUnits);
     if (!range) {
@@ -1992,6 +2006,106 @@ function initParameterView() {
     AppState.scene.resetUnitColors();
     document.getElementById('param-colorscale').style.display = 'none';
     log('Restored unit colours.', 'info');
+  });
+}
+
+// ── Structural orientation import ─────────────────────────────────────────────
+// Parses strike/dip measurements and computes circular-mean strike azimuth.
+// Accepted formats: "045 15" (azimuth dip), "strike 060, dip 20 NW", "N45E 15"
+function initOrientationImport() {
+  document.getElementById('btn-orientation-parse')?.addEventListener('click', () => {
+    const text = document.getElementById('orientation-text')?.value ?? '';
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const azimuths = [];
+    for (const line of lines) {
+      // Try "strike NNN, dip DD" or "strike NNN dip DD"
+      let m = line.match(/strike\s+(\d+)/i) ?? line.match(/^(\d{1,3})[,\s]+\d/);
+      if (m) { azimuths.push(parseFloat(m[1])); continue; }
+      // Try plain "azimuth dip" pair
+      const parts = line.split(/[\s,]+/);
+      if (parts.length >= 2 && isFinite(parts[0]) && isFinite(parts[1])) {
+        azimuths.push(parseFloat(parts[0]));
+      }
+    }
+    if (!azimuths.length) {
+      document.getElementById('orientation-result').textContent = 'No valid measurements found.';
+      return;
+    }
+    // Circular mean of azimuths
+    const sinSum = azimuths.reduce((s, a) => s + Math.sin(a * Math.PI / 180), 0);
+    const cosSum = azimuths.reduce((s, a) => s + Math.cos(a * Math.PI / 180), 0);
+    let meanAz = Math.atan2(sinSum, cosSum) * 180 / Math.PI;
+    if (meanAz < 0) meanAz += 360;
+    meanAz = Math.round(meanAz);
+    AppState.anisoAzimuth = meanAz;
+    const azEl = document.getElementById('aniso-azimuth');
+    if (azEl) azEl.value = meanAz;
+    document.getElementById('orientation-result').textContent =
+      `${azimuths.length} measurements → mean strike ${meanAz}°N applied.`;
+    log(`Structural orientation: ${azimuths.length} measurements, mean strike ${meanAz}°N`, 'ok');
+  });
+}
+
+// ── Foundation design grid export ────────────────────────────────────────────
+function initFoundationExport() {
+  document.getElementById('btn-foundation-export')?.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('Build the 3D model first.', 'warn'); return; }
+    const fdDepth = parseFloat(document.getElementById('foundation-depth')?.value ?? '1.5');
+    const dSigma  = parseFloat(document.getElementById('foundation-load')?.value  ?? '100');
+    if (!isFinite(fdDepth) || !isFinite(dSigma)) {
+      log('Enter valid foundation parameters.', 'warn'); return;
+    }
+
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds } = grid;
+    const unitMap = {};
+    AppState.geoUnits.forEach(u => { unitMap[u.id] = u; });
+
+    const rows = ['x,y,elevation_mAOD,unit,bearing_kPa,settlement_mm'];
+    for (let iy = 0; iy < ny; iy++) {
+      for (let ix = 0; ix < nx; ix++) {
+        // Find surface voxel for this column
+        let surfIz = -1;
+        for (let jz = nz - 1; jz >= 0; jz--) {
+          if (unitIds[ix + iy * nx + jz * nx * ny]) { surfIz = jz; break; }
+        }
+        if (surfIz < 0) continue;
+        const surfElev = O.y + surfIz * ch + ch;
+        const fdElev   = surfElev - fdDepth;
+        const fdIz     = Math.max(0, Math.min(nz - 1, Math.floor((fdElev - O.y) / ch)));
+        const uid = unitIds[ix + iy * nx + fdIz * nx * ny];
+        const unit = unitMap[uid];
+        if (!unit) continue;
+
+        const p   = unit.params ?? {};
+        const cu  = p.cu   ?? 0;
+        const Cc  = p.Cc   ?? 0;
+        const E   = p.E    ?? 1;
+        const gam = p.gamma ?? 20;
+        const e0  = 0.7;    // typical initial void ratio
+
+        // Undrained bearing capacity: qu = Nc*Cu, Nc=5.14 (Skempton)
+        const bearing = (cu > 0) ? 5.14 * cu : (p.N_spt ?? 0) * 5; // rough SPT correlation
+
+        // Consolidation settlement: δ = Cc/(1+e0) * H * log10((σv0+Δσ)/σv0)
+        const sigV0 = gam * fdDepth;
+        const hLayer = Math.min(fdDepth * 3, 10); // effective influence depth
+        const settlement = Cc > 0 && sigV0 > 0
+          ? (Cc / (1 + e0)) * hLayer * 1000 * Math.log10((sigV0 + dSigma) / sigV0)
+          : E > 0 ? (dSigma * hLayer * 1000) / E : 0;
+
+        const wx = O.x + (ix + 0.5) * cs;
+        const wy = O.z + (iy + 0.5) * cs;
+        rows.push(`${wx.toFixed(1)},${wy.toFixed(1)},${fdElev.toFixed(2)},${unit.code},${bearing.toFixed(1)},${settlement.toFixed(1)}`);
+      }
+    }
+
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `foundation-grid-${fdDepth}m.csv`;
+    a.click();
+    log(`Foundation grid exported: ${rows.length - 1} cells @ ${fdDepth} m bgl, Δσ = ${dSigma} kPa`, 'ok');
   });
 }
 
@@ -2550,6 +2664,8 @@ async function init() {
   initParameterView();
   initIsosurfaces();
   initScenarioManager();
+  initOrientationImport();
+  initFoundationExport();
   initBHLogView();
   initLogSubTabs();
   initCPTImport();

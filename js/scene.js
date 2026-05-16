@@ -242,6 +242,10 @@ class SceneManager {
     this._builder.resetUnitColors();
   }
 
+  colorByBoundaryUncertainty() {
+    this._builder?.colorByBoundaryUncertainty();
+  }
+
   setSurfaceOpacity(op) {
     this._surfaces.setOpacity(op);
     this._surfaces.setMCOpacity(op);

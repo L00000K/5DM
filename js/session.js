@@ -24,6 +24,7 @@ export function saveSession(state) {
     interpMethod:    state.interpMethod,
     anisoAzimuth:    state.anisoAzimuth ?? 0,
     anisoRatio:      state.anisoRatio   ?? 1,
+    trendOrder:      state.trendOrder   ?? 1,
     constraintsText: document.getElementById('constraints-text')?.value ?? '',
   };
   try {

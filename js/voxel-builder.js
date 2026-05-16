@@ -337,6 +337,24 @@ export class VoxelBuilder {
     return { min: vMin, max: vMax };
   }
 
+  // Color voxels by boundary uncertainty (blendRatio from interpolation).
+  // High blend ratio = voxel sits near a unit contact = warm-red highlight.
+  colorByBoundaryUncertainty() {
+    if (!this.grid) return;
+    const { blendRatios } = this.grid;
+    const col = new THREE.Color();
+    for (const [code, mesh] of Object.entries(this.meshes)) {
+      const flatIdx = this._unitFlatIdx?.[code];
+      if (!flatIdx) continue;
+      const colorAttr = mesh.geometry.getAttribute('voxelColor');
+      for (let i = 0; i < flatIdx.length; i++) {
+        VoxelBuilder._paramColor(blendRatios[flatIdx[i]] ?? 0, col);
+        colorAttr.setXYZ(i, col.r, col.g, col.b);
+      }
+      colorAttr.needsUpdate = true;
+    }
+  }
+
   // Restore original unit colours after parameter coloring.
   resetUnitColors() {
     for (const [code, mesh] of Object.entries(this.meshes)) {
