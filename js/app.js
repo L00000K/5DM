@@ -299,6 +299,8 @@ function initConstraints() {
     const count = applyConstraints(AppState.voxelGrid, AppState.parsedConstraints, AppState.geoUnits);
     AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
     updateVolumeStats();
+    updateUnitStats();
+    refreshLegendVolumes();
     renderConstraintSummary(constraintSummary(AppState.parsedConstraints));
     log(`Constraints applied — ${count} voxels reassigned.`, 'ok');
   });
@@ -372,6 +374,7 @@ function initBuildModel() {
       updateInfoPanel();
       AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
       updateVolumeStats();
+      updateUnitStats();
       refreshLegendVolumes();
       log(`Model ready — ${AppState.voxelGrid.nx}×${AppState.voxelGrid.ny}×${AppState.voxelGrid.nz} grid.`, 'ok');
       setEnabled('btn-export-gltf', true);
@@ -474,6 +477,68 @@ export function updateBHTable() {
   }
   html += '</tbody></table>';
   wrap.innerHTML = html;
+}
+
+// ── Unit statistics ───────────────────────────────────────────────────────────
+function updateUnitStats() {
+  const el = document.getElementById('unit-stats');
+  if (!el) return;
+  const grid = AppState.voxelGrid;
+  const geoUnits = AppState.geoUnits;
+  if (!grid || !geoUnits.length) {
+    el.innerHTML = '<p class="hint">Build model to see statistics</p>';
+    return;
+  }
+  const { nx, ny, nz, cellHeight: ch, origin, unitIds, certainty } = grid;
+
+  // Compute per-unit stats
+  const stats = {};
+  geoUnits.forEach(u => {
+    stats[u.id] = { count: 0, certSum: 0, minElev: Infinity, maxElev: -Infinity };
+  });
+
+  for (let iz = 0; iz < nz; iz++) {
+    const elev = origin.y + iz * ch + ch * 0.5;
+    for (let iy = 0; iy < ny; iy++) {
+      for (let ix = 0; ix < nx; ix++) {
+        const flat = ix + iy * nx + iz * nx * ny;
+        const uid  = unitIds[flat];
+        if (!uid || !stats[uid]) continue;
+        const s = stats[uid];
+        s.count++;
+        s.certSum += certainty[flat];
+        s.minElev  = Math.min(s.minElev, elev);
+        s.maxElev  = Math.max(s.maxElev, elev);
+      }
+    }
+  }
+
+  el.innerHTML = '';
+  geoUnits.forEach(unit => {
+    const s   = stats[unit.id];
+    if (!s || !s.count) return;
+    const avgCert = (s.certSum / s.count * 100).toFixed(0);
+    const thick   = (s.maxElev - s.minElev).toFixed(1);
+    const div = document.createElement('div');
+    div.className = 'stat-row';
+    div.innerHTML = `
+      <div class="stat-hdr">
+        <span class="stat-swatch" style="background:${unit.color}"></span>
+        <span class="stat-code">${escHtml(unit.code)}</span>
+        <span class="stat-name">${escHtml(unit.name)}</span>
+      </div>
+      <div class="stat-grid">
+        <span class="stat-lbl">Span</span>
+        <span class="stat-val">${thick} m</span>
+        <span class="stat-lbl">Cert.</span>
+        <span class="stat-val">${avgCert}%</span>
+        <span class="stat-lbl">Top</span>
+        <span class="stat-val">${s.maxElev.toFixed(1)} m</span>
+        <span class="stat-lbl">Base</span>
+        <span class="stat-val">${s.minElev.toFixed(1)} m</span>
+      </div>`;
+    el.appendChild(div);
+  });
 }
 
 // ── Build progress bar helpers ─────────────────────────────────────────────────

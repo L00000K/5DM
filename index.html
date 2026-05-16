@@ -311,7 +311,10 @@
       <div id="fence-panel" class="fence-panel" hidden>
         <div class="fence-panel-hdr">
           <span id="fence-title" class="fence-title">Geological Cross-Section</span>
-          <button id="fence-close" class="slicer-close-btn" title="Close section view">✕</button>
+          <div style="display:flex;gap:6px;align-items:center">
+            <button id="fence-export" class="btn-ghost btn-sm" title="Export as PNG">⬇ PNG</button>
+            <button id="fence-close" class="slicer-close-btn" title="Close">✕</button>
+          </div>
         </div>
         <div class="fence-canvas-wrap">
           <canvas id="fence-canvas" class="fence-canvas"></canvas>
@@ -375,6 +378,12 @@
           <div id="log-strips" class="log-strips"></div>
           <div id="log-labels" class="log-labels"></div>
         </div>
+      </div>
+
+      <!-- Scale bar -->
+      <div id="scale-bar" class="scale-bar" hidden>
+        <div id="scale-bar-line" class="scale-bar-line"></div>
+        <div id="scale-bar-label" class="scale-bar-label">—</div>
       </div>
 
       <!-- Build progress overlay -->
@@ -475,6 +484,13 @@
           <dt>Grid (nx×ny×nz)</dt><dd id="info-grid-size">—</dd>
           <dt>Cell size</dt><dd id="info-cell-size">—</dd>
         </dl>
+      </div>
+
+      <div class="panel-section">
+        <h3>Unit Statistics</h3>
+        <div id="unit-stats" class="unit-stats">
+          <p class="hint">Build model to see statistics</p>
+        </div>
       </div>
 
       <div class="panel-section export-section">

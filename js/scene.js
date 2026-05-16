@@ -111,6 +111,40 @@ class SceneManager {
     requestAnimationFrame(() => this._animate());
     this._controls.update();
     this._renderer.render(this._scene, this._camera);
+    this._updateScaleBar();
+  }
+
+  // ── Scale bar (updates every frame) ──────────────────────────────────────
+  _updateScaleBar() {
+    const bar   = document.getElementById('scale-bar');
+    const line  = document.getElementById('scale-bar-line');
+    const label = document.getElementById('scale-bar-label');
+    if (!bar || !line || !label) return;
+
+    const w = this._canvas.clientWidth;
+    if (!w) return;
+
+    // Project a world-space horizontal segment at the model centre
+    const centre = this._controls.target;
+    const cam    = this._camera;
+
+    const p1 = new THREE.Vector3(centre.x - 0.5, centre.y, centre.z).project(cam);
+    const p2 = new THREE.Vector3(centre.x + 0.5, centre.y, centre.z).project(cam);
+    const pxPerM = Math.abs(p2.x - p1.x) * w * 0.5;
+
+    if (pxPerM < 0.001) { bar.hidden = true; return; }
+
+    // Choose a nice round scale
+    const NICE = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000];
+    const targetPx = 80;
+    const rawM  = targetPx / pxPerM;
+    const scaleM = NICE.find(n => n >= rawM) ?? NICE[NICE.length - 1];
+    const barPx  = Math.round(scaleM * pxPerM);
+
+    if (barPx < 20 || barPx > 300) { bar.hidden = true; return; }
+    bar.hidden = false;
+    line.style.width  = `${barPx}px`;
+    label.textContent = scaleM >= 1000 ? `${scaleM / 1000} km` : `${scaleM} m`;
   }
 
   // ── Build voxel model ─────────────────────────────────────────────────────
