@@ -54,6 +54,16 @@ export class PlanView {
     this._redraw();
   }
 
+  // Jet-like colormap: t ∈ [0,1] → {r,g,b} 0-255
+  static _jet(t) {
+    const r = t < 0.5 ? Math.round(t * 510) : 255;
+    const g = t < 0.25 ? Math.round(t * 1020)
+            : t < 0.75 ? 255
+            : Math.round((1 - t) * 1020);
+    const b = t > 0.5 ? Math.round((1 - t) * 510) : 255;
+    return `rgb(${r},${g},${b})`;
+  }
+
   _redraw() {
     const args = this._lastArgs;
     if (!args || !this._canvas || !this._ctx) return;
@@ -85,20 +95,95 @@ export class PlanView {
     ctx.fillStyle = '#f0f2f5'; ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = '#ffffff'; ctx.fillRect(PAD, PAD, drawW, drawH);
 
+    // ── Compute per-column geotechnical parameters for settlement/bearing modes ──
+    // For each (ix, iy), scan top 10m of voxels to accumulate Cu, N_spt, Cc
+    let colCu = null, colN = null, colCc = null;
+    let minCu = Infinity, maxCu = 0, minN = Infinity, maxN = 0, minCc = Infinity, maxCc = 0;
+    if (['cu', 'N_spt', 'bearing', 'settlement'].includes(mode)) {
+      colCu = new Float32Array(nx * ny).fill(-1);
+      colN  = new Float32Array(nx * ny).fill(-1);
+      colCc = new Float32Array(nx * ny).fill(-1);
+
+      // Find surface iz for each column
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          let surfIz = -1;
+          for (let jz = nz - 1; jz >= 0; jz--) {
+            if (unitIds[ix + iy*nx + jz*nx*ny]) { surfIz = jz; break; }
+          }
+          if (surfIz < 0) continue;
+          const surfElev = O.y + surfIz * ch + ch;
+          let cuMin = Infinity, nSum = 0, nCnt = 0, ccSum = 0, ccCnt = 0;
+
+          for (let jz = surfIz; jz >= 0; jz--) {
+            const vElev = O.y + jz * ch + ch * 0.5;
+            const depth = surfElev - vElev;
+            if (depth > 10) break;
+            const uid  = unitIds[ix + iy*nx + jz*nx*ny];
+            const unit = unitMap[uid];
+            if (!unit) continue;
+            const p = unit.params ?? {};
+            if (depth <= 5 && p.cu != null) cuMin = Math.min(cuMin, p.cu);
+            if (p.N_spt != null) { nSum += p.N_spt; nCnt++; }
+            if (p.Cc  != null) { ccSum += p.Cc;    ccCnt++; }
+          }
+          const ci = ix + iy * nx;
+          if (cuMin < Infinity) { colCu[ci] = cuMin; minCu = Math.min(minCu, cuMin); maxCu = Math.max(maxCu, cuMin); }
+          if (nCnt)             { colN[ci]  = nSum/nCnt; minN = Math.min(minN, nSum/nCnt); maxN = Math.max(maxN, nSum/nCnt); }
+          if (ccCnt)            { colCc[ci] = ccSum/ccCnt; minCc = Math.min(minCc, ccSum/ccCnt); maxCc = Math.max(maxCc, ccSum/ccCnt); }
+        }
+      }
+    }
+
+    const cuRange  = Math.max(maxCu  - minCu,  1);
+    const nRange   = Math.max(maxN   - minN,   1);
+    const ccRange  = Math.max(maxCc  - minCc,  0.001);
+
+    let paramMin = 0, paramMax = 100, paramLabel = '';
+
     for (let iy = 0; iy < ny; iy++) {
       for (let ix = 0; ix < nx; ix++) {
         const flat  = ix + iy * nx + iz * nx * ny;
         const uid   = unitIds[flat];
         const unit  = unitMap[uid];
         if (!uid) continue;
+
         let color;
         if (mode === 'unit') {
           color = unit?.color ?? '#888';
-        } else {
+        } else if (mode === 'cert') {
           const cert = certainty[flat];
           const g = Math.round(cert * 200);
           color = `rgb(${Math.round(255 - cert * 150)},${g + 55},${Math.round(cert * 100 + 50)})`;
+        } else if (mode === 'cu' || mode === 'bearing') {
+          const v = colCu?.[ix + iy*nx] ?? -1;
+          if (v < 0) { color = '#cccccc'; }
+          else {
+            const t = mode === 'bearing'
+              ? 1 - Math.min((v - minCu) / cuRange, 1)   // low Cu = high risk = red
+              : (v - minCu) / cuRange;                    // high Cu = blue
+            color = PlanView._jet(t);
+            paramMin = minCu; paramMax = maxCu; paramLabel = 'Cu (kPa) — blue=high';
+          }
+        } else if (mode === 'N_spt') {
+          const v = colN?.[ix + iy*nx] ?? -1;
+          if (v < 0) { color = '#cccccc'; }
+          else {
+            color = PlanView._jet((v - minN) / nRange);
+            paramMin = minN; paramMax = maxN; paramLabel = 'SPT N — blue=low';
+          }
+        } else if (mode === 'settlement') {
+          const v = colCc?.[ix + iy*nx] ?? -1;
+          if (v < 0) { color = '#cccccc'; }
+          else {
+            const t = (v - minCc) / ccRange; // high Cc = high settlement = red
+            color = PlanView._jet(1 - t);
+            paramMin = minCc; paramMax = maxCc; paramLabel = 'Cc — red=high compressibility';
+          }
+        } else {
+          color = '#888';
         }
+
         ctx.fillStyle = color;
         ctx.fillRect(
           PAD + ix * cellPxW,
@@ -129,11 +214,30 @@ export class PlanView {
     ctx.strokeStyle = '#c8cdd6'; ctx.lineWidth = 1;
     ctx.strokeRect(PAD, PAD, drawW, drawH);
 
+    const MODE_LABELS = { unit: 'Geology', cert: 'Certainty', cu: 'Undrained Strength (Cu)',
+      N_spt: 'SPT N', settlement: 'Settlement Risk (Cc)', bearing: 'Bearing Capacity Risk (Cu)' };
+    const modeLabel = MODE_LABELS[mode] ?? mode;
     ctx.fillStyle = '#8898a8';
     ctx.font = 'bold 11px Inter, sans-serif';
     ctx.textAlign = 'left';
-    const modeLabel = mode === 'unit' ? 'Geology' : 'Certainty';
-    ctx.fillText(`Plan View (${modeLabel}) — ${elev.toFixed(1)} mAOD`, PAD, PAD - 6);
+    ctx.fillText(`Plan View — ${modeLabel}`, PAD, PAD - 6);
+
+    // Color scale bar for geotechnical modes
+    if (!['unit', 'cert'].includes(mode) && paramLabel) {
+      const scaleW = 120, scaleH = 10;
+      const scX = W - PAD - scaleW, scY = PAD - 18;
+      const grad = ctx.createLinearGradient(scX, 0, scX + scaleW, 0);
+      grad.addColorStop(0, PlanView._jet(0));
+      grad.addColorStop(0.5, PlanView._jet(0.5));
+      grad.addColorStop(1, PlanView._jet(1));
+      ctx.fillStyle = grad;
+      ctx.fillRect(scX, scY, scaleW, scaleH);
+      ctx.strokeStyle = '#c8cdd6'; ctx.lineWidth = 0.5;
+      ctx.strokeRect(scX, scY, scaleW, scaleH);
+      ctx.fillStyle = '#8898a8'; ctx.font = '8px Inter, sans-serif';
+      ctx.textAlign = 'left'; ctx.fillText(paramMin.toFixed(1), scX, scY + scaleH + 10);
+      ctx.textAlign = 'right'; ctx.fillText(paramMax.toFixed(1), scX + scaleW, scY + scaleH + 10);
+    }
 
     // Legend
     const lgY = PAD + drawH + 10;
