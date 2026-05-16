@@ -1815,6 +1815,55 @@ input[type="range"] {
 /* ── Plan view panel ── */
 .plan-view-slider { height: 16px; }
 
+/* ── Cursor world coordinates ── */
+.cursor-coords {
+  position: absolute;
+  bottom: 52px;
+  right: 12px;
+  background: rgba(28,42,56,0.72);
+  color: rgba(255,255,255,0.85);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  padding: 3px 8px;
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 20;
+  white-space: nowrap;
+}
+
+/* ── Keyboard shortcuts modal ── */
+.shortcuts-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin: 12px 0;
+}
+.shortcuts-table th {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 2px solid var(--border);
+  color: var(--text-mid);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.shortcuts-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--bg-surface);
+}
+.shortcuts-table td:first-child { width: 120px; }
+kbd {
+  display: inline-block;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  box-shadow: 0 1px 0 var(--border);
+}
+
 /* ── Legend rename hint ── */
 .legend-name {
   cursor: default;

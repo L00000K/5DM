@@ -23,6 +23,7 @@
     </div>
     <div class="header-actions">
       <button id="btn-api-key" class="btn-ghost" title="Configure Anthropic API Key">⚙ API Key</button>
+      <button id="btn-shortcuts" class="btn-ghost" title="Keyboard shortcuts">? Help</button>
       <button id="btn-reset" class="btn-ghost" title="Reset all data">↺ Reset</button>
     </div>
   </header>
@@ -342,9 +343,14 @@
       <!-- Isopach / thickness map panel -->
       <div id="isopach-panel" class="isopach-panel fence-panel" hidden>
         <div class="fence-panel-hdr">
-          <span class="fence-title">Isopach Map</span>
-          <div style="display:flex;gap:6px;align-items:center">
+          <span class="fence-title">Map View</span>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
             <select id="isopach-unit-select" class="isopach-select"></select>
+            <select id="isopach-mode-select" class="isopach-select">
+              <option value="thick">Thickness</option>
+              <option value="topZ">Top Z (mAOD)</option>
+              <option value="baseZ">Base Z (mAOD)</option>
+            </select>
             <button id="isopach-export" class="btn-ghost btn-sm" title="Export as PNG">⬇ PNG</button>
             <button id="isopach-close" class="slicer-close-btn" title="Close">✕</button>
           </div>
@@ -433,6 +439,9 @@
         </div>
       </div>
 
+      <!-- Mouse world coordinates -->
+      <div id="cursor-coords" class="cursor-coords" hidden>—</div>
+
       <!-- North arrow -->
       <canvas id="north-arrow" class="north-arrow" width="48" height="48" hidden></canvas>
 
@@ -516,6 +525,11 @@
           <span>Dark background</span>
         </label>
 
+        <label class="inline-check" style="margin-top:8px" id="topo-clip-row" title="Remove voxels above ground surface">
+          <input type="checkbox" id="topo-clip">
+          <span>Clip to topography</span>
+        </label>
+
         <div class="field-group" style="margin-top:10px">
           <label>Surface Opacity</label>
           <div class="range-row">
@@ -579,6 +593,31 @@
 
     </aside>
   </main>
+
+  <!-- ── KEYBOARD SHORTCUTS MODAL ── -->
+  <div id="modal-shortcuts" class="modal" hidden role="dialog" aria-modal="true">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content" style="max-width:440px">
+      <h2>Keyboard Shortcuts</h2>
+      <table class="shortcuts-table">
+        <tr><th>Key</th><th>Action</th></tr>
+        <tr><td><kbd>V</kbd></td><td>View mode: Voxels</td></tr>
+        <tr><td><kbd>S</kbd></td><td>View mode: Surfaces</td></tr>
+        <tr><td><kbd>B</kbd></td><td>View mode: Both</td></tr>
+        <tr><td><kbd>K</kbd></td><td>Toggle Virtual Borehole (VBH)</td></tr>
+        <tr><td><kbd>M</kbd></td><td>Toggle Measure tool</td></tr>
+        <tr><td><kbd>A</kbd></td><td>Toggle Annotation label tool</td></tr>
+        <tr><td><kbd>D</kbd></td><td>Toggle plan/section drawing mode</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Cancel active tool / close popup</td></tr>
+        <tr><td><kbd>Middle Mouse</kbd></td><td>Re-centre view on model</td></tr>
+        <tr><td><kbd>Ctrl+Scroll</kbd></td><td>Move section line position</td></tr>
+        <tr><td><kbd>Double-click legend name</kbd></td><td>Rename geological unit</td></tr>
+      </table>
+      <div class="modal-actions">
+        <button id="btn-shortcuts-close" class="btn-ghost">Close</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ── API KEY MODAL ── -->
   <div id="modal-api-key" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-api-title">

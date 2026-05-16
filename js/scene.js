@@ -268,7 +268,7 @@ class SceneManager {
     classifiedBH.filter(b => !b.synthetic).forEach(bh => {
       if (!bh.layers?.length) return;
       const gl = bh.groundLevel ?? 0;
-      bh.layers.forEach(layer => {
+      bh.layers.forEach((layer, li) => {
         const unit = unitByCode[layer.unitCode];
         if (!unit) return;
         const height = Math.max(layer.base - layer.top, 0.01);
@@ -279,6 +279,16 @@ class SceneManager {
         mesh.position.set(bh.x, midElev, bh.y);
         mesh.userData.bhId = bh.id;
         group.add(mesh);
+
+        // Formation contact ring at top of this layer (not first)
+        if (li > 0) {
+          const contactElev = gl - layer.top;
+          const ringGeom = new THREE.CylinderGeometry(radius * 2.2, radius * 2.2, 0.15, 12, 1, true);
+          const ringMat  = new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.DoubleSide });
+          const ring = new THREE.Mesh(ringGeom, ringMat);
+          ring.position.set(bh.x, contactElev, bh.y);
+          group.add(ring);
+        }
       });
     });
     this._bhSticks = group;

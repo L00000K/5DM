@@ -410,6 +410,8 @@ function initBuildModel() {
       setEnabled('btn-plan-view', true);
       setEnabled('btn-export-contacts', true);
       AppState.report?.compute(AppState.voxelGrid, AppState.classifiedBH, AppState.geoUnits);
+      AppState._origUnitIds = null; // invalidate topo clip cache after rebuild
+      AppState._onTopoClipUpdate?.();
       updateStratColumn();
 
       // Auto-apply pre-set constraints
@@ -432,6 +434,106 @@ function initBuildModel() {
       log(`Build failed: ${err.message}`, 'error');
       console.error(err);
       setEnabled('btn-build-model', true);
+    }
+  });
+}
+
+// ── Topography clipping ───────────────────────────────────────────────────────
+function initTopoClip() {
+  const chk = document.getElementById('topo-clip');
+  const row = document.getElementById('topo-clip-row');
+  if (!chk || !row) return;
+
+  const apply = () => {
+    const grid = AppState.voxelGrid;
+    const topo = AppState.topoPoints;
+    if (!grid) return;
+
+    if (chk.checked && topo?.length) {
+      if (!AppState._origUnitIds) {
+        AppState._origUnitIds = new Uint8Array(grid.unitIds);
+      }
+      const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O } = grid;
+      const newIds = new Uint8Array(AppState._origUnitIds);
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          const wx = O.x + (ix + 0.5) * cs;
+          const wz = O.z + (iy + 0.5) * cs;
+          let minD = Infinity, groundY = O.y + nz * ch;
+          for (const p of topo) {
+            const d = (p.x - wx) ** 2 + (p.y - wz) ** 2;
+            if (d < minD) { minD = d; groundY = p.z; }
+          }
+          for (let iz = 0; iz < nz; iz++) {
+            const voxMid = O.y + (iz + 0.5) * ch;
+            if (voxMid > groundY) newIds[ix + iy * nx + iz * nx * ny] = 0;
+          }
+        }
+      }
+      grid.unitIds = newIds;
+    } else if (!chk.checked && AppState._origUnitIds) {
+      grid.unitIds = new Uint8Array(AppState._origUnitIds);
+    }
+
+    if (AppState.scene && AppState.voxelGrid) {
+      AppState.scene.buildVoxels(grid, AppState.geoUnits, AppState.classifiedBH);
+      updateVolumeStats();
+    }
+  };
+
+  chk.addEventListener('change', apply);
+
+  // Disable if no topo loaded
+  const updateTopoClipState = () => {
+    const enabled = !!(AppState.topoPoints?.length && AppState.voxelGrid);
+    if (row) row.style.opacity = enabled ? '1' : '0.45';
+    if (chk) chk.disabled = !enabled;
+  };
+  window.addEventListener('geomodel:data-loaded', updateTopoClipState);
+  // Call after model build too
+  AppState._onTopoClipUpdate = updateTopoClipState;
+}
+
+// ── Cursor world coordinates ──────────────────────────────────────────────────
+function initCursorCoords() {
+  const el = document.getElementById('cursor-coords');
+  if (!el) return;
+
+  const canvas = document.getElementById('three-canvas');
+  if (!canvas) return;
+
+  canvas.addEventListener('mousemove', e => {
+    const scene = AppState.scene;
+    if (!scene?._modelBounds?.grid) { el.hidden = true; return; }
+    const rect = canvas.getBoundingClientRect();
+    const pt   = scene._canvasToWorld(e.clientX - rect.left, e.clientY - rect.top);
+    if (pt) {
+      el.hidden = false;
+      el.textContent = `X ${pt.x.toFixed(1)} · Y ${pt.y.toFixed(1)} · Z ${pt.z.toFixed(1)} m`;
+    } else {
+      el.hidden = true;
+    }
+  });
+  canvas.addEventListener('mouseleave', () => { el.hidden = true; });
+}
+
+// ── Keyboard shortcuts modal ──────────────────────────────────────────────────
+function initShortcutsModal() {
+  const btn   = document.getElementById('btn-shortcuts');
+  const modal = document.getElementById('modal-shortcuts');
+  const close = document.getElementById('btn-shortcuts-close');
+  if (!btn || !modal) return;
+  const show = () => { modal.hidden = false; close?.focus(); };
+  const hide = () => { modal.hidden = true; };
+  btn.addEventListener('click', show);
+  close?.addEventListener('click', hide);
+  modal.querySelector('.modal-backdrop')?.addEventListener('click', hide);
+  window.addEventListener('keydown', e => {
+    if (e.key === '?' && !modal.hidden) { hide(); return; }
+    if (e.key === '?' && !e.ctrlKey && !e.metaKey &&
+        document.activeElement?.tagName !== 'INPUT' &&
+        document.activeElement?.tagName !== 'TEXTAREA') {
+      show();
     }
   });
 }
@@ -1179,6 +1281,9 @@ async function init() {
   initPlanView();
   initPropertiesTab();
   initLegendRename();
+  initTopoClip();
+  initCursorCoords();
+  initShortcutsModal();
   initWelcomeOverlay();
 
   // Sample tile buttons (left panel)
