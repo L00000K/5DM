@@ -56,6 +56,49 @@ export function initExporter() {
     log('JSON exported.', 'ok');
   });
 
+  // ── Export VTK rectilinear grid (Paraview) ────────────────────────────────
+  document.getElementById('btn-export-vtk')?.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('No voxel grid to export.', 'warn'); return; }
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty } = grid;
+
+    const xc = Array.from({length: nx + 1}, (_, i) => (O.x + i * cs).toFixed(2)).join(' ');
+    const yc = Array.from({length: ny + 1}, (_, i) => (O.z + i * cs).toFixed(2)).join(' ');
+    const zc = Array.from({length: nz + 1}, (_, i) => (O.y + i * ch).toFixed(2)).join(' ');
+
+    const uIds = [], certs = [];
+    for (let iz = 0; iz < nz; iz++) {
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          const flat = ix + iy * nx + iz * nx * ny;
+          uIds.push(unitIds[flat]);
+          certs.push(certainty[flat].toFixed(3));
+        }
+      }
+    }
+
+    const vtk = [
+      '# vtk DataFile Version 3.0',
+      'GeoModel AI',
+      'ASCII',
+      'DATASET RECTILINEAR_GRID',
+      `DIMENSIONS ${nx + 1} ${ny + 1} ${nz + 1}`,
+      `X_COORDINATES ${nx + 1} float`, xc,
+      `Y_COORDINATES ${ny + 1} float`, yc,
+      `Z_COORDINATES ${nz + 1} float`, zc,
+      `CELL_DATA ${nx * ny * nz}`,
+      'SCALARS unit_id int 1',
+      'LOOKUP_TABLE default',
+      uIds.join(' '),
+      'SCALARS certainty float 1',
+      'LOOKUP_TABLE default',
+      certs.join(' '),
+    ].join('\n');
+
+    downloadBlob(new Blob([vtk], { type: 'text/plain' }), 'geomodel.vtk');
+    log(`VTK exported — ${(nx*ny*nz).toLocaleString()} cells.`, 'ok');
+  });
+
   // ── Export formation contacts as CSV ─────────────────────────────────────
   document.getElementById('btn-export-contacts')?.addEventListener('click', () => {
     const grid = AppState.voxelGrid;

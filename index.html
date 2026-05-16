@@ -596,6 +596,25 @@
       </div>
 
       <div class="panel-section">
+        <h3>Settlement Estimate</h3>
+        <div class="field-group">
+          <div class="cell-size-row" style="gap:6px">
+            <div class="cell-size-field" style="flex:1">
+              <span class="cell-size-lbl" title="Foundation level mAOD">FD Z</span>
+              <input type="number" id="sett-found-level" placeholder="mAOD" step="0.5" class="cell-size-input">
+            </div>
+            <div class="cell-size-field" style="flex:1">
+              <span class="cell-size-lbl" title="Net applied stress (kPa)">q</span>
+              <input type="number" id="sett-load" placeholder="kPa" step="5" value="50" class="cell-size-input">
+            </div>
+          </div>
+          <p class="hint">Uses Cc and e₀ from Props tab</p>
+        </div>
+        <button id="btn-calc-settlement" class="btn-secondary btn-sm" style="width:100%">∑ Calculate Settlement</button>
+        <div id="settlement-results" class="settlement-results"></div>
+      </div>
+
+      <div class="panel-section">
         <h3>Stratigraphy</h3>
         <canvas id="strat-canvas" class="strat-canvas" hidden></canvas>
         <p class="hint" id="strat-hint">Build model to see stratigraphic column</p>
@@ -606,6 +625,7 @@
         <button id="btn-export-gltf" class="btn-secondary" disabled>⬇ GLTF</button>
         <button id="btn-export-obj"  class="btn-secondary" disabled>⬇ OBJ</button>
         <button id="btn-export-json" class="btn-secondary" disabled>⬇ JSON</button>
+        <button id="btn-export-vtk"  class="btn-secondary" disabled>⬇ VTK (Paraview)</button>
         <div class="settings-divider">Analysis Data</div>
         <button id="btn-export-contacts" class="btn-secondary" disabled>⬇ Formation Contacts</button>
         <button id="btn-export-bh-csv" class="btn-secondary" disabled>⬇ BH Logs CSV</button>

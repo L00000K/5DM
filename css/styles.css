@@ -1815,6 +1815,50 @@ input[type="range"] {
 /* ── Plan view panel ── */
 .plan-view-slider { height: 16px; }
 
+/* ── Settlement calculator ── */
+.settlement-results { margin-top: 8px; font-size: 11px; }
+.sett-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--accent-glow);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  margin-bottom: 6px;
+}
+.sett-total-lbl { color: var(--text-mid); font-size: 11px; }
+.sett-total-val { font-weight: 700; color: var(--accent); font-size: 14px; }
+.sett-no-data .sett-total-val { color: var(--text-dim); font-size: 11px; }
+.sett-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+.sett-table th {
+  background: var(--bg-surface);
+  padding: 3px 5px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-dim);
+}
+.sett-table th:first-child { text-align: left; }
+.sett-table td {
+  padding: 2px 5px;
+  border-bottom: 1px solid var(--bg-surface);
+  text-align: right;
+}
+.sett-table td:first-child { text-align: left; }
+.sett-swatch {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 1px;
+  margin-right: 3px;
+  vertical-align: middle;
+}
+.sett-val { font-weight: 600; color: var(--accent); }
+.sett-missing td { color: var(--text-dim); }
+
 /* ── Camera preset buttons ── */
 .cam-preset-btn {
   background: rgba(28,42,56,0.7);

@@ -10,6 +10,7 @@ const DEFAULT_PARAMS = {
   E:      null,   // Young's modulus (MPa)
   nu:     null,   // Poisson's ratio
   Cc:     null,   // compression index
+  e0:     null,   // initial void ratio (for settlement)
   N_spt:  null,   // characteristic SPT N value
 };
 
@@ -31,13 +32,14 @@ export function renderPropertiesTable(geoUnits, onUpdate) {
   });
 
   const cols = [
-    { key: 'gamma',  label: 'γ (kN/m³)',  placeholder: '19' },
-    { key: 'cu',     label: 'Cu (kPa)',    placeholder: '—'  },
-    { key: 'cprime', label: "c' (kPa)",    placeholder: '0'  },
-    { key: 'phi',    label: "φ' (°)",      placeholder: '—'  },
-    { key: 'E',      label: 'E (MPa)',     placeholder: '—'  },
-    { key: 'Cc',     label: 'Cc',          placeholder: '—'  },
-    { key: 'N_spt',  label: 'N (SPT)',     placeholder: '—'  },
+    { key: 'gamma',  label: 'γ (kN/m³)',  placeholder: '19'  },
+    { key: 'cu',     label: 'Cu (kPa)',    placeholder: '—'   },
+    { key: 'cprime', label: "c' (kPa)",    placeholder: '0'   },
+    { key: 'phi',    label: "φ' (°)",      placeholder: '—'   },
+    { key: 'E',      label: 'E (MPa)',     placeholder: '—'   },
+    { key: 'Cc',     label: 'Cc',          placeholder: '—'   },
+    { key: 'e0',     label: 'e₀',          placeholder: '0.8' },
+    { key: 'N_spt',  label: 'N (SPT)',     placeholder: '—'   },
   ];
 
   let html = `<table class="props-table">
@@ -95,7 +97,7 @@ export function renderPropertiesTable(geoUnits, onUpdate) {
 }
 
 export function exportPropertiesCSV(geoUnits) {
-  const cols = ['code','name','gamma_kNm3','cu_kPa','cprime_kPa','phi_deg','E_MPa','Cc','N_spt'];
+  const cols = ['code','name','gamma_kNm3','cu_kPa','cprime_kPa','phi_deg','E_MPa','Cc','e0','N_spt'];
   const rows = [cols.join(',')];
   for (const u of geoUnits) {
     const p = u.params ?? {};
@@ -108,6 +110,7 @@ export function exportPropertiesCSV(geoUnits) {
       p.phi    ?? '',
       p.E      ?? '',
       p.Cc     ?? '',
+      p.e0     ?? '',
       p.N_spt  ?? '',
     ].join(','));
   }

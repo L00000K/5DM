@@ -14,6 +14,7 @@ import { ModelReport } from './report.js';
 import { PlanView } from './plan-view.js';
 import { renderPropertiesTable } from './properties.js';
 import { saveSession, loadSession, hasSavedSession } from './session.js';
+import { calculateSettlement, renderSettlementResults } from './settlement.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -229,6 +230,7 @@ function initReset() {
     setEnabled('btn-export-gltf', false);
     setEnabled('btn-export-obj', false);
     setEnabled('btn-export-json', false);
+    setEnabled('btn-export-vtk', false);
     setEnabled('btn-export-bh-csv', false);
     setEnabled('btn-export-props', false);
     setEnabled('btn-isopach', false);
@@ -404,6 +406,7 @@ function initBuildModel() {
       setEnabled('btn-export-gltf', true);
       setEnabled('btn-export-obj', true);
       setEnabled('btn-export-json', true);
+      setEnabled('btn-export-vtk', true);
       setEnabled('btn-build-model', true);
       setEnabled('btn-apply-constraints', true);
       setEnabled('btn-isopach', true);
@@ -435,6 +438,27 @@ function initBuildModel() {
       log(`Build failed: ${err.message}`, 'error');
       console.error(err);
       setEnabled('btn-build-model', true);
+    }
+  });
+}
+
+// ── Settlement estimator ──────────────────────────────────────────────────────
+function initSettlement() {
+  const btn  = document.getElementById('btn-calc-settlement');
+  const res  = document.getElementById('settlement-results');
+  if (!btn || !res) return;
+
+  btn.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('Build model first.', 'warn'); return; }
+    const foundElev = parseFloat(document.getElementById('sett-found-level')?.value ?? '0');
+    const loadKPa   = parseFloat(document.getElementById('sett-load')?.value ?? '50');
+    if (isNaN(foundElev) || isNaN(loadKPa)) { log('Enter valid foundation level and load.', 'warn'); return; }
+    const result = calculateSettlement(grid, AppState.geoUnits, foundElev, loadKPa);
+    renderSettlementResults(result, res);
+    if (result) {
+      const hasCalc = result.layers.some(l => l.settlement !== null);
+      log(`Settlement: ${hasCalc ? result.total.toFixed(1) + ' mm total' : 'set Cc and e0 in Props tab'}.`, hasCalc ? 'ok' : 'warn');
     }
   });
 }
@@ -1368,6 +1392,7 @@ async function init() {
   initGWT();
   initCameraPresets();
   initSession();
+  initSettlement();
   initWelcomeOverlay();
 
   // Sample tile buttons (left panel)
