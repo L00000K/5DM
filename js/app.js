@@ -24,6 +24,8 @@ import { assessRisk, renderRiskReport } from './risk-engine.js';
 import { BHLogView } from './bh-log-view.js';
 import { CPTLogView } from './cpt-log-view.js';
 import { parseCPT } from './data-parser.js';
+import { computeOrientations, orientationStats, renderStereonet, renderRoseDiagram } from './stereonet.js';
+import { bishopAnalysis, renderSlopeSection } from './slope-stability.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -65,6 +67,7 @@ export const AppState = {
   compositingInterval: 1.0,
   monteCarloEnabled: false,
   mcRealisations: 20,
+  faultPlanes: [],
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
@@ -689,6 +692,20 @@ function initBuildModel() {
         log(`Compositing BH data at ${interval}m intervals → ${bhForModel.reduce((s,b)=>s+b.layers.length,0)} intervals`, 'info');
       }
 
+      // Extract fault planes from constraint text before building
+      const constraintText = document.getElementById('constraints-text')?.value?.trim() ?? '';
+      if (constraintText && AppState.geoUnits.length) {
+        AppState.parsedConstraints = parseConstraints(constraintText, AppState.geoUnits);
+      }
+      AppState.faultPlanes = (AppState.parsedConstraints ?? [])
+        .filter(r => r.type === 'fault')
+        .map(r => r.axis === 'x'
+          ? { px: r.coord, py: 0, fnx: 1, fny: 0 }
+          : { px: 0, py: r.coord, fnx: 0, fny: 1 });
+      if (AppState.faultPlanes.length) {
+        log(`Fault planes: ${AppState.faultPlanes.length} active — restricting BH search across faults`, 'info');
+      }
+
       const gridOptions = {
         kNeighbors: AppState.kNeighbors, idwPower: AppState.idwPower,
         method: AppState.interpMethod, cellSizeZ: AppState.cellSizeZ,
@@ -706,6 +723,7 @@ function initBuildModel() {
         varRange:  AppState.varRange,
         varSill:   AppState.varSill,
         varNugget: AppState.varNugget,
+        faultPlanes: AppState.faultPlanes,
         onProgress: p => setBuildProgress(p),
       };
 
@@ -744,6 +762,10 @@ function initBuildModel() {
       setEnabled('btn-plan-view', true);
       setEnabled('btn-export-contacts', true);
       setEnabled('btn-export-surfaces', true);
+      setEnabled('btn-export-stl', true);
+      setEnabled('btn-stereonet', true);
+      setEnabled('btn-slope-stability', true);
+      window.dispatchEvent(new CustomEvent('geomodel:model-built'));
       setEnabled('btn-param-apply', true);
       setEnabled('btn-param-reset', true);
       setEnabled('btn-build-isosurfaces', true);
@@ -2997,6 +3019,8 @@ async function init() {
   initLogSubTabs();
   initCPTImport();
   initWelcomeOverlay();
+  initStereonet();
+  initSlopeStability();
 
   // Sample tile buttons (left panel)
   document.querySelectorAll('.sample-tile').forEach(btn => {
@@ -3029,6 +3053,105 @@ async function init() {
 
   window.addEventListener('geomodel:data-loaded', e => {
     if (e.detail?.boreholes?.length) hideWelcome();
+  });
+}
+
+// ── Stereonet surface orientation panel ───────────────────────────────────────
+function initStereonet() {
+  const btn     = document.getElementById('btn-stereonet');
+  const sel     = document.getElementById('stereonet-unit');
+  const sCanvas = document.getElementById('stereonet-canvas');
+  const rCanvas = document.getElementById('rose-canvas');
+  const statsEl = document.getElementById('stereonet-stats');
+  if (!btn || !sCanvas || !rCanvas) return;
+
+  // Populate unit selector when model changes
+  window.addEventListener('geomodel:model-built', () => {
+    if (!sel) return;
+    sel.innerHTML = '<option value="">All units</option>';
+    for (const u of AppState.geoUnits) {
+      const opt = document.createElement('option');
+      opt.value = u.code; opt.textContent = `${u.code} — ${u.name ?? ''}`;
+      sel.appendChild(opt);
+    }
+  });
+
+  btn.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('Build the 3D model first.', 'warn'); return; }
+
+    const allOrientations = computeOrientations(grid, AppState.geoUnits);
+    const filterCode = sel?.value ?? '';
+    const stats = orientationStats(allOrientations);
+
+    // Build orientation set for display
+    let displayOrientations = [];
+    let displayColor = '#5ab8e0';
+    if (filterCode) {
+      displayOrientations = allOrientations[filterCode] ?? [];
+      const u = AppState.geoUnits.find(u => u.code === filterCode);
+      displayColor = u?.color ?? '#5ab8e0';
+    } else {
+      for (const orients of Object.values(allOrientations)) displayOrientations.push(...orients);
+    }
+
+    renderStereonet(sCanvas, displayOrientations, displayColor);
+    renderRoseDiagram(rCanvas, displayOrientations, displayColor);
+
+    if (statsEl) {
+      if (filterCode && stats[filterCode]) {
+        const s = stats[filterCode];
+        statsEl.innerHTML = `${filterCode}: mean dip ${s.meanDip}° → ${s.meanDipDir}° · σ=${s.stdDip}° · n=${s.n}`;
+      } else {
+        const lines = Object.entries(stats).map(([code, s]) =>
+          `${code}: ${s.meanDip}°/${s.meanDipDir}°`).join(' | ');
+        statsEl.innerHTML = lines || 'No orientation data';
+      }
+    }
+    log(`Stereonet: ${displayOrientations.length} orientation measurements computed`, 'ok');
+  });
+}
+
+// ── Bishop slope stability panel ──────────────────────────────────────────────
+function initSlopeStability() {
+  const btn     = document.getElementById('btn-slope-stability');
+  const results = document.getElementById('slope-results');
+  if (!btn || !results) return;
+
+  btn.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('Build the 3D model first.', 'warn'); return; }
+
+    const cPrime  = parseFloat(document.getElementById('slope-cprime')?.value) || null;
+    const phiDeg  = parseFloat(document.getElementById('slope-phi')?.value) || null;
+    const gwtDepth = parseFloat(document.getElementById('slope-gwt')?.value) || null;
+
+    btn.disabled = true; btn.textContent = '⏳ Analysing…';
+    log('Running Bishop simplified slope stability analysis…', 'info');
+
+    setTimeout(() => {
+      try {
+        const result = bishopAnalysis(grid, AppState.geoUnits, {
+          cPrime:   cPrime ?? undefined,
+          phiDeg:   phiDeg ?? undefined,
+          gwtDepth: gwtDepth ?? undefined,
+        });
+        if (!result) {
+          results.innerHTML = '<p class="hint">Could not find a valid slip circle. Check that the model has sufficient extent.</p>';
+        } else {
+          const svg = renderSlopeSection(result, results.clientWidth || 360, 180);
+          results.innerHTML = svg;
+          const color = result.Fs < 1.2 ? '#e84040' : result.Fs < 1.5 ? '#e8924a' : '#4ae87a';
+          results.innerHTML += `<p style="margin:4px 0 0;font-size:10px;font-family:monospace;color:${color}">Fs = ${result.Fs.toFixed(2)} · ${result.unitName} · c′=${result.params.cPrime.toFixed(0)}kPa · φ=${result.params.phiDeg}° · γ=${result.params.gamma}kN/m³</p>`;
+          log(`Bishop: Fs = ${result.Fs.toFixed(2)} (${result.Fs < 1.2 ? 'UNSAFE' : result.Fs < 1.5 ? 'MARGINAL' : 'STABLE'})`, result.Fs < 1.2 ? 'error' : result.Fs < 1.5 ? 'warn' : 'ok');
+        }
+      } catch (err) {
+        results.innerHTML = `<p class="hint" style="color:#e84040">Error: ${err.message}</p>`;
+        log(`Slope stability error: ${err.message}`, 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = '⚖ Run Bishop Analysis';
+      }
+    }, 10);
   });
 }
 

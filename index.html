@@ -358,6 +358,21 @@
 
         <div id="constraints-summary" class="constraints-list"></div>
 
+        <div class="settings-divider">Fault Planes (Interpolation Boundaries)</div>
+        <p class="hint" style="margin-bottom:4px;font-size:10px">Fault planes restrict interpolation so boreholes on the far side of a fault are not used. One fault per line — rebuilding the model re-applies them.</p>
+        <div class="example-rules" style="margin-bottom:6px">
+          <div class="example-rule" data-rule="Fault at easting 350m">Fault at easting 350m</div>
+          <div class="example-rule" data-rule="Fault at northing 200m">Fault at northing 200m</div>
+          <div class="example-rule" data-rule="Fault zone at easting 120m">Fault zone at easting 120m</div>
+        </div>
+
+        <div class="settings-divider">Intrusion / Anomaly Bodies</div>
+        <p class="hint" style="margin-bottom:4px;font-size:10px">Override voxels inside ellipsoidal bodies. Syntax: <code>Intrusion at easting X, northing Y, elevation ZmAOD, radius Rm, unit CODE</code>. Use "Void" instead of "Intrusion" to blank voxels.</p>
+        <div class="example-rules" style="margin-bottom:6px">
+          <div class="example-rule" data-rule="Intrusion at easting 100, northing 50, elevation 3mAOD, radius 20m, unit MG">Intrusion body example</div>
+          <div class="example-rule" data-rule="Void at easting 200, northing 150, elevation 5mAOD, radius 8m">Void / cavity example</div>
+        </div>
+
         <div class="settings-divider">Example Rules</div>
         <div class="example-rules">
           <div class="example-rule" data-rule="Made ground not deeper than 5m">Made ground not deeper than 5m</div>
@@ -956,6 +971,48 @@
       </div>
 
       <div class="panel-section">
+        <h3>Surface Orientations</h3>
+        <p class="hint" style="font-size:10px;margin-bottom:6px">Dip/strike of geological unit top surfaces derived from elevation gradients. Schmidt equal-area lower hemisphere (left) + bidirectional strike rose (right).</p>
+        <div style="display:flex;gap:4px;margin-bottom:6px;align-items:center">
+          <select id="stereonet-unit" class="isopach-select" style="flex:1;font-size:10px">
+            <option value="">All units</option>
+          </select>
+          <button id="btn-stereonet" class="btn-secondary btn-sm" disabled>Compute</button>
+        </div>
+        <div style="display:flex;gap:4px">
+          <canvas id="stereonet-canvas" width="120" height="120"
+            style="flex:1;background:var(--bg-deep);border-radius:4px"></canvas>
+          <canvas id="rose-canvas" width="120" height="120"
+            style="flex:1;background:var(--bg-deep);border-radius:4px"></canvas>
+        </div>
+        <div id="stereonet-stats" style="font-size:9px;color:var(--text-mid);margin-top:4px;font-family:monospace;line-height:1.6"></div>
+      </div>
+
+      <div class="panel-section">
+        <h3>Slope Stability (Bishop)</h3>
+        <p class="hint" style="font-size:10px;margin-bottom:6px">Bishop simplified circular slip analysis using dominant unit properties. Grid searches for minimum Factor of Safety.</p>
+        <div class="field-group">
+          <div class="cell-size-row" style="gap:6px;flex-wrap:wrap">
+            <div class="cell-size-field" style="flex:1;min-width:56px">
+              <span class="cell-size-lbl" title="Effective cohesion (kPa)">c′</span>
+              <input type="number" id="slope-cprime" placeholder="auto" step="1" class="cell-size-input" min="0">
+            </div>
+            <div class="cell-size-field" style="flex:1;min-width:52px">
+              <span class="cell-size-lbl" title="Friction angle (°)">φ</span>
+              <input type="number" id="slope-phi" placeholder="auto" step="1" class="cell-size-input" min="0" max="50">
+            </div>
+            <div class="cell-size-field" style="flex:1;min-width:64px">
+              <span class="cell-size-lbl" title="GWT depth below surface (m)">GWT m</span>
+              <input type="number" id="slope-gwt" placeholder="dry" step="0.5" class="cell-size-input" min="0">
+            </div>
+          </div>
+          <p class="hint" style="font-size:9px;margin-top:3px">Leave blank to auto-read from Props tab</p>
+        </div>
+        <button id="btn-slope-stability" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:6px">⚖ Run Bishop Analysis</button>
+        <div id="slope-results" style="font-size:11px"></div>
+      </div>
+
+      <div class="panel-section">
         <h3>Stratigraphy</h3>
         <canvas id="strat-canvas" class="strat-canvas" hidden></canvas>
         <p class="hint" id="strat-hint">Build model to see stratigraphic column</p>
@@ -976,6 +1033,7 @@
         <div class="settings-divider">Analysis Data</div>
         <button id="btn-export-contacts" class="btn-secondary" disabled>⬇ Formation Contacts CSV</button>
         <button id="btn-export-surfaces" class="btn-secondary" disabled title="Export the top surface of each geological unit as a 3D OBJ mesh">⬇ Formation Surfaces OBJ</button>
+        <button id="btn-export-stl" class="btn-secondary" disabled title="Export formation top surfaces as binary STL — for Plaxis, Abaqus, FreeCAD, Blender">⬇ Formation Surfaces STL</button>
         <button id="btn-export-bh-csv" class="btn-secondary" disabled>⬇ BH Logs CSV</button>
         <button id="btn-export-ags" class="btn-secondary" disabled title="Export classified boreholes in AGS 4.x format (LOCA, GEOL, ISPT groups)">⬇ AGS 4.x</button>
         <div class="settings-divider">GIS / Analysis</div>

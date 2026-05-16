@@ -682,7 +682,15 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
         if (method === 'nn' && nnPredict) {
           result = nnPredict(x, y, z);
         } else {
-          const cands = getCandidates(allBoreholes, x, y, z, anisoSinAz, anisoCosAz, anisoRatio);
+          let cands = getCandidates(allBoreholes, x, y, z, anisoSinAz, anisoCosAz, anisoRatio);
+          // Fault plane filtering: restrict candidates to same side of each fault as the voxel
+          if (options.faultPlanes?.length) {
+            cands = cands.filter(c => options.faultPlanes.every(f => {
+              const vSide = (x - f.px) * f.fnx + (y - f.py) * f.fny >= 0;
+              const bSide = (c.x - f.px) * f.fnx + (c.y - f.py) * f.fny >= 0;
+              return vSide === bSide;
+            }));
+          }
           cands.sort((a, b) => a.dist - b.dist);
           const nb = cands.slice(0, kNeighbors);
 

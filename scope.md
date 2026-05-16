@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-16
+> Last updated: 2026-05-16 (batch 10 update)
 
 ---
 
@@ -64,7 +64,11 @@ A browser-based, AI-augmented 3D ground modelling tool that approaches the capab
     ├── geo-map.js                Geological map import (surface outcrop pinning)
     ├── lab-import.js             Lab results CSV import → unit parameters
     ├── project-config.js         .geomodel project file export/import
-    └── session.js                Session save/restore (sessionStorage only)
+    ├── session.js                Session save/restore (sessionStorage only)
+    ├── stereonet.js              Surface orientation analysis — Schmidt net + rose diagram
+    ├── slope-stability.js        Bishop simplified circular slip stability (Fs)
+    ├── geo-implicit.js           Neural Implicit Geological Field (4-layer MLP + Fourier encoding)
+    └── fault.js                  Fault plane utilities (imported via interpolator options)
 ```
 
 ---
@@ -114,7 +118,7 @@ A browser-based, AI-augmented 3D ground modelling tool that approaches the capab
 - [x] API key — sessionStorage only, never logged, only sent to api.anthropic.com
 
 ### 4.3 Interpolation Engine
-Five methods, all operating on the same voxel grid:
+Seven methods, all operating on the same voxel grid:
 
 | Method | Description |
 |---|---|
@@ -123,6 +127,14 @@ Five methods, all operating on the same voxel grid:
 | Gaussian Process | RBF kernel, variance-based uncertainty |
 | Neural Network | 2-layer MLP (3→32→nUnits), cosine-annealed SGD |
 | Universal Kriging | Polynomial drift removal (order 0/1/2) |
+| RBF (Multiquadric) | Smooth implicit surface fitting — φ(r)=√(1+(r/ε)²) per unit, solves Gram system |
+| Neural Implicit Field | F(x,y,z,text)→P(unit₁…unitₙ); 4-layer MLP with Fourier encoding + LLM Oracle |
+
+**Advanced uncertainty:**
+- [x] **Monte Carlo boundary perturbation** — N IDW realisations with Gaussian-perturbed layer boundaries (σ=0.5m); certainty = fraction agreeing with majority vote
+- [x] **Variogram auto-fitting** — grid search over (C0, C1, range) to minimise SSR against empirical indicator variogram; orange dashed fitted curve + range marker drawn on variogram canvas
+- [x] **Drillhole compositing** — regularises BH logs to uniform depth intervals; dominant unit by accumulated length; certainty = source × purity
+- [x] **Fault plane interpolation boundary** — boreholes on the far side of a fault plane are excluded from search; parsed from constraints text (`Fault at easting X`, `Fault at northing Y`)
 
 **Semantic layers embedded in interpolation:**
 - [x] Description similarity weighting — Jaccard similarity on geological keywords; neighbours with similar descriptions get 0.8–1.2× certainty multiplier
@@ -185,11 +197,30 @@ Five methods, all operating on the same voxel grid:
 - [x] GLTF 3D model export
 - [x] OBJ mesh export (contact surfaces)
 - [x] JSON voxel grid export
+- [x] **Binary STL export** — formation top surfaces as binary STL (80-byte header + 50-byte/triangle); compatible with Plaxis, Abaqus, FreeCAD, Blender, SolidWorks
+- [x] VTK rectilinear grid export — Paraview/Visit compatible, unit_id + certainty fields
+- [x] Formation contacts CSV — per-unit topmost voxel per column
+- [x] Block model CSV — full voxel grid with centroids, unit codes, engineering parameters (Leapfrog/Vulcan/Datamine compatible)
+- [x] Point cloud CSV
+- [x] Model statistics CSV — volume, area, mean depth, mean certainty per unit
+- [x] Unit properties CSV
+- [x] BH logs CSV
+- [x] AGS 4.x export — PROJ, TRAN, LOCA, GEOL, ISPT groups
+- [x] SVG borehole log strip export
 - [x] HTML geotechnical report — site plan SVG, BH log strips, unit table, risk section
 - [x] Foundation design grid CSV
 - [x] PNG export — plan view, isopach map
 
-### 4.9 Project Management
+### 4.9 Advanced Analysis
+- [x] **Surface orientation stereonet** — Schmidt equal-area lower hemisphere stereonet + bidirectional strike rose diagram; orientation computed from elevation gradients of unit top surfaces; Fisher mean pole plotted in red; unit-level or all-units mode
+- [x] **Bishop slope stability** — simplified circular slip (Bishop 1955); grid search over slip circle centres and radii; iterative Fs solution; SVG cross-section rendering; uses dominant unit properties from model or user override; colour-coded Fs (STABLE/MARGINAL/UNSAFE)
+- [x] **Intrusion / anomaly body constraints** — ellipsoidal volume overrides interpolated with unit certainty 0.98; parsed from constraints text (`Intrusion at easting X, northing Y, elevation ZmAOD, radius Rm, unit CODE`); Void bodies blank voxels
+- [x] **AI Geotechnical Narrative** — Claude generates professional narrative: key_findings, geotechnical_risks, recommendations; demo fallback
+- [x] **Method comparison tool** — runs all 5 interpolation methods, computes LOO accuracy for each, ranks results
+- [x] **LLM Oracle** (neural implicit method) — finds high-entropy voxel clusters via BFS flood-fill, sends to Claude for geological reasoning, patches model
+- [x] **Depth histogram** — SVG bar histogram showing voxel count per elevation level per unit in Unit Statistics panel
+
+### 4.10 Project Management
 - [x] Geological scenarios — save/restore up to 5 named interpretations in sessionStorage
 - [x] Project config — `.geomodel` JSON file export/import (full round-trip except voxel grid)
 - [x] Session save/restore — sessionStorage (not localStorage)
@@ -277,25 +308,23 @@ Five methods, all operating on the same voxel grid:
 ### 6.1 Near-term
 - [ ] **LLM geometric shape constraints** (see §5.3 above) — highest priority
 - [ ] **Per-unit geometry descriptors** (see §5.2) — per-unit variogram range and anisotropy
-- [ ] **AGS 4.x export** — round-trip classified BH data back to AGS format (LOCA, GEOL, ISPT)
-- [ ] **Volume statistics table** — per-unit volume (m³), plan area (m²), mean depth-to-top, mean certainty; CSV export
-- [ ] **Variogram model auto-fitting** — fit spherical model parameters to empirical variogram, feed fitted range/sill back to Kriging
+- [ ] **DXF export** — 2D cross-section exported as DXF polylines for CAD tools (AutoCAD, Revit)
+- [ ] **Contact surface orientation statistics** — dip / strike / azimuth statistics per unit contact; stereonet already implemented, add summary table
+- [ ] **Dipping fault throw** — fault modelling with vertical throw applied to unit contacts (not just interpolation boundary)
 
 ### 6.2 Medium-term
-- [ ] **Probability of occurrence map** — P(unit X present) at each XY column, rendered as 2D map
-- [ ] **Multiple fence section paths** — arbitrary polyline fence diagrams with unit fill
 - [ ] **Conditional simulation** — stochastic realisations of the model respecting variogram statistics
-- [ ] **Implicit surface modelling (RBF)** — Leapfrog-style signed-distance field from BH contact points + orientation data, replacing voxel-level IDW for contact surfaces
 - [ ] **Unit pinch-out modelling** — units that thin to zero at defined boundaries
-- [ ] **Fault modelling** — planar fault geometry with throw applied to unit contacts
+- [ ] **Fold axis modelling** — periodic sinusoidal dip variation to model folded stratigraphy
+- [ ] **Graben / half-graben templates** — pre-configured fault block geometry
+- [ ] **WebGL2 compute shaders** — move interpolation to GPU for real-time rebuilds
+- [ ] **Drillhole planning** — given current model uncertainty, suggest optimal next BH locations to maximally reduce uncertainty
 
 ### 6.3 Longer-term
-- [ ] **AGS 4.x export** — full LOCA/GEOL/ISPT/WSTB round-trip
-- [ ] **3D annotation** — pinned notes on specific voxels or locations
 - [ ] **Multiple scenario comparison** — side-by-side or diff view of two interpretations
-- [ ] **Drillhole planning** — given current model uncertainty, suggest optimal next BH locations to maximally reduce uncertainty
 - [ ] **Time-lapse / construction sequence** — model changes as excavation or construction proceeds
-- [ ] **WebGL2 compute shaders** — move interpolation to GPU for real-time rebuilds
+- [ ] **3D slope stability** — full 3D sliding surface rather than 2D Bishop
+- [ ] **Seismic liquefaction CPT method** (Robertson & Wride) — full Ic-based liquefaction assessment from CPT data
 
 ---
 

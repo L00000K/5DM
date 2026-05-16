@@ -316,6 +316,89 @@ export function initExporter() {
     log(`Formation surfaces exported — ${objParts.length} surface(s).`, 'ok');
   });
 
+  // ── Export formation surfaces as binary STL ──────────────────────────────────
+  document.getElementById('btn-export-stl')?.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('Build the 3D model first.', 'warn'); return; }
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds } = grid;
+    log('Building binary STL triangles…', 'info');
+
+    const triangles = []; // {n:[nx,ny,nz], v0, v1, v2}
+
+    const smooth2D = (src) => {
+      const dst = new Float32Array(nx * ny);
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          if (isNaN(src[ix + iy * nx])) { dst[ix + iy * nx] = NaN; continue; }
+          let sum = 0, w = 0;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              const jx = ix+dx, jy = iy+dy;
+              if (jx < 0 || jx >= nx || jy < 0 || jy >= ny) continue;
+              const v = src[jx + jy * nx];
+              if (isNaN(v)) continue;
+              const wt = (dx===0&&dy===0)?4:(dx!==0&&dy!==0)?1:2;
+              sum += v * wt; w += wt;
+            }
+          }
+          dst[ix + iy * nx] = w > 0 ? sum / w : NaN;
+        }
+      }
+      return dst;
+    };
+
+    const triNorm = (v0,v1,v2) => {
+      const ax=v1[0]-v0[0], ay=v1[1]-v0[1], az=v1[2]-v0[2];
+      const bx=v2[0]-v0[0], by=v2[1]-v0[1], bz=v2[2]-v0[2];
+      const cx=ay*bz-az*by, cy=az*bx-ax*bz, cz=ax*by-ay*bx;
+      const l=Math.sqrt(cx*cx+cy*cy+cz*cz)||1;
+      return [cx/l, cy/l, cz/l];
+    };
+
+    for (const unit of AppState.geoUnits) {
+      if (!unit.id) continue;
+      const topZ = new Float32Array(nx * ny).fill(NaN);
+      for (let iy = 0; iy < ny; iy++)
+        for (let ix = 0; ix < nx; ix++)
+          for (let iz = nz - 1; iz >= 0; iz--)
+            if (unitIds[ix + iy * nx + iz * nx * ny] === unit.id) {
+              topZ[ix + iy * nx] = O.y + (iz + 1) * ch; break;
+            }
+
+      const smoothed = smooth2D(smooth2D(topZ));
+
+      for (let iy = 0; iy < ny - 1; iy++) {
+        for (let ix = 0; ix < nx - 1; ix++) {
+          const z00=smoothed[ix   + iy   *nx], z10=smoothed[(ix+1)+ iy   *nx];
+          const z01=smoothed[ix   +(iy+1)*nx], z11=smoothed[(ix+1)+(iy+1)*nx];
+          if ([z00,z10,z01,z11].some(isNaN)) continue;
+          // STL: X=Easting, Y=elevation mAOD, Z=Northing
+          const x0=O.x+ix*cs+cs/2, x1=O.x+(ix+1)*cs+cs/2;
+          const n0=O.z+iy*cs+cs/2, n1=O.z+(iy+1)*cs+cs/2;
+          const v00=[x0,z00,n0], v10=[x1,z10,n0], v01=[x0,z01,n1], v11=[x1,z11,n1];
+          triangles.push({ n:triNorm(v00,v10,v01), v0:v00, v1:v10, v2:v01 });
+          triangles.push({ n:triNorm(v10,v11,v01), v0:v10, v1:v11, v2:v01 });
+        }
+      }
+    }
+
+    if (!triangles.length) { log('No surface triangles to export.', 'warn'); return; }
+    const buf  = new ArrayBuffer(80 + 4 + triangles.length * 50);
+    const view = new DataView(buf);
+    const u8   = new Uint8Array(buf);
+    const hdr  = `GeoModel AI formation surfaces — ${AppState.geoUnits.length} units`;
+    for (let i = 0; i < 80; i++) u8[i] = i < hdr.length ? hdr.charCodeAt(i) : 0x20;
+    view.setUint32(80, triangles.length, true);
+    let off = 84;
+    for (const { n, v0, v1, v2 } of triangles) {
+      const f = (v) => { view.setFloat32(off,v,true); off+=4; };
+      n.forEach(f); v0.forEach(f); v1.forEach(f); v2.forEach(f);
+      view.setUint16(off, 0, true); off += 2;
+    }
+    downloadBlob(new Blob([buf], { type: 'model/stl' }), 'formation-surfaces.stl');
+    log(`Binary STL exported — ${triangles.length.toLocaleString()} triangles.`, 'ok');
+  });
+
   // ── Export classified BH data as AGS 4.x ────────────────────────────────
   document.getElementById('btn-export-ags')?.addEventListener('click', () => {
     const bhs = AppState.classifiedBH?.filter(b => !b.synthetic);

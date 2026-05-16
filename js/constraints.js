@@ -118,6 +118,33 @@ export function parseConstraints(text, geoUnits) {
     }
 
     if (!matched) {
+      // Intrusion/void/buried body: ellipsoidal volume override
+      // "Intrusion at easting 100, northing 50, elevation 5mAOD, radius 20m, unit=IGN"
+      // "Void at E=200, N=150, Z=3mAOD, radius=10m"
+      const mE = lower.match(/(?:easting|e\s*=?\s*)([\d.]+)/);
+      const mN = lower.match(/(?:northing|n\s*=?\s*)([\d.]+)/);
+      const mZ = lower.match(/(?:elevation|z\s*=?\s*)([-\d.]+)/);
+      const mR = lower.match(/radius\s*[=:]?\s*([\d.]+)/);
+      const isBody = /intrusion|buried|anomaly|void|cavity/.test(lower);
+      if (isBody && mE && mN && mZ && mR) {
+        const isVoid = /void|cavity/.test(lower);
+        const unit   = isVoid ? null : findUnit(line);
+        if (isVoid || unit) {
+          const rx = parseFloat(mR[1]);
+          rules.push({
+            type: 'intrusion',
+            cx: parseFloat(mE[1]), cn: parseFloat(mN[1]), cz: parseFloat(mZ[1]),
+            rx, rn: rx, rv: rx * 0.5,
+            unitId:   isVoid ? 0 : unit.id,
+            unitCode: isVoid ? 'VOID' : unit.code,
+            raw: line,
+          });
+          matched = true;
+        }
+      }
+    }
+
+    if (!matched) {
       // Semantic note — store but no auto-action
       rules.push({ type: 'note', raw: line });
     }
@@ -245,6 +272,18 @@ export function applyConstraints(grid, rules, geoUnits) {
             }
           }
 
+          if (rule.type === 'intrusion') {
+            const dx = (voxelX - rule.cx) / (rule.rx || 1);
+            const dn = (voxelZ - rule.cn) / (rule.rn || 1);
+            const dv = (voxelElev - rule.cz) / (rule.rv || 1);
+            if (dx*dx + dn*dn + dv*dv <= 1) {
+              unitIds[flat]   = rule.unitId;
+              certainty[flat] = rule.unitId ? 0.98 : 0;
+              applied++;
+            }
+            continue;
+          }
+
           if (violated) {
             const bid = blendUnitIds[flat];
             unitIds[flat]   = (bid && bid !== uid) ? bid : 0;
@@ -262,9 +301,10 @@ export function applyConstraints(grid, rules, geoUnits) {
 
 export function constraintSummary(rules) {
   return rules.map(r => {
-    if (r.type === 'note')  return { label: '📝 Note', text: r.raw, active: false };
-    if (r.type === 'fault') return { label: `✓ Fault@${r.coord}m`, text: r.raw, active: true };
-    if (r.type === 'dip')   return { label: `✓ ${r.unitCode} dip`, text: r.raw, active: true };
+    if (r.type === 'note')      return { label: '📝 Note', text: r.raw, active: false };
+    if (r.type === 'fault')     return { label: `✓ Fault@${r.coord}m`, text: r.raw, active: true };
+    if (r.type === 'dip')       return { label: `✓ ${r.unitCode} dip`, text: r.raw, active: true };
+    if (r.type === 'intrusion') return { label: `✓ Body(${r.unitCode ?? 'VOID'})`, text: r.raw, active: true };
     return { label: `✓ ${r.unitCode}`, text: r.raw, active: true };
   });
 }
