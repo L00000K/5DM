@@ -158,6 +158,17 @@
             <div class="sample-tile-name">Former Gasworks</div>
             <div class="sample-tile-meta">10 BH · urban brownfield</div>
           </button>
+          <button class="sample-tile" data-demo="demo-coastal">
+            <div class="sample-tile-chips">
+              <span class="unit-chip" style="background:#7a6a42">MG</span>
+              <span class="unit-chip" style="background:#5A8A6A">EA</span>
+              <span class="unit-chip" style="background:#4A3828">PT</span>
+              <span class="unit-chip" style="background:#C89C3C;color:#222">RTG</span>
+              <span class="unit-chip" style="background:#4a6fa5">LC</span>
+            </div>
+            <div class="sample-tile-name">Tidal Gateway Wharf</div>
+            <div class="sample-tile-meta">16 BH · coastal peat · high settlement</div>
+          </button>
         </div>
 
         <!-- Grid settings -->
@@ -694,6 +705,13 @@
         <p class="hint" style="font-size:10px;margin-bottom:6px">Compares predicted voxel units against observed BH layer positions.</p>
         <button id="btn-validate-model" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:6px">⚙ Validate vs BH Data</button>
         <div id="validation-results" class="quality-stats"></div>
+      </div>
+
+      <div class="panel-section">
+        <h3>Geotechnical Risk</h3>
+        <p class="hint" style="font-size:10px;margin-bottom:6px">Identifies settlement, bearing, liquefaction and uncertainty hazards from the model.</p>
+        <button id="btn-assess-risk" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:6px">⚠ Assess Risk Zones</button>
+        <div id="risk-results"></div>
       </div>
 
       <div class="panel-section">

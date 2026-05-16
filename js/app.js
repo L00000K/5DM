@@ -19,6 +19,7 @@ import { calculateSettlement, renderSettlementResults } from './settlement.js';
 import { calculateBearingCapacity, renderBearingResults } from './bearing.js';
 import { calculatePileCapacity, renderPileResults } from './pile.js';
 import { parseLabCSV } from './lab-import.js';
+import { assessRisk, renderRiskReport } from './risk-engine.js';
 import { BHLogView } from './bh-log-view.js';
 import { CPTLogView } from './cpt-log-view.js';
 import { parseCPT } from './data-parser.js';
@@ -364,6 +365,7 @@ function initReset() {
     setEnabled('btn-isopach', false);
     setEnabled('btn-model-report', false);
     setEnabled('btn-validate-model', false);
+    setEnabled('btn-assess-risk', false);
     setEnabled('btn-plan-view', false);
     setEnabled('btn-export-contacts', false);
     setEnabled('btn-export-surfaces', false);
@@ -401,6 +403,7 @@ async function loadDemoSite(demoName) {
         description: l.description,
         unitCode: l.unit_code,
         certainty: l.certainty ?? 0.9,
+        sptN: l.spt_n ?? null,
       })),
       classified: true,
     }));
@@ -560,6 +563,7 @@ function initBuildModel() {
       setEnabled('btn-isopach', true);
       setEnabled('btn-model-report', true);
       setEnabled('btn-validate-model', true);
+      setEnabled('btn-assess-risk', true);
       setEnabled('btn-plan-view', true);
       setEnabled('btn-export-contacts', true);
       setEnabled('btn-export-surfaces', true);
@@ -1714,6 +1718,26 @@ function _cssEsc(s) {
 }
 
 // ── Unit statistics ───────────────────────────────────────────────────────────
+// ── Geotechnical risk assessment ─────────────────────────────────────────────
+function initRiskAssessment() {
+  const container = document.getElementById('risk-results');
+  renderRiskReport(null, container);
+
+  document.getElementById('btn-assess-risk')?.addEventListener('click', () => {
+    if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
+    const gwt = parseFloat(document.getElementById('gwt-elevation')?.value ?? '') || null;
+    const report = assessRisk(
+      AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH, gwt
+    );
+    renderRiskReport(report, container);
+    if (report) {
+      const hc = report.zones.filter(z => z.level === 'high').length;
+      log(`Risk assessment: ${report.zones.length} hazard zone(s) · Overall ${report.overallLevel}.`,
+        hc > 0 ? 'warn' : 'ok');
+    }
+  });
+}
+
 // ── BH-derived unit parameter statistics ─────────────────────────────────────
 function updateBHUnitStats() {
   const el = document.getElementById('bh-unit-stats');
@@ -2246,6 +2270,7 @@ async function init() {
   initColorPresets();
   initAutoParams();
   initUnitEditor();
+  initRiskAssessment();
   initBHLogView();
   initLogSubTabs();
   initCPTImport();

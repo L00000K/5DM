@@ -1,0 +1,761 @@
+{
+  "site": {
+    "name": "Tidal Gateway, Seabridge Wharf",
+    "description": "Brownfield coastal/estuarine development site on the foreshore of a tidal estuary, 200×150m. Site is low-lying (2.0–3.5 mAOD) with variable Made Ground overlying soft Estuarine Alluvium. Discontinuous Peat horizon present in the central-northern zone, indicative of former saltmarsh. River Terrace Gravel provides an intermediate founding horizon; London Clay underlies the full site at depth.",
+    "constraints": "Made ground not deeper than 2m\nPeat only in central northern zone x:60-140, y:80-150\nLondon Clay is below 8m depth throughout"
+  },
+  "geological_units": [
+    {
+      "id": 1,
+      "code": "MG",
+      "name": "Made Ground",
+      "color": "#7a6a42",
+      "description": "Loose to firm brown sandy FILL with brick, concrete rubble, ash and timber fragments. Former wharf and industrial yard. Variable density (SPT N 4–10). Potential contamination; unsuitable as founding stratum. Maximum thickness 2m."
+    },
+    {
+      "id": 2,
+      "code": "EA",
+      "name": "Estuarine Alluvium",
+      "color": "#5A8A6A",
+      "description": "Soft to firm grey-brown silty CLAY with occasional shell fragments and organic laminae. High plasticity (Ip 35–55%). Cu 10–30 kPa. Highly compressible; primary consolidation settlements of 50–200mm anticipated under imposed loads. Significant long-term secondary compression risk. Thickness 1–4m."
+    },
+    {
+      "id": 3,
+      "code": "PT",
+      "name": "Peat",
+      "color": "#4A3828",
+      "description": "Very soft to soft dark brown/black PEAT with fibrous plant remains and woody inclusions. Holocene inter-tidal saltmarsh deposit. Highly compressible and creep-prone; Cu typically <10 kPa. SPT N 1–3. Thickness 0.3–1.5m. Confined to central-northern zone. Presents severe differential settlement and gas generation risk."
+    },
+    {
+      "id": 4,
+      "code": "RTG",
+      "name": "River Terrace Gravel",
+      "color": "#C89C3C",
+      "description": "Dense to very dense sub-rounded flint GRAVEL in a coarse sandy matrix with occasional cobbles. Pleistocene river terrace deposit. SPT N 25–45. Thickness 2–5m. Good drainage and moderate bearing capacity; potential preferred founding horizon for lightly loaded structures. Groundwater likely to be encountered within or above this unit."
+    },
+    {
+      "id": 5,
+      "code": "LC",
+      "name": "London Clay",
+      "color": "#4a6fa5",
+      "description": "Stiff to very stiff grey-blue fissured CLAY. Eocene London Clay Formation. High plasticity (Ip 40–70%). Cu 80–160 kPa, increasing with depth. SPT N 15–35. Susceptible to swelling on unloading and long-term creep on fissures. Reliable deep founding stratum for piled foundations. Top of unit consistently below 8m depth across site."
+    }
+  ],
+  "boreholes": [
+    {
+      "id": "BH-01",
+      "x": 18,
+      "y": 12,
+      "ground_level": 3.35,
+      "depth": 14.5,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.42,
+          "unit_code": "MG",
+          "description": "Loose to firm brown sandy FILL; brick rubble, ash and concrete fragments. Former yard surface.",
+          "certainty": 0.92,
+          "spt_n": 7
+        },
+        {
+          "top": 1.42,
+          "base": 3.87,
+          "unit_code": "EA",
+          "description": "Soft grey-brown silty CLAY with shell fragments and organic laminae. Estuarine deposit. Cu ~18 kPa.",
+          "certainty": 0.88,
+          "spt_n": 4
+        },
+        {
+          "top": 3.87,
+          "base": 7.64,
+          "unit_code": "RTG",
+          "description": "Dense sub-rounded flint GRAVEL in coarse sandy matrix with occasional cobbles. Water struck at 4.1m.",
+          "certainty": 0.91,
+          "spt_n": 33
+        },
+        {
+          "top": 7.64,
+          "base": 14.5,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff grey-blue fissured CLAY. London Clay Fm. High plasticity. Cu 90–140 kPa.",
+          "certainty": 0.94,
+          "spt_n": 22
+        }
+      ]
+    },
+    {
+      "id": "BH-02",
+      "x": 72,
+      "y": 10,
+      "ground_level": 3.28,
+      "depth": 13.8,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.18,
+          "unit_code": "MG",
+          "description": "Loose brown sandy FILL; ash, brick and tile fragments. Historical wharf development.",
+          "certainty": 0.90,
+          "spt_n": 5
+        },
+        {
+          "top": 1.18,
+          "base": 4.53,
+          "unit_code": "EA",
+          "description": "Soft grey silty CLAY with shell hash and organic laminae. Estuarine Alluvium. Cu ~14 kPa.",
+          "certainty": 0.85,
+          "spt_n": 3
+        },
+        {
+          "top": 4.53,
+          "base": 8.29,
+          "unit_code": "RTG",
+          "description": "Dense sub-rounded flint GRAVEL in sandy matrix. Occasional cobbles. SPT N increasing with depth.",
+          "certainty": 0.89,
+          "spt_n": 36
+        },
+        {
+          "top": 8.29,
+          "base": 13.8,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff grey-blue fissured CLAY. London Clay Fm. High plasticity. Cu 85–150 kPa.",
+          "certainty": 0.93,
+          "spt_n": 19
+        }
+      ]
+    },
+    {
+      "id": "BH-03",
+      "x": 135,
+      "y": 15,
+      "ground_level": 3.19,
+      "depth": 14.2,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.65,
+          "unit_code": "MG",
+          "description": "Firm brown sandy FILL with brick rubble, concrete fragments and occasional timber. Former industrial yard.",
+          "certainty": 0.91,
+          "spt_n": 9
+        },
+        {
+          "top": 1.65,
+          "base": 3.92,
+          "unit_code": "EA",
+          "description": "Soft to firm grey-brown silty CLAY with shell fragments. Estuarine Alluvium. Cu ~20 kPa.",
+          "certainty": 0.86,
+          "spt_n": 5
+        },
+        {
+          "top": 3.92,
+          "base": 7.81,
+          "unit_code": "RTG",
+          "description": "Dense flint GRAVEL in coarse sandy matrix. Cobbles present. Water struck at 4.3m bgl.",
+          "certainty": 0.90,
+          "spt_n": 38
+        },
+        {
+          "top": 7.81,
+          "base": 14.2,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff grey-blue fissured CLAY. London Clay Fm. High plasticity. Cu 95–155 kPa.",
+          "certainty": 0.95,
+          "spt_n": 24
+        }
+      ]
+    },
+    {
+      "id": "BH-04",
+      "x": 188,
+      "y": 18,
+      "ground_level": 3.10,
+      "depth": 13.5,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.31,
+          "unit_code": "MG",
+          "description": "Loose to firm brown sandy FILL with brick, ash and tile fragments.",
+          "certainty": 0.93,
+          "spt_n": 6
+        },
+        {
+          "top": 1.31,
+          "base": 4.18,
+          "unit_code": "EA",
+          "description": "Soft grey-brown silty CLAY with shell hash. Estuarine Alluvium. Cu ~16 kPa. Occasional organic laminae.",
+          "certainty": 0.84,
+          "spt_n": 4
+        },
+        {
+          "top": 4.18,
+          "base": 8.05,
+          "unit_code": "RTG",
+          "description": "Dense flint GRAVEL in sandy matrix. Cobbles occasional. Water struck at 4.6m bgl.",
+          "certainty": 0.91,
+          "spt_n": 34
+        },
+        {
+          "top": 8.05,
+          "base": 13.5,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff grey-blue fissured CLAY. London Clay Fm. Cu 90–145 kPa.",
+          "certainty": 0.92,
+          "spt_n": 21
+        }
+      ]
+    },
+    {
+      "id": "BH-05",
+      "x": 22,
+      "y": 55,
+      "ground_level": 3.05,
+      "depth": 14.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.54,
+          "unit_code": "MG",
+          "description": "Loose to firm brown sandy FILL; brick, ash and concrete rubble. Wharf and yard development.",
+          "certainty": 0.89,
+          "spt_n": 8
+        },
+        {
+          "top": 1.54,
+          "base": 4.71,
+          "unit_code": "EA",
+          "description": "Soft grey-brown silty CLAY with shell fragments and occasional organic laminae. Estuarine Alluvium. Cu ~15 kPa.",
+          "certainty": 0.85,
+          "spt_n": 3
+        },
+        {
+          "top": 4.71,
+          "base": 8.38,
+          "unit_code": "RTG",
+          "description": "Dense sub-rounded flint GRAVEL in coarse sandy matrix. Water struck at 5.0m bgl.",
+          "certainty": 0.90,
+          "spt_n": 31
+        },
+        {
+          "top": 8.38,
+          "base": 14.0,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff grey-blue fissured CLAY. London Clay Fm. High plasticity. Cu 85–150 kPa.",
+          "certainty": 0.93,
+          "spt_n": 20
+        }
+      ]
+    },
+    {
+      "id": "BH-06",
+      "x": 68,
+      "y": 48,
+      "ground_level": 2.95,
+      "depth": 13.8,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.72,
+          "unit_code": "MG",
+          "description": "Loose brown sandy FILL; ash, brick rubble and tile. Former industrial use.",
+          "certainty": 0.88,
+          "spt_n": 6
+        },
+        {
+          "top": 1.72,
+          "base": 5.04,
+          "unit_code": "EA",
+          "description": "Soft grey silty CLAY with abundant shell fragments. Estuarine Alluvium. Cu ~12 kPa. High plasticity.",
+          "certainty": 0.85,
+          "spt_n": 3
+        },
+        {
+          "top": 5.04,
+          "base": 8.67,
+          "unit_code": "RTG",
+          "description": "Dense to very dense flint GRAVEL in sandy matrix. Cobbles present. Water at 5.2m bgl.",
+          "certainty": 0.90,
+          "spt_n": 39
+        },
+        {
+          "top": 8.67,
+          "base": 13.8,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff grey-blue fissured CLAY. London Clay Fm. Cu 88–148 kPa.",
+          "certainty": 0.92,
+          "spt_n": 23
+        }
+      ]
+    },
+    {
+      "id": "BH-07",
+      "x": 130,
+      "y": 52,
+      "ground_level": 2.88,
+      "depth": 14.3,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.48,
+          "unit_code": "MG",
+          "description": "Firm brown sandy FILL; brick, concrete and timber fragments. Former wharf infrastructure.",
+          "certainty": 0.91,
+          "spt_n": 9
+        },
+        {
+          "top": 1.48,
+          "base": 4.62,
+          "unit_code": "EA",
+          "description": "Soft grey-brown silty CLAY with shell hash and organic laminae. Estuarine Alluvium. Cu ~17 kPa.",
+          "certainty": 0.84,
+          "spt_n": 4
+        },
+        {
+          "top": 4.62,
+          "base": 8.33,
+          "unit_code": "RTG",
+          "description": "Dense sub-rounded flint GRAVEL in coarse sandy matrix. Occasional cobbles. Water at 4.9m bgl.",
+          "certainty": 0.89,
+          "spt_n": 35
+        },
+        {
+          "top": 8.33,
+          "base": 14.3,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff grey-blue fissured CLAY. London Clay Fm. High plasticity. Cu 92–152 kPa.",
+          "certainty": 0.94,
+          "spt_n": 25
+        }
+      ]
+    },
+    {
+      "id": "BH-08",
+      "x": 182,
+      "y": 58,
+      "ground_level": 2.75,
+      "depth": 13.5,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.23,
+          "unit_code": "MG",
+          "description": "Loose to firm brown sandy FILL with brick and ash. Former industrial ground.",
+          "certainty": 0.90,
+          "spt_n": 5
+        },
+        {
+          "top": 1.23,
+          "base": 4.89,
+          "unit_code": "EA",
+          "description": "Soft grey silty CLAY with shell fragments. Estuarine Alluvium. Cu ~13 kPa. Compressible.",
+          "certainty": 0.84,
+          "spt_n": 3
+        },
+        {
+          "top": 4.89,
+          "base": 8.41,
+          "unit_code": "RTG",
+          "description": "Dense flint GRAVEL in sandy matrix with occasional cobbles. Water struck at 5.1m bgl.",
+          "certainty": 0.88,
+          "spt_n": 32
+        },
+        {
+          "top": 8.41,
+          "base": 13.5,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff grey-blue fissured CLAY. London Clay Fm. Cu 85–145 kPa.",
+          "certainty": 0.93,
+          "spt_n": 19
+        }
+      ]
+    },
+    {
+      "id": "BH-09",
+      "x": 25,
+      "y": 95,
+      "ground_level": 2.52,
+      "depth": 13.8,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.38,
+          "unit_code": "MG",
+          "description": "Loose to firm brown sandy FILL; brick rubble and ash. Probable former hardstanding.",
+          "certainty": 0.87,
+          "spt_n": 7
+        },
+        {
+          "top": 1.38,
+          "base": 4.96,
+          "unit_code": "EA",
+          "description": "Soft grey-brown silty CLAY with shell hash and organic inclusions. Estuarine Alluvium. Cu ~11 kPa.",
+          "certainty": 0.84,
+          "spt_n": 2
+        },
+        {
+          "top": 4.96,
+          "base": 8.54,
+          "unit_code": "RTG",
+          "description": "Dense sub-rounded flint GRAVEL in coarse sandy matrix. Water at 5.3m bgl. Cobbles present.",
+          "certainty": 0.90,
+          "spt_n": 30
+        },
+        {
+          "top": 8.54,
+          "base": 13.8,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff grey-blue fissured CLAY. London Clay Fm. High plasticity. Cu 80–140 kPa.",
+          "certainty": 0.93,
+          "spt_n": 18
+        }
+      ]
+    },
+    {
+      "id": "BH-10",
+      "x": 75,
+      "y": 102,
+      "ground_level": 2.38,
+      "depth": 14.5,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.61,
+          "unit_code": "MG",
+          "description": "Loose brown sandy FILL; brick, tile, ash and occasional timber fragments.",
+          "certainty": 0.88,
+          "spt_n": 6
+        },
+        {
+          "top": 1.61,
+          "base": 4.44,
+          "unit_code": "EA",
+          "description": "Soft grey silty CLAY with organic laminae and shell fragments. Estuarine Alluvium. Cu ~10 kPa.",
+          "certainty": 0.84,
+          "spt_n": 2
+        },
+        {
+          "top": 4.44,
+          "base": 5.26,
+          "unit_code": "PT",
+          "description": "Very soft dark brown fibrous PEAT with woody inclusions and root traces. Former saltmarsh horizon. Gas odour noted.",
+          "certainty": 0.82,
+          "spt_n": 2
+        },
+        {
+          "top": 5.26,
+          "base": 8.79,
+          "unit_code": "RTG",
+          "description": "Dense sub-rounded flint GRAVEL in coarse sandy matrix. Water at 5.4m bgl. Cobbles occasional.",
+          "certainty": 0.89,
+          "spt_n": 28
+        },
+        {
+          "top": 8.79,
+          "base": 14.5,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff grey-blue fissured CLAY. London Clay Fm. Cu 82–145 kPa.",
+          "certainty": 0.92,
+          "spt_n": 20
+        }
+      ]
+    },
+    {
+      "id": "BH-11",
+      "x": 125,
+      "y": 108,
+      "ground_level": 2.31,
+      "depth": 14.8,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.44,
+          "unit_code": "MG",
+          "description": "Loose to firm brown sandy FILL; brick rubble, ash and concrete fragments.",
+          "certainty": 0.87,
+          "spt_n": 5
+        },
+        {
+          "top": 1.44,
+          "base": 3.98,
+          "unit_code": "EA",
+          "description": "Soft grey-brown silty CLAY with shell hash and organic laminae. Estuarine Alluvium. Cu ~12 kPa.",
+          "certainty": 0.85,
+          "spt_n": 3
+        },
+        {
+          "top": 3.98,
+          "base": 5.39,
+          "unit_code": "PT",
+          "description": "Very soft dark brown/black fibrous PEAT. Former inter-tidal saltmarsh. Highly compressible; biogenic gas evident.",
+          "certainty": 0.80,
+          "spt_n": 1
+        },
+        {
+          "top": 5.39,
+          "base": 8.82,
+          "unit_code": "RTG",
+          "description": "Dense flint GRAVEL in sandy matrix with occasional cobbles. Water at 5.5m bgl.",
+          "certainty": 0.88,
+          "spt_n": 31
+        },
+        {
+          "top": 8.82,
+          "base": 14.8,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff grey-blue fissured CLAY. London Clay Fm. High plasticity. Cu 86–150 kPa.",
+          "certainty": 0.92,
+          "spt_n": 22
+        }
+      ]
+    },
+    {
+      "id": "BH-12",
+      "x": 178,
+      "y": 98,
+      "ground_level": 2.62,
+      "depth": 13.9,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.29,
+          "unit_code": "MG",
+          "description": "Loose brown sandy FILL; ash, brick and tile fragments. Former industrial hardstanding.",
+          "certainty": 0.89,
+          "spt_n": 6
+        },
+        {
+          "top": 1.29,
+          "base": 4.83,
+          "unit_code": "EA",
+          "description": "Soft grey-brown silty CLAY with shell fragments. Estuarine Alluvium. Cu ~14 kPa. High plasticity.",
+          "certainty": 0.85,
+          "spt_n": 3
+        },
+        {
+          "top": 4.83,
+          "base": 8.56,
+          "unit_code": "RTG",
+          "description": "Dense to very dense flint GRAVEL in coarse sandy matrix. Occasional cobbles. Water at 5.0m bgl.",
+          "certainty": 0.90,
+          "spt_n": 37
+        },
+        {
+          "top": 8.56,
+          "base": 13.9,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff grey-blue fissured CLAY. London Clay Fm. Cu 88–148 kPa.",
+          "certainty": 0.93,
+          "spt_n": 21
+        }
+      ]
+    },
+    {
+      "id": "BH-13",
+      "x": 30,
+      "y": 138,
+      "ground_level": 2.22,
+      "depth": 14.2,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.52,
+          "unit_code": "MG",
+          "description": "Loose to firm brown sandy FILL; brick, ash and concrete fragments.",
+          "certainty": 0.87,
+          "spt_n": 5
+        },
+        {
+          "top": 1.52,
+          "base": 4.31,
+          "unit_code": "EA",
+          "description": "Soft grey silty CLAY with organic laminae, shell hash and root traces. Estuarine Alluvium. Cu ~10 kPa.",
+          "certainty": 0.84,
+          "spt_n": 2
+        },
+        {
+          "top": 4.31,
+          "base": 8.17,
+          "unit_code": "RTG",
+          "description": "Dense sub-rounded flint GRAVEL in coarse sandy matrix. Cobbles present. Water at 4.8m bgl.",
+          "certainty": 0.88,
+          "spt_n": 29
+        },
+        {
+          "top": 8.17,
+          "base": 14.2,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff grey-blue fissured CLAY. London Clay Fm. High plasticity. Cu 80–142 kPa.",
+          "certainty": 0.93,
+          "spt_n": 17
+        }
+      ]
+    },
+    {
+      "id": "BH-14",
+      "x": 88,
+      "y": 132,
+      "ground_level": 2.15,
+      "depth": 14.6,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.33,
+          "unit_code": "MG",
+          "description": "Loose brown sandy FILL; ash, brick and tile rubble.",
+          "certainty": 0.88,
+          "spt_n": 4
+        },
+        {
+          "top": 1.33,
+          "base": 3.87,
+          "unit_code": "EA",
+          "description": "Soft grey-brown silty CLAY with shell fragments and organic inclusions. Estuarine Alluvium. Cu ~11 kPa.",
+          "certainty": 0.85,
+          "spt_n": 2
+        },
+        {
+          "top": 3.87,
+          "base": 5.22,
+          "unit_code": "PT",
+          "description": "Very soft to soft dark brown fibrous PEAT with woody material. Saltmarsh deposit. Biogenic gas odour. Cu <8 kPa.",
+          "certainty": 0.79,
+          "spt_n": 1
+        },
+        {
+          "top": 5.22,
+          "base": 8.91,
+          "unit_code": "RTG",
+          "description": "Dense flint GRAVEL in sandy matrix with occasional cobbles. Water at 5.3m bgl.",
+          "certainty": 0.87,
+          "spt_n": 27
+        },
+        {
+          "top": 8.91,
+          "base": 14.6,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff grey-blue fissured CLAY. London Clay Fm. Cu 83–147 kPa.",
+          "certainty": 0.91,
+          "spt_n": 19
+        }
+      ]
+    },
+    {
+      "id": "BH-15",
+      "x": 112,
+      "y": 142,
+      "ground_level": 2.08,
+      "depth": 15.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.57,
+          "unit_code": "MG",
+          "description": "Loose to firm brown sandy FILL; brick, concrete and ash. Former wharf yard.",
+          "certainty": 0.86,
+          "spt_n": 5
+        },
+        {
+          "top": 1.57,
+          "base": 4.02,
+          "unit_code": "EA",
+          "description": "Soft grey-brown silty CLAY with shell hash and abundant organic laminae. Estuarine Alluvium. Cu ~9 kPa.",
+          "certainty": 0.84,
+          "spt_n": 2
+        },
+        {
+          "top": 4.02,
+          "base": 5.48,
+          "unit_code": "PT",
+          "description": "Very soft dark brown to black fibrous PEAT. Dense plant remains and woody inclusions. High gas risk. Cu <8 kPa.",
+          "certainty": 0.77,
+          "spt_n": 1
+        },
+        {
+          "top": 5.48,
+          "base": 9.12,
+          "unit_code": "RTG",
+          "description": "Dense sub-rounded flint GRAVEL in coarse sandy matrix. Cobbles frequent. Water at 5.6m bgl.",
+          "certainty": 0.87,
+          "spt_n": 29
+        },
+        {
+          "top": 9.12,
+          "base": 15.0,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff grey-blue fissured CLAY. London Clay Fm. High plasticity. Cu 84–152 kPa.",
+          "certainty": 0.90,
+          "spt_n": 20
+        }
+      ]
+    },
+    {
+      "id": "BH-16",
+      "x": 168,
+      "y": 136,
+      "ground_level": 2.44,
+      "depth": 14.0,
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 1.41,
+          "unit_code": "MG",
+          "description": "Loose to firm brown sandy FILL; brick rubble, ash and tile fragments.",
+          "certainty": 0.89,
+          "spt_n": 6
+        },
+        {
+          "top": 1.41,
+          "base": 4.68,
+          "unit_code": "EA",
+          "description": "Soft grey-brown silty CLAY with shell fragments. Estuarine Alluvium. Cu ~13 kPa.",
+          "certainty": 0.84,
+          "spt_n": 3
+        },
+        {
+          "top": 4.68,
+          "base": 8.44,
+          "unit_code": "RTG",
+          "description": "Dense flint GRAVEL in coarse sandy matrix. Occasional cobbles. Water at 5.0m bgl.",
+          "certainty": 0.89,
+          "spt_n": 34
+        },
+        {
+          "top": 8.44,
+          "base": 14.0,
+          "unit_code": "LC",
+          "description": "Stiff to very stiff grey-blue fissured CLAY. London Clay Fm. Cu 86–146 kPa.",
+          "certainty": 0.92,
+          "spt_n": 21
+        }
+      ]
+    }
+  ],
+  "topography": [
+    {"x": 0, "y": 0, "z": 3.32},
+    {"x": 50, "y": 0, "z": 3.25},
+    {"x": 100, "y": 0, "z": 3.18},
+    {"x": 150, "y": 0, "z": 3.12},
+    {"x": 200, "y": 0, "z": 3.07},
+    {"x": 0, "y": 37, "z": 3.10},
+    {"x": 50, "y": 37, "z": 3.01},
+    {"x": 100, "y": 37, "z": 2.94},
+    {"x": 150, "y": 37, "z": 2.87},
+    {"x": 200, "y": 37, "z": 2.79},
+    {"x": 0, "y": 75, "z": 2.78},
+    {"x": 50, "y": 75, "z": 2.67},
+    {"x": 100, "y": 75, "z": 2.55},
+    {"x": 150, "y": 75, "z": 2.61},
+    {"x": 200, "y": 75, "z": 2.70},
+    {"x": 0, "y": 112, "z": 2.51},
+    {"x": 50, "y": 112, "z": 2.38},
+    {"x": 100, "y": 112, "z": 2.24},
+    {"x": 150, "y": 112, "z": 2.31},
+    {"x": 200, "y": 112, "z": 2.58},
+    {"x": 0, "y": 150, "z": 2.28},
+    {"x": 50, "y": 150, "z": 2.17},
+    {"x": 100, "y": 150, "z": 2.09},
+    {"x": 150, "y": 150, "z": 2.22},
+    {"x": 200, "y": 150, "z": 2.41}
+  ]
+}
