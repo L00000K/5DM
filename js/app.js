@@ -382,6 +382,8 @@ function initReset() {
     setEnabled('btn-plan-view', false);
     setEnabled('btn-export-contacts', false);
     setEnabled('btn-export-surfaces', false);
+    setEnabled('btn-param-apply', false);
+    setEnabled('btn-param-reset', false);
     updateStratColumn();
     if (AppState.scene) AppState.scene.clear();
     showWelcome();
@@ -582,6 +584,8 @@ function initBuildModel() {
       setEnabled('btn-plan-view', true);
       setEnabled('btn-export-contacts', true);
       setEnabled('btn-export-surfaces', true);
+      setEnabled('btn-param-apply', true);
+      setEnabled('btn-param-reset', true);
       AppState.report?.compute(AppState.voxelGrid, AppState.classifiedBH, AppState.geoUnits);
       AppState._origUnitIds = null; // invalidate topo clip cache after rebuild
       AppState._onTopoClipUpdate?.();
@@ -1746,6 +1750,45 @@ function _cssEsc(s) {
 
 // ── Unit statistics ───────────────────────────────────────────────────────────
 // ── Geotechnical risk assessment ─────────────────────────────────────────────
+// ── Parameter View (color voxels by engineering parameter) ────────────────────
+function initParameterView() {
+  const PARAM_LABELS = {
+    cu: 'Cu — Undrained Shear Strength (kPa)',
+    phi: "φ′ — Friction Angle (°)",
+    Cc: 'Cc — Compression Index',
+    E: 'E — Stiffness Modulus (MPa)',
+    gamma: 'γ — Unit Weight (kN/m³)',
+    N_spt: 'SPT N — Blow Count',
+  };
+
+  document.getElementById('btn-param-apply')?.addEventListener('click', () => {
+    if (!AppState.voxelGrid || !AppState.scene) { log('Build the 3D model first.', 'warn'); return; }
+    const paramName = document.getElementById('param-select')?.value;
+    if (!paramName) { log('Select a parameter to display.', 'warn'); return; }
+
+    const range = AppState.scene.colorByParameter(paramName, AppState.geoUnits);
+    if (!range) {
+      log(`No unit has the parameter "${paramName}" defined. Use Auto-Fill Parameters first.`, 'warn');
+      return;
+    }
+    const { min, max } = range;
+    const mid = ((min + max) / 2).toFixed(1);
+    document.getElementById('param-scale-min').textContent = min.toFixed(1);
+    document.getElementById('param-scale-mid').textContent = mid;
+    document.getElementById('param-scale-max').textContent = max.toFixed(1);
+    document.getElementById('param-scale-label').textContent = PARAM_LABELS[paramName] ?? paramName;
+    document.getElementById('param-colorscale').style.display = 'block';
+    log(`Parameter view: ${PARAM_LABELS[paramName] ?? paramName} (${min.toFixed(1)} – ${max.toFixed(1)})`, 'ok');
+  });
+
+  document.getElementById('btn-param-reset')?.addEventListener('click', () => {
+    if (!AppState.scene) return;
+    AppState.scene.resetUnitColors();
+    document.getElementById('param-colorscale').style.display = 'none';
+    log('Restored unit colours.', 'info');
+  });
+}
+
 function initRiskAssessment() {
   const container = document.getElementById('risk-results');
   renderRiskReport(null, container);
@@ -2298,6 +2341,7 @@ async function init() {
   initAutoParams();
   initUnitEditor();
   initRiskAssessment();
+  initParameterView();
   initBHLogView();
   initLogSubTabs();
   initCPTImport();

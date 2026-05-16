@@ -149,6 +149,14 @@ export class VoxelBuilder {
     const c2 = new THREE.Color();
     const cx = new THREE.Color();
 
+    // Track flat index per instance so colorByParameter can update without rebuild
+    this._unitFlatIdx  = {};
+    this._unitColorBuf = {};
+    for (const code of Object.keys(counts)) {
+      this._unitFlatIdx[code]  = new Int32Array(counts[code]);
+      this._unitColorBuf[code] = new Float32Array(counts[code] * 3);
+    }
+
     for (let iz = 0; iz < nz; iz++) {
       for (let iy = 0; iy < ny; iy++) {
         for (let ix = 0; ix < nx; ix++) {
@@ -190,6 +198,14 @@ export class VoxelBuilder {
             cx.copy(c1);
           }
           mesh.geometry.getAttribute('voxelColor').setXYZ(i, cx.r, cx.g, cx.b);
+
+          // Store original color for reset
+          this._unitColorBuf[code][i * 3]     = cx.r;
+          this._unitColorBuf[code][i * 3 + 1] = cx.g;
+          this._unitColorBuf[code][i * 3 + 2] = cx.b;
+
+          // Store flat index for parameter coloring
+          this._unitFlatIdx[code][i] = flat;
 
           // Certainty — stored on GPU for shader colour-fade and on CPU for
           // alpha threshold updates.
@@ -258,6 +274,79 @@ export class VoxelBuilder {
   _applyGlobalAlphaUniforms() {
     for (const mesh of Object.values(this.meshes)) {
       mesh.material.uniforms.uGlobalAlpha.value = this._globalAlpha;
+    }
+  }
+
+  // ── Parameter coloring ────────────────────────────────────────────────────
+  // Jet-like colormap: blue → cyan → green → yellow → red
+  static _paramColor(t, c) {
+    const r = t < 0.5 ? t * 2 : 1;
+    const g = t < 0.25 ? t * 4 : t < 0.75 ? 1 : (1 - t) * 4;
+    const b = t < 0.5 ? 1 : (1 - t) * 2;
+    c.setRGB(r, g, b);
+  }
+
+  // Color voxels by an engineering parameter.
+  // geoUnits: unit array with .params; paramName: 'cu'|'phi'|'N_spt'|'Cc'|'E'|'gamma'
+  // paramGrid (optional): Float32Array[nx*ny*nz] from spatial interpolation
+  // Returns { min, max } of the value range used.
+  colorByParameter(paramName, geoUnits, paramGrid = null) {
+    if (!this.grid) return null;
+    const { unitIds } = this.grid;
+    const unitById = {};
+    geoUnits.forEach(u => { unitById[u.id] = u; });
+
+    // Collect values to determine range
+    const vals = [];
+    if (paramGrid) {
+      for (let i = 0; i < paramGrid.length; i++) {
+        if (unitIds[i] && isFinite(paramGrid[i])) vals.push(paramGrid[i]);
+      }
+    } else {
+      for (const unit of geoUnits) {
+        const v = unit.params?.[paramName];
+        if (v != null && isFinite(v)) vals.push(v);
+      }
+    }
+    if (!vals.length) return null;
+    const vMin = Math.min(...vals), vMax = Math.max(...vals);
+    const range = vMax - vMin || 1;
+
+    const col = new THREE.Color();
+    for (const [code, mesh] of Object.entries(this.meshes)) {
+      const flatIdx = this._unitFlatIdx?.[code];
+      if (!flatIdx) continue;
+      const colorAttr = mesh.geometry.getAttribute('voxelColor');
+      for (let i = 0; i < flatIdx.length; i++) {
+        let v;
+        if (paramGrid) {
+          v = paramGrid[flatIdx[i]];
+        } else {
+          const uid = unitIds[flatIdx[i]];
+          v = unitById[uid]?.params?.[paramName];
+        }
+        if (v == null || !isFinite(v)) {
+          col.setRGB(0.5, 0.5, 0.5);
+        } else {
+          VoxelBuilder._paramColor((v - vMin) / range, col);
+        }
+        colorAttr.setXYZ(i, col.r, col.g, col.b);
+      }
+      colorAttr.needsUpdate = true;
+    }
+    return { min: vMin, max: vMax };
+  }
+
+  // Restore original unit colours after parameter coloring.
+  resetUnitColors() {
+    for (const [code, mesh] of Object.entries(this.meshes)) {
+      const buf = this._unitColorBuf?.[code];
+      if (!buf) continue;
+      const colorAttr = mesh.geometry.getAttribute('voxelColor');
+      for (let i = 0; i < buf.length / 3; i++) {
+        colorAttr.setXYZ(i, buf[i * 3], buf[i * 3 + 1], buf[i * 3 + 2]);
+      }
+      colorAttr.needsUpdate = true;
     }
   }
 

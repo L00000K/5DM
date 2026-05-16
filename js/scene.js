@@ -234,6 +234,14 @@ class SceneManager {
     this._builder.setGlobalAlpha(alpha);
   }
 
+  colorByParameter(paramName, geoUnits, paramGrid = null) {
+    return this._builder.colorByParameter(paramName, geoUnits, paramGrid);
+  }
+
+  resetUnitColors() {
+    this._builder.resetUnitColors();
+  }
+
   setSurfaceOpacity(op) {
     this._surfaces.setOpacity(op);
   }

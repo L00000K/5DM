@@ -619,6 +619,35 @@
       </div>
 
       <div class="panel-section">
+        <h3>Parameter View</h3>
+        <p class="hint" style="margin-bottom:6px;font-size:10px">Color voxels by an engineering parameter rather than geological unit.</p>
+        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
+          <select id="param-select" style="flex:1;font-size:11px;background:var(--bg-deep);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:3px 5px">
+            <option value="">— select —</option>
+            <option value="cu">Cu — undrained shear strength (kPa)</option>
+            <option value="phi">φ′ — friction angle (°)</option>
+            <option value="Cc">Cc — compression index</option>
+            <option value="E">E — stiffness modulus (MPa)</option>
+            <option value="gamma">γ — unit weight (kN/m³)</option>
+            <option value="N_spt">SPT N — blow count</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:4px;margin-top:5px">
+          <button id="btn-param-apply" class="btn-secondary btn-sm" disabled style="flex:1">Apply</button>
+          <button id="btn-param-reset" class="btn-secondary btn-sm" disabled style="flex:1">Reset</button>
+        </div>
+        <div id="param-colorscale" style="display:none;margin-top:8px">
+          <div style="height:12px;border-radius:3px;background:linear-gradient(to right,#0000ff,#00ffff,#00ff00,#ffff00,#ff0000)"></div>
+          <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-mid);margin-top:2px">
+            <span id="param-scale-min">0</span>
+            <span id="param-scale-mid"></span>
+            <span id="param-scale-max">100</span>
+          </div>
+          <p id="param-scale-label" style="font-size:10px;color:var(--text-mid);margin:2px 0 0;text-align:center"></p>
+        </div>
+      </div>
+
+      <div class="panel-section">
         <h3>View Options</h3>
 
         <div class="field-group">
