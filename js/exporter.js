@@ -415,4 +415,49 @@ export function initExporter() {
     downloadBlob(new Blob([rows.join('\n')], { type: 'text/csv' }), 'borehole-logs.csv');
     log(`BH CSV exported — ${bhs.length} boreholes.`, 'ok');
   });
+
+  // ── Export full block model as CSV (Leapfrog / Vulcan / Datamine compatible) ──
+  document.getElementById('btn-export-blockmodel')?.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('Build the 3D model first.', 'warn'); return; }
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty } = grid;
+    const unitById = {};
+    AppState.geoUnits.forEach(u => { unitById[u.id] = u; });
+
+    log('Generating block model CSV…', 'info');
+    const rows = ['CENTROID_X,CENTROID_Y,CENTROID_Z_mAOD,UNIT_CODE,UNIT_NAME,CERTAINTY,Cu_kPa,PHI_deg,Cc,E_MPa,GAMMA_kNm3,N_SPT'];
+
+    for (let iz = 0; iz < nz; iz++) {
+      const wz = O.y + iz * ch + ch * 0.5;   // elevation (mAOD)
+      for (let iy = 0; iy < ny; iy++) {
+        const wy = O.z + iy * cs + cs * 0.5;
+        for (let ix = 0; ix < nx; ix++) {
+          const wx   = O.x + ix * cs + cs * 0.5;
+          const flat = ix + iy * nx + iz * nx * ny;
+          const uid  = unitIds[flat];
+          const unit = unitById[uid];
+          if (!uid) continue;
+          const cert = certainty[flat].toFixed(3);
+          const p    = unit?.params ?? {};
+          rows.push([
+            wx.toFixed(2), wy.toFixed(2), wz.toFixed(2),
+            unit?.code ?? '',
+            `"${(unit?.name ?? '').replace(/"/g, '""')}"`,
+            cert,
+            p.cu    != null ? p.cu.toFixed(1)    : '',
+            p.phi   != null ? p.phi.toFixed(1)   : '',
+            p.Cc    != null ? p.Cc.toFixed(4)    : '',
+            p.E     != null ? p.E.toFixed(1)     : '',
+            p.gamma != null ? p.gamma.toFixed(2) : '',
+            p.N_spt != null ? p.N_spt.toFixed(0) : '',
+          ].join(','));
+        }
+      }
+    }
+
+    const total = nx * ny * nz;
+    downloadBlob(new Blob([rows.join('\n')], { type: 'text/csv' }),
+      `block-model-${new Date().toISOString().slice(0,10)}.csv`);
+    log(`Block model CSV exported — ${total.toLocaleString()} cells.`, 'ok');
+  });
 }

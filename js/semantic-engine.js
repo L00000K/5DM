@@ -133,3 +133,57 @@ export function stratigraphicConsistencyPenalty(
   // Penalty: 20% minimum, linear from 0% to 100% violations
   return Math.max(0.2, 1.0 - violationRate * 0.8);
 }
+
+// ── Drillhole compositing ─────────────────────────────────────────────────────
+// Regularises borehole layers to uniform depth intervals of `interval` metres.
+// Each composite interval is assigned the dominant unit (by length) within it.
+// Returns an array of boreholes with composited layers; originals unchanged.
+export function compositeBH(boreholes, interval = 1.0) {
+  return boreholes.map(bh => {
+    if (!bh.layers || bh.layers.length === 0) return bh;
+    const maxBase = Math.max(...bh.layers.map(l => l.base ?? 0));
+    const nComp   = Math.ceil(maxBase / interval);
+    const newLayers = [];
+
+    for (let i = 0; i < nComp; i++) {
+      const top  = i * interval;
+      const base = Math.min((i + 1) * interval, maxBase);
+      if (base <= top) continue;
+
+      // Intersect each source layer with this interval
+      const votes = {};
+      let totalLen = 0;
+      for (const l of bh.layers) {
+        const iTop  = Math.max(l.top  ?? 0, top);
+        const iBase = Math.min(l.base ?? 0, base);
+        if (iBase <= iTop) continue;
+        const len = iBase - iTop;
+        const code = l.unitCode ?? 'UNKN';
+        votes[code] = (votes[code] ?? 0) + len;
+        totalLen += len;
+      }
+      if (!totalLen) continue;
+
+      // Winning unit by length
+      const sorted  = Object.entries(votes).sort((a, b) => b[1] - a[1]);
+      const winCode = sorted[0][0];
+      const purity  = sorted[0][1] / totalLen; // fraction of interval held by winner
+
+      // Find a representative source layer for description/sptN
+      const srcLayer = bh.layers.find(l =>
+        (l.top ?? 0) <= (top + base) / 2 && (l.base ?? 0) >= (top + base) / 2 && l.unitCode === winCode
+      ) ?? bh.layers.find(l => l.unitCode === winCode);
+
+      newLayers.push({
+        top,
+        base,
+        unitCode:    winCode,
+        certainty:   Math.min(1, (srcLayer?.certainty ?? 0.75) * purity),
+        description: srcLayer?.description ?? '',
+        sptN:        srcLayer?.sptN ?? null,
+      });
+    }
+
+    return { ...bh, layers: newLayers, _composited: true, _compositedInterval: interval };
+  });
+}

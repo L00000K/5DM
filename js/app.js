@@ -8,6 +8,7 @@ import { initScene } from './scene.js';
 import { initLayerControls } from './layer-controls.js';
 import { initExporter } from './exporter.js';
 import { parseConstraints, applyConstraints, constraintSummary } from './constraints.js';
+import { compositeBH } from './semantic-engine.js';
 import { parseGeoMap } from './geo-map.js';
 import { FenceSection } from './fence-section.js';
 import { IsopachMap  } from './isopach.js';
@@ -60,6 +61,8 @@ export const AppState = {
   varRange: null,
   varSill: null,
   varNugget: null,
+  compositingEnabled: false,
+  compositingInterval: 1.0,
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
@@ -172,6 +175,16 @@ function initInterpolationSettings() {
   });
   document.getElementById('ni-oracle-toggle')?.addEventListener('change', e => {
     AppState.oracleEnabled = e.target.checked;
+  });
+
+  // Compositing toggle
+  document.getElementById('composite-enabled')?.addEventListener('change', e => {
+    AppState.compositingEnabled = e.target.checked;
+    const wrap = document.getElementById('composite-interval-wrap');
+    if (wrap) wrap.style.display = e.target.checked ? 'block' : 'none';
+  });
+  document.getElementById('composite-interval')?.addEventListener('change', e => {
+    AppState.compositingInterval = parseFloat(e.target.value) || 1.0;
   });
 
   const azInput   = document.getElementById('aniso-azimuth');
@@ -459,6 +472,7 @@ function initReset() {
     setEnabled('btn-export-vtk', false);
     setEnabled('btn-export-pointcloud', false);
     setEnabled('btn-export-stats', false);
+    setEnabled('btn-export-blockmodel', false);
     setEnabled('btn-export-bh-csv', false);
     setEnabled('btn-export-ags', false);
     setEnabled('btn-export-props', false);
@@ -656,8 +670,16 @@ function initBuildModel() {
         .filter(Boolean);
       const apiKey = sessionStorage.getItem('anthropic_api_key') ?? '';
 
+      // Apply compositing if enabled
+      let bhForModel = AppState.classifiedBH;
+      if (AppState.compositingEnabled) {
+        const interval = AppState.compositingInterval;
+        bhForModel = compositeBH(AppState.classifiedBH, interval);
+        log(`Compositing BH data at ${interval}m intervals → ${bhForModel.reduce((s,b)=>s+b.layers.length,0)} intervals`, 'info');
+      }
+
       AppState.voxelGrid = await buildVoxelGrid(
-        AppState.classifiedBH, AppState.geoUnits, AppState.cellSizeH,
+        bhForModel, AppState.geoUnits, AppState.cellSizeH,
         { kNeighbors: AppState.kNeighbors, idwPower: AppState.idwPower,
           method: AppState.interpMethod, cellSizeZ: AppState.cellSizeZ,
           stratOrder: _stratOrder,
@@ -689,6 +711,7 @@ function initBuildModel() {
       setEnabled('btn-export-vtk', true);
       setEnabled('btn-export-pointcloud', true);
       setEnabled('btn-export-stats', true);
+      setEnabled('btn-export-blockmodel', true);
       setEnabled('btn-build-model', true);
       setEnabled('btn-apply-constraints', true);
       setEnabled('btn-isopach', true);

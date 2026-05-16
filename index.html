@@ -292,6 +292,16 @@
           <p class="hint">1 = isotropic. 5 = search 5× farther along strike than across.</p>
         </div>
 
+        <div class="settings-divider">Drillhole Compositing</div>
+        <label class="checkbox-row" style="gap:8px;align-items:center;cursor:pointer;margin-bottom:4px">
+          <input type="checkbox" id="composite-enabled">
+          <span style="font-size:11px">Enable compositing before model build<br><span style="color:var(--text-muted);font-size:10px">Regularises BH logs to uniform depth intervals; reduces noise from thin layers</span></span>
+        </label>
+        <div class="field-group" id="composite-interval-wrap" style="display:none">
+          <label for="composite-interval">Composite interval (m)</label>
+          <input type="number" id="composite-interval" class="input-sm" min="0.1" max="10" step="0.1" value="1.0" style="width:70px">
+        </div>
+
         <div class="settings-divider">Semantic Knowledge</div>
         <div class="field-group">
           <p class="hint" style="margin-bottom:4px">AI analyses the classified dataset and embeds geological knowledge (unit depth profiles, transition probabilities, synthetic anchors) into the interpolation.</p>
@@ -957,6 +967,7 @@
         <div class="settings-divider">GIS / Analysis</div>
         <button id="btn-export-pointcloud" class="btn-secondary" disabled>⬇ Point Cloud CSV</button>
         <button id="btn-export-stats" class="btn-secondary" disabled>⬇ Model Statistics CSV</button>
+        <button id="btn-export-blockmodel" class="btn-secondary" disabled title="Full voxel block model with centroids, unit codes and engineering parameters — compatible with Leapfrog, Vulcan, Datamine">⬇ Block Model CSV</button>
         <div class="settings-divider">Unit Properties</div>
         <button id="btn-export-props" class="btn-secondary" disabled>⬇ Unit Properties CSV</button>
       </div>
