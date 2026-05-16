@@ -436,6 +436,21 @@ function initScreenshot() {
   });
 }
 
+// ── Measure tool ──────────────────────────────────────────────────────────────
+function initMeasureTool() {
+  const btn = document.getElementById('btn-measure');
+  const toggle = () => {
+    if (!AppState.scene) return;
+    AppState.scene.setMeasureMode(!AppState.scene._measureMode);
+    if (AppState.scene._measureMode && AppState.scene._vbhMode) {
+      AppState.scene.setVBHMode(false);
+      document.getElementById('btn-vbh')?.classList.remove('active');
+    }
+  };
+  btn?.addEventListener('click', toggle);
+  window.addEventListener('geomodel:toggle-measure', toggle);
+}
+
 // ── Background toggle ─────────────────────────────────────────────────────────
 function initBackgroundToggle() {
   document.getElementById('dark-background')?.addEventListener('change', e => {
@@ -600,6 +615,31 @@ export function updateLegend() {
       ${pctHtml}
       <span class="legend-eye">👁</span>`;
     item.title = unit.description || unit.name;
+
+    // Swatch click → open colour picker
+    const swatch = item.querySelector('.legend-swatch');
+    swatch?.addEventListener('click', e => {
+      e.stopPropagation();
+      const picker = document.createElement('input');
+      picker.type  = 'color';
+      picker.value = unit.color;
+      picker.style.position = 'fixed';
+      picker.style.opacity  = '0';
+      picker.style.pointerEvents = 'none';
+      document.body.appendChild(picker);
+      picker.click();
+      picker.addEventListener('input', () => {
+        unit.color = picker.value;
+        swatch.style.background = picker.value;
+        if (AppState.scene && AppState.voxelGrid) {
+          AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
+          updateVolumeStats();
+          updateUnitStats();
+        }
+      });
+      picker.addEventListener('change', () => document.body.removeChild(picker));
+    });
+
     item.addEventListener('click', () => {
       const hidden = AppState.hiddenUnits.has(unit.code);
       if (hidden) AppState.hiddenUnits.delete(unit.code);
@@ -861,6 +901,7 @@ async function init() {
   initFenceSection();
   initScreenshot();
   initBackgroundToggle();
+  initMeasureTool();
   initWelcomeOverlay();
 
   // Sample tile buttons (left panel)

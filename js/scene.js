@@ -53,9 +53,12 @@ class SceneManager {
       }
     );
 
-    this._vbhMode    = false;
-    this._viewMode   = 'voxels';
-    this._bhData     = [];
+    this._vbhMode      = false;
+    this._viewMode     = 'voxels';
+    this._bhData       = [];
+    this._measureMode  = false;
+    this._measurePts   = [];
+    this._measureLines = [];
 
     this._resizeObserver = new ResizeObserver(() => this._onResize());
     this._resizeObserver.observe(this._canvas.parentElement);
@@ -67,6 +70,7 @@ class SceneManager {
     this._initVirtualBH();
     this._initBHClick();
     this._initKeyboard();
+    this._initMeasure();
   }
 
   // ── Lights ────────────────────────────────────────────────────────────────
@@ -505,7 +509,12 @@ class SceneManager {
         case 's': case 'S': this.setViewMode('surfaces'); break;
         case 'b': case 'B': this.setViewMode('both');     break;
         case 'k': case 'K': window.dispatchEvent(new CustomEvent('geomodel:toggle-vbh')); break;
-        case 'Escape': this.setVBHMode(false); this._hideLogPopup(); break;
+        case 'm': case 'M': window.dispatchEvent(new CustomEvent('geomodel:toggle-measure')); break;
+        case 'Escape':
+          this.setVBHMode(false);
+          this.setMeasureMode(false);
+          this._hideLogPopup();
+          break;
       }
     });
   }
@@ -515,6 +524,7 @@ class SceneManager {
     this._builder.clear();
     this._surfaces.clear();
     this._clearTopo();
+    this._clearMeasure();
     if (this._bhSticks) {
       this._scene.remove(this._bhSticks);
       this._bhSticks.traverse(obj => { obj.geometry?.dispose(); obj.material?.dispose(); });
@@ -581,6 +591,84 @@ class SceneManager {
     this._canvas.addEventListener('auxclick', e => {
       if (e.button === 1) e.preventDefault();
     });
+  }
+
+  // ── Measurement tool ─────────────────────────────────────────────────────
+  setMeasureMode(active) {
+    this._measureMode = active;
+    this._canvas.style.cursor = active ? 'crosshair' : (this._vbhMode ? 'crosshair' : '');
+    document.getElementById('btn-measure')?.classList.toggle('active', active);
+    if (!active) this._clearMeasure();
+  }
+
+  _initMeasure() {
+    this._canvas.addEventListener('click', e => {
+      if (!this._measureMode) return;
+      if (this._vbhMode) return;
+      e.stopPropagation();
+      const rect = this._canvas.getBoundingClientRect();
+      const pt = this._canvasToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      if (!pt) return;
+
+      this._measurePts.push(pt.clone());
+      if (this._measurePts.length === 1) {
+        this._addMarker(pt, '#ff6633');
+        this._showMeasureTooltip('Click second point to measure distance', e.clientX - rect.left, e.clientY - rect.top);
+      } else if (this._measurePts.length === 2) {
+        this._addMarker(pt, '#ff6633');
+        this._drawMeasureLine(this._measurePts[0], this._measurePts[1]);
+        const dx = pt.x - this._measurePts[0].x;
+        const dy = pt.y - this._measurePts[0].y;
+        const dz = pt.z - this._measurePts[0].z;
+        const horiz = Math.hypot(dx, dz);
+        const total = Math.hypot(dx, dy, dz);
+        const bearing = ((Math.atan2(dx, dz) * 180 / Math.PI) + 360) % 360;
+        const msg = `Distance: ${total.toFixed(1)} m  Horiz: ${horiz.toFixed(1)} m  ΔZ: ${dy.toFixed(1)} m  Bearing: ${bearing.toFixed(0)}°`;
+        this._showMeasureTooltip(msg, e.clientX - rect.left, e.clientY - rect.top, true);
+        this._measurePts = [];  // reset for next pair
+      }
+    });
+  }
+
+  _addMarker(pt, color) {
+    const geo = new THREE.SphereGeometry(0.5, 8, 8);
+    const mat = new THREE.MeshBasicMaterial({ color });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(pt);
+    this._scene.add(mesh);
+    this._measureLines.push(mesh);
+  }
+
+  _drawMeasureLine(p1, p2) {
+    const pts = [p1, p2];
+    const geo = new THREE.BufferGeometry().setFromPoints(pts);
+    const mat = new THREE.LineBasicMaterial({ color: '#ff6633', linewidth: 2 });
+    const line = new THREE.Line(geo, mat);
+    this._scene.add(line);
+    this._measureLines.push(line);
+  }
+
+  _showMeasureTooltip(msg, px, py, persist = false) {
+    const tt = document.getElementById('measure-tooltip');
+    if (!tt) return;
+    tt.textContent = msg;
+    tt.hidden = false;
+    const rect = this._canvas.getBoundingClientRect();
+    tt.style.left = `${Math.min(px + 14, rect.width  - 310)}px`;
+    tt.style.top  = `${Math.min(py -  8, rect.height -  60)}px`;
+    if (persist) setTimeout(() => { if (tt) tt.hidden = true; }, 6000);
+  }
+
+  _clearMeasure() {
+    this._measureLines.forEach(obj => {
+      this._scene.remove(obj);
+      obj.geometry?.dispose();
+      obj.material?.dispose();
+    });
+    this._measureLines = [];
+    this._measurePts   = [];
+    const tt = document.getElementById('measure-tooltip');
+    if (tt) tt.hidden = true;
   }
 
   // ── Screenshot ───────────────────────────────────────────────────────────

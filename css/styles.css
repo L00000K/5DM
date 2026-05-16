@@ -991,6 +991,14 @@ input[type="range"] {
   border-radius: 3px;
   flex-shrink: 0;
   border: 1px solid rgba(0,0,0,0.1);
+  cursor: pointer;
+  position: relative;
+  transition: transform 0.1s;
+}
+
+.legend-swatch:hover {
+  transform: scale(1.2);
+  border-color: rgba(0,0,0,0.35);
 }
 
 .legend-code {
@@ -1150,6 +1158,16 @@ input[type="range"] {
 }
 
 .tooltip[hidden] { display: none; }
+
+.measure-tooltip {
+  max-width: 320px;
+  white-space: normal;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  background: rgba(255,255,255,0.97);
+  border-color: var(--accent-dim);
+}
 .tooltip-title { font-weight: 700; color: var(--text-primary); margin-bottom: 3px; }
 .tooltip-row { color: var(--text-mid); display: flex; gap: 8px; justify-content: space-between; }
 .tooltip-val { color: var(--accent); font-family: var(--font-mono); }
