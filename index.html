@@ -647,6 +647,33 @@
       </div>
 
       <div class="panel-section">
+        <h3>Pile Capacity</h3>
+        <div class="field-group">
+          <div class="cell-size-row" style="gap:4px;flex-wrap:wrap">
+            <div class="cell-size-field" style="flex:1;min-width:64px">
+              <span class="cell-size-lbl" title="Pile head elevation (mAOD)">Head</span>
+              <input type="number" id="pile-head-level" placeholder="mAOD" step="0.5" class="cell-size-input">
+            </div>
+            <div class="cell-size-field" style="flex:1;min-width:64px">
+              <span class="cell-size-lbl" title="Pile toe elevation (mAOD)">Toe</span>
+              <input type="number" id="pile-toe-level" placeholder="mAOD" step="0.5" class="cell-size-input">
+            </div>
+            <div class="cell-size-field" style="flex:1;min-width:56px">
+              <span class="cell-size-lbl" title="Pile diameter (m)">D (m)</span>
+              <input type="number" id="pile-diameter" value="0.45" min="0.1" step="0.05" class="cell-size-input">
+            </div>
+            <div class="cell-size-field" style="flex:1;min-width:44px">
+              <span class="cell-size-lbl" title="Factor of safety">FS</span>
+              <input type="number" id="pile-fs" value="2.5" min="1" step="0.5" class="cell-size-input">
+            </div>
+          </div>
+          <p class="hint">α-method (Cu) + β-method (φ') · model centre column</p>
+        </div>
+        <button id="btn-calc-pile" class="btn-secondary btn-sm" style="width:100%">⊕ Calculate Pile Capacity</button>
+        <div id="pile-results" class="bearing-results"></div>
+      </div>
+
+      <div class="panel-section">
         <h3>Stratigraphy</h3>
         <canvas id="strat-canvas" class="strat-canvas" hidden></canvas>
         <p class="hint" id="strat-hint">Build model to see stratigraphic column</p>

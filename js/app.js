@@ -16,6 +16,7 @@ import { renderPropertiesTable, applyBS5930Colors } from './properties.js';
 import { saveSession, loadSession, hasSavedSession } from './session.js';
 import { calculateSettlement, renderSettlementResults } from './settlement.js';
 import { calculateBearingCapacity, renderBearingResults } from './bearing.js';
+import { calculatePileCapacity, renderPileResults } from './pile.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -488,6 +489,30 @@ function initBearingCapacity() {
     if (result && !result.error) {
       const qa = result.undrained?.qa ?? result.drained?.qa;
       log(`Bearing capacity: q_allow = ${qa} kPa (FS ${FS}) — unit: ${result.unit.code}`, 'ok');
+    }
+  });
+}
+
+// ── Pile capacity calculator ──────────────────────────────────────────────────
+function initPileCapacity() {
+  const btn = document.getElementById('btn-calc-pile');
+  const res = document.getElementById('pile-results');
+  if (!btn || !res) return;
+
+  btn.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('Build model first.', 'warn'); return; }
+    const headElev = parseFloat(document.getElementById('pile-head-level')?.value ?? '');
+    const toeElev  = parseFloat(document.getElementById('pile-toe-level')?.value ?? '');
+    const D        = parseFloat(document.getElementById('pile-diameter')?.value ?? '0.45');
+    const FS       = parseFloat(document.getElementById('pile-fs')?.value ?? '2.5');
+    if ([headElev, toeElev, D, FS].some(isNaN)) {
+      log('Enter valid pile parameters.', 'warn'); return;
+    }
+    const result = calculatePileCapacity(grid, AppState.geoUnits, headElev, toeElev, D, FS);
+    renderPileResults(result, res);
+    if (result && !result.error) {
+      log(`Pile capacity: Q_ult=${result.Qult} kN · Q_a=${result.Qa} kN (FS ${FS})`, 'ok');
     }
   });
 }
@@ -981,7 +1006,7 @@ export function updateBHChart() {
   });
 }
 
-// ── Borehole data table ───────────────────────────────────────────────────────
+// ── Borehole data table with inline layer editor ──────────────────────────────
 export function updateBHTable() {
   const wrap = document.getElementById('bh-data-table-wrap');
   if (!wrap) return;
@@ -993,28 +1018,131 @@ export function updateBHTable() {
   const unitByCode = {};
   AppState.geoUnits.forEach(u => { unitByCode[u.code] = u; });
 
-  let html = '<table class="bh-table"><thead><tr>'
-    + '<th>BH ID</th><th>X</th><th>Y</th><th>GL(m)</th><th>Depth(m)</th><th>Layers</th>'
-    + '</tr></thead><tbody>';
+  let html = `<table class="bh-table"><thead><tr>
+    <th>ID</th><th>X</th><th>Y</th><th>GL</th><th>D(m)</th><th>Units</th><th></th>
+  </tr></thead><tbody>`;
 
   for (const bh of bhs) {
     const maxBase = bh.layers.length ? Math.max(...bh.layers.map(l => l.base)) : (bh.depth ?? 0);
     const chips = bh.layers.map(l => {
       const u = unitByCode[l.unitCode];
       const bg = u?.color ?? '#888';
-      return `<span class="unit-chip" style="background:${bg};font-size:9px;padding:1px 5px">${escHtml(l.unitCode)}</span>`;
+      return `<span class="unit-chip" style="background:${bg};font-size:9px;padding:1px 4px">${escHtml(l.unitCode)}</span>`;
     }).join('');
-    html += `<tr>
-      <td class="bh-id">${escHtml(bh.id)}</td>
-      <td>${bh.x?.toFixed(1)}</td>
-      <td>${bh.y?.toFixed(1)}</td>
+    const safeId = escHtml(bh.id);
+    html += `<tr class="bh-summary-row" data-bhid="${safeId}">
+      <td class="bh-id">${safeId}</td>
+      <td>${bh.x?.toFixed(1) ?? '—'}</td>
+      <td>${bh.y?.toFixed(1) ?? '—'}</td>
       <td>${bh.groundLevel?.toFixed(1) ?? '—'}</td>
       <td>${maxBase.toFixed(1)}</td>
       <td class="bh-chips">${chips}</td>
-    </tr>`;
+      <td><button class="bh-edit-btn btn-ghost btn-sm" data-bhid="${safeId}" title="Edit layers">✎</button></td>
+    </tr>
+    <tr class="bh-edit-row" data-bhid="${safeId}" hidden><td colspan="7"></td></tr>`;
   }
   html += '</tbody></table>';
   wrap.innerHTML = html;
+
+  wrap.querySelectorAll('.bh-edit-btn').forEach(btn => {
+    btn.addEventListener('click', () => _openBHEditor(btn.dataset.bhid, wrap));
+  });
+}
+
+function _openBHEditor(bhid, wrap) {
+  const editRow = wrap.querySelector(`.bh-edit-row[data-bhid="${_cssEsc(bhid)}"]`);
+  if (!editRow) return;
+  if (!editRow.hidden) { editRow.hidden = true; return; }
+  wrap.querySelectorAll('.bh-edit-row').forEach(r => { r.hidden = true; });
+
+  const bh = AppState.classifiedBH.find(b => b.id === bhid);
+  if (!bh) return;
+
+  const td = editRow.querySelector('td');
+  td.innerHTML = '';
+
+  const buildTable = () => {
+    const selOpts = AppState.geoUnits.map(u =>
+      `<option value="${escHtml(u.code)}">${escHtml(u.code)} — ${escHtml(u.name)}</option>`
+    ).join('');
+    let t = `<table class="bh-layer-edit-table">
+      <thead><tr><th>Top(m)</th><th>Base(m)</th><th>Unit</th><th>Cert.</th><th></th></tr></thead>
+      <tbody>`;
+    bh.layers.forEach((l, i) => {
+      const opts = AppState.geoUnits.map(u =>
+        `<option value="${escHtml(u.code)}"${u.code === l.unitCode ? ' selected' : ''}>${escHtml(u.code)}</option>`
+      ).join('');
+      t += `<tr data-layeridx="${i}">
+        <td><input type="number" class="bhe-top cell-size-input" value="${l.top ?? ''}" step="0.1" style="width:48px"></td>
+        <td><input type="number" class="bhe-base cell-size-input" value="${l.base ?? ''}" step="0.1" style="width:48px"></td>
+        <td><select class="bhe-code isopach-select" style="max-width:68px">${opts}</select></td>
+        <td><input type="number" class="bhe-cert cell-size-input" value="${(l.certainty ?? 0.9).toFixed(2)}" min="0" max="1" step="0.05" style="width:40px"></td>
+        <td><button class="bhe-del btn-ghost btn-sm">✕</button></td>
+      </tr>`;
+    });
+    t += '</tbody></table>';
+    return t;
+  };
+
+  const panel = document.createElement('div');
+  panel.className = 'bh-edit-panel';
+
+  const layerWrap = document.createElement('div');
+  layerWrap.className = 'bh-edit-layers';
+  layerWrap.innerHTML = buildTable();
+
+  const actions = document.createElement('div');
+  actions.className = 'bh-edit-actions';
+  actions.innerHTML = `
+    <button class="btn-ghost btn-sm bhe-add">+ Layer</button>
+    <button class="btn-primary btn-sm bhe-apply">✓ Apply</button>`;
+
+  panel.appendChild(layerWrap);
+  panel.appendChild(actions);
+  td.appendChild(panel);
+  editRow.hidden = false;
+
+  layerWrap.addEventListener('click', e => {
+    if (!e.target.classList.contains('bhe-del')) return;
+    const idx = parseInt(e.target.closest('tr').dataset.layeridx);
+    bh.layers.splice(idx, 1);
+    layerWrap.innerHTML = buildTable();
+  });
+
+  actions.querySelector('.bhe-add')?.addEventListener('click', () => {
+    const lastBase = bh.layers.length ? Math.max(...bh.layers.map(l => l.base ?? 0)) : 0;
+    bh.layers.push({ top: lastBase, base: lastBase + 1,
+                     unitCode: AppState.geoUnits[0]?.code ?? '',
+                     certainty: 0.7, description: '' });
+    layerWrap.innerHTML = buildTable();
+  });
+
+  actions.querySelector('.bhe-apply')?.addEventListener('click', () => {
+    const rows = layerWrap.querySelectorAll('tbody tr');
+    const newLayers = [];
+    rows.forEach(row => {
+      const idx  = parseInt(row.dataset.layeridx);
+      const top  = parseFloat(row.querySelector('.bhe-top')?.value ?? '');
+      const base = parseFloat(row.querySelector('.bhe-base')?.value ?? '');
+      const code = row.querySelector('.bhe-code')?.value ?? '';
+      const cert = parseFloat(row.querySelector('.bhe-cert')?.value ?? '0.9');
+      if (!isNaN(top) && !isNaN(base) && code) {
+        newLayers.push({ top, base, unitCode: code,
+                         certainty: isNaN(cert) ? 0.9 : Math.min(1, Math.max(0, cert)),
+                         description: bh.layers[idx]?.description ?? '' });
+      }
+    });
+    bh.layers = newLayers.sort((a, b) => a.top - b.top);
+    editRow.hidden = true;
+    updateBHTable();
+    updateBHChart();
+    log(`BH ${bhid} updated — ${newLayers.length} layer${newLayers.length !== 1 ? 's' : ''}. Rebuild model to apply.`, 'ok');
+    if (AppState.classifiedBH.length) setEnabled('btn-build-model', true);
+  });
+}
+
+function _cssEsc(s) {
+  return String(s).replace(/[!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~]/g, c => `\\${c}`);
 }
 
 // ── Unit statistics ───────────────────────────────────────────────────────────
@@ -1440,6 +1568,7 @@ async function init() {
   initSession();
   initSettlement();
   initBearingCapacity();
+  initPileCapacity();
   initColorPresets();
   initWelcomeOverlay();
 

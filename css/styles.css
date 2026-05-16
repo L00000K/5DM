@@ -1937,6 +1937,40 @@ kbd {
   padding: 0 3px;
 }
 
+/* ── BH inline layer editor ── */
+.bh-edit-row td { padding: 0; }
+.bh-edit-panel {
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border);
+  padding: 8px;
+}
+.bh-layer-edit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+.bh-layer-edit-table th {
+  font-size: 10px;
+  text-align: left;
+  padding: 3px 4px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-mid);
+  white-space: nowrap;
+}
+.bh-layer-edit-table td {
+  padding: 2px 3px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.bh-edit-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+.bh-summary-row:hover { background: rgba(255,255,255,0.03); }
+.bh-edit-btn { padding: 1px 6px; font-size: 11px; }
+
 /* ── Bearing capacity results ── */
 .bearing-results {
   margin-top: 8px;
