@@ -503,11 +503,15 @@
             <select id="plan-view-mode" class="isopach-select">
               <option value="unit">Geology</option>
               <option value="cert">Certainty</option>
+              <option value="probability">Unit Probability</option>
               <option value="cu">Cu — Shear Strength</option>
               <option value="N_spt">SPT N</option>
               <option value="settlement">Settlement Risk</option>
               <option value="bearing">Bearing Capacity</option>
             </select>
+            <span id="plan-view-prob-unit-wrap" style="display:none;align-items:center;gap:4px">
+              <select id="plan-view-prob-unit" class="isopach-select"></select>
+            </span>
             <span style="font-size:11px;color:#8898a8">Z:</span>
             <input type="range" id="plan-view-elevation" class="plan-view-slider" style="width:90px">
             <span id="plan-view-elev-lbl" class="range-readout" style="width:76px;text-align:left">— mAOD</span>

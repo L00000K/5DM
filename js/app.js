@@ -57,6 +57,9 @@ export const AppState = {
   semanticWeight: 0.3,
   niEpochs: 400,
   oracleEnabled: false,
+  varRange: null,
+  varSill: null,
+  varNugget: null,
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
@@ -183,6 +186,39 @@ function initInterpolationSettings() {
   });
 }
 
+// ── Spherical variogram auto-fitting ─────────────────────────────────────────
+// Grid search over (nugget, partial_sill, range) minimising SSR to empirical γ(h)
+function _fitSphericalVariogram(empirical, binCentres) {
+  // empirical: array of gamma values, binCentres: corresponding h values
+  const n = empirical.length;
+  if (n < 3) return null;
+  const sillEst = Math.max(...empirical);
+  const maxH    = binCentres[n - 1];
+
+  let bestSSR = Infinity, bestParams = null;
+  // Grid: nugget ∈ [0, 0.4×sill], sill ∈ [0.5×sillEst, 1.2×sillEst], range ∈ [0.1×maxH, maxH]
+  for (let nc = 0; nc <= 4; nc++) {
+    const C0 = nc * 0.1 * sillEst;
+    for (let sc = 5; sc <= 12; sc++) {
+      const C1 = sc * 0.1 * sillEst - C0;
+      if (C1 <= 0) continue;
+      for (let rc = 1; rc <= 10; rc++) {
+        const a = rc * 0.1 * maxH;
+        let ssr = 0;
+        for (let i = 0; i < n; i++) {
+          const h = binCentres[i];
+          const model = h >= a
+            ? C0 + C1
+            : C0 + C1 * (1.5 * h / a - 0.5 * Math.pow(h / a, 3));
+          ssr += Math.pow(empirical[i] - model, 2);
+        }
+        if (ssr < bestSSR) { bestSSR = ssr; bestParams = { nugget: C0, partialSill: C1, range: a }; }
+      }
+    }
+  }
+  return bestParams;
+}
+
 // ── Empirical variogram computation and rendering ──────────────────────────────
 function _renderVariogram(boreholes) {
   const canvas = document.getElementById('variogram-canvas');
@@ -230,18 +266,30 @@ function _renderVariogram(boreholes) {
     }
   }
 
-  const vals = Array.from({ length: BINS }, (_, i) =>
-    counts[i] > 0 ? gammas[i] / (2 * counts[i]) : null
-  ).filter(v => v !== null);
+  const binData = Array.from({ length: BINS }, (_, i) => ({
+    h:     (i + 0.5) * binW,
+    gamma: counts[i] > 0 ? gammas[i] / (2 * counts[i]) : null,
+  })).filter(d => d.gamma !== null);
 
-  if (!vals.length) return;
-  const maxV = Math.max(...vals);
+  if (!binData.length) return;
+  const vals     = binData.map(d => d.gamma);
+  const centres  = binData.map(d => d.h);
+  const maxV     = Math.max(...vals);
+
+  // Auto-fit spherical model and store in AppState
+  const fitted = _fitSphericalVariogram(vals, centres);
+  if (fitted) {
+    AppState.varRange  = fitted.range;
+    AppState.varSill   = fitted.nugget + fitted.partialSill;
+    AppState.varNugget = fitted.nugget;
+  }
 
   // Draw
   ctx.clearRect(0, 0, W, H);
   const PAD = { l: 28, r: 8, t: 8, b: 20 };
   const cW  = W - PAD.l - PAD.r;
   const cH  = H - PAD.t - PAD.b;
+  const maxVPlot = Math.max(maxV, fitted ? fitted.nugget + fitted.partialSill : maxV) * 1.1;
 
   // Axes
   ctx.strokeStyle = '#3a4d62'; ctx.lineWidth = 1;
@@ -254,39 +302,56 @@ function _renderVariogram(boreholes) {
   // Labels
   ctx.fillStyle = '#8a9bb0'; ctx.font = '8px monospace';
   ctx.textAlign = 'right';
-  ctx.fillText((maxV).toFixed(2), PAD.l - 2, PAD.t + 8);
+  ctx.fillText((maxVPlot).toFixed(2), PAD.l - 2, PAD.t + 8);
   ctx.fillText('0', PAD.l - 2, PAD.t + cH);
   ctx.textAlign = 'center';
   ctx.fillText(`0`, PAD.l, PAD.t + cH + 12);
   ctx.fillText(`${maxH.toFixed(0)}m`, PAD.l + cW, PAD.t + cH + 12);
   ctx.fillText('γ(h)', PAD.l - 20, PAD.t + cH * 0.5);
 
-  // Sill line at γ = 0.5 (indicator variogram sill)
-  const sillY = PAD.t + cH * (1 - 0.5 / maxV);
-  ctx.strokeStyle = '#4a6070'; ctx.setLineDash([3, 3]); ctx.lineWidth = 0.8;
-  ctx.beginPath();
-  ctx.moveTo(PAD.l, sillY);
-  ctx.lineTo(PAD.l + cW, sillY);
-  ctx.stroke();
-  ctx.setLineDash([]);
+  // Fitted spherical model (orange dashed)
+  if (fitted) {
+    const { nugget: C0, partialSill: C1, range: a } = fitted;
+    ctx.strokeStyle = '#e8924a'; ctx.setLineDash([4, 2]); ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (let px = 0; px <= cW; px++) {
+      const h   = (px / cW) * maxH;
+      const gam = h >= a ? C0 + C1 : C0 + C1 * (1.5 * h / a - 0.5 * Math.pow(h / a, 3));
+      const py  = PAD.t + cH * (1 - gam / maxVPlot);
+      if (px === 0) ctx.moveTo(PAD.l + px, py); else ctx.lineTo(PAD.l + px, py);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Range marker
+    const rangeX = PAD.l + (a / maxH) * cW;
+    ctx.strokeStyle = '#e8924a'; ctx.lineWidth = 0.7; ctx.setLineDash([2, 2]);
+    ctx.beginPath(); ctx.moveTo(rangeX, PAD.t); ctx.lineTo(rangeX, PAD.t + cH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#e8924a'; ctx.font = '7px monospace'; ctx.textAlign = 'left';
+    ctx.fillText(`r=${a.toFixed(0)}m`, rangeX + 2, PAD.t + 9);
+  }
 
-  // Points
-  const xStep = cW / (vals.length - 1 || 1);
+  // Empirical points
+  ctx.fillStyle = '#5ab8e0';
   ctx.strokeStyle = '#5ab8e0'; ctx.lineWidth = 1.5;
   ctx.beginPath();
-  vals.forEach((v, i) => {
-    const px = PAD.l + i * xStep;
-    const py = PAD.t + cH * (1 - v / maxV);
+  binData.forEach(({ h, gamma }, i) => {
+    const px = PAD.l + (h / maxH) * cW;
+    const py = PAD.t + cH * (1 - gamma / maxVPlot);
     if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
   });
   ctx.stroke();
-
-  ctx.fillStyle = '#5ab8e0';
-  vals.forEach((v, i) => {
-    const px = PAD.l + i * xStep;
-    const py = PAD.t + cH * (1 - v / maxV);
+  binData.forEach(({ h, gamma }) => {
+    const px = PAD.l + (h / maxH) * cW;
+    const py = PAD.t + cH * (1 - gamma / maxVPlot);
     ctx.beginPath(); ctx.arc(px, py, 2.5, 0, Math.PI * 2); ctx.fill();
   });
+
+  // Summary text
+  if (fitted) {
+    ctx.fillStyle = '#8a9bb0'; ctx.font = '7px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(`C0=${fitted.nugget.toFixed(2)} C1=${fitted.partialSill.toFixed(2)}`, W - PAD.r, H - 4);
+  }
 }
 
 // ── Collapsible sections ───────────────────────────────────────────────────────
@@ -550,6 +615,8 @@ function initRunAI() {
       updateBHUnitStats();
       AppState.bhLogView?.draw(classified.filter(b => !b.synthetic), units);
       log(`Analysis complete — ${units.length} units classified.`, 'ok');
+      // Auto-fit variogram so kriging has sensible initial params
+      _renderVariogram(classified);
       setEnabled('btn-build-model', true);
       setEnabled('btn-run-ai', true);
       setEnabled('btn-interpret-geology', true);
@@ -600,6 +667,9 @@ function initBuildModel() {
           oracleApiKey: AppState.oracleEnabled && apiKey ? apiKey : null,
           oracleRefineFn: oracleRefinement,
           demoMode: !apiKey,
+          varRange:  AppState.varRange,
+          varSill:   AppState.varSill,
+          varNugget: AppState.varNugget,
           onProgress: p => setBuildProgress(p) }
       );
       showBuildProgress(false);
@@ -1395,6 +1465,21 @@ function initPlanView() {
   document.getElementById('btn-plan-view')?.addEventListener('click', () => {
     if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
     AppState.planView.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
+  });
+
+  // Show/hide unit probability selector when mode changes
+  document.getElementById('plan-view-mode')?.addEventListener('change', e => {
+    const wrap = document.getElementById('plan-view-prob-unit-wrap');
+    if (wrap) wrap.style.display = e.target.value === 'probability' ? 'flex' : 'none';
+    if (AppState.voxelGrid && AppState.planView?.visible) {
+      AppState.planView.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
+    }
+  });
+
+  document.getElementById('plan-view-prob-unit')?.addEventListener('change', () => {
+    if (AppState.voxelGrid && AppState.planView?.visible) {
+      AppState.planView.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
+    }
   });
 }
 

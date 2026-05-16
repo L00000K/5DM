@@ -78,6 +78,19 @@ export class PlanView {
     const unitMap = {};
     geoUnits.forEach(u => { unitMap[u.id] = u; });
 
+    // Populate / show probability unit selector
+    const probUnitSel = document.getElementById('plan-view-prob-unit');
+    if (probUnitSel) {
+      const show = mode === 'probability';
+      probUnitSel.parentElement.style.display = show ? 'flex' : 'none';
+      if (show && probUnitSel.options.length !== geoUnits.length) {
+        const cur = probUnitSel.value;
+        probUnitSel.innerHTML = geoUnits.map(u => `<option value="${u.code}">${u.code} — ${u.name}</option>`).join('');
+        if (cur) probUnitSel.value = cur;
+      }
+    }
+    const probUnitCode = probUnitSel?.value ?? geoUnits[0]?.code;
+
     const PAD = 40;
     const W = this._canvas.parentElement?.clientWidth  ?? 420;
     const H = this._canvas.parentElement?.clientHeight ?? 370;
@@ -180,6 +193,24 @@ export class PlanView {
             color = PlanView._jet(1 - t);
             paramMin = minCc; paramMax = maxCc; paramLabel = 'Cc — red=high compressibility';
           }
+        } else if (mode === 'probability') {
+          // Probability approximation: certainty × (1 if winning unit, blendRatio if runner-up)
+          const { blendUnitIds, blendRatios } = grid;
+          const targetId = geoUnits.find(u => u.code === probUnitCode)?.id;
+          if (targetId === undefined) { color = '#cccccc'; }
+          else {
+            let p = 0;
+            if (uid === targetId)                  p = certainty[flat];
+            else if (blendUnitIds[flat] === targetId) p = blendRatios[flat] * certainty[flat];
+            const targetUnit = geoUnits.find(u => u.code === probUnitCode);
+            const hex = targetUnit?.color ?? '#4472c4';
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            color = `rgba(${r},${g},${b},${Math.max(0.05, p)})`;
+            paramMin = 0; paramMax = 100;
+            paramLabel = `P(${probUnitCode}) %`;
+          }
         } else {
           color = '#888';
         }
@@ -215,7 +246,8 @@ export class PlanView {
     ctx.strokeRect(PAD, PAD, drawW, drawH);
 
     const MODE_LABELS = { unit: 'Geology', cert: 'Certainty', cu: 'Undrained Strength (Cu)',
-      N_spt: 'SPT N', settlement: 'Settlement Risk (Cc)', bearing: 'Bearing Capacity Risk (Cu)' };
+      N_spt: 'SPT N', settlement: 'Settlement Risk (Cc)', bearing: 'Bearing Capacity Risk (Cu)',
+      probability: `P(${probUnitCode})` };
     const modeLabel = MODE_LABELS[mode] ?? mode;
     ctx.fillStyle = '#8898a8';
     ctx.font = 'bold 11px Inter, sans-serif';

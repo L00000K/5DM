@@ -201,9 +201,9 @@ function idwVote(neighbours, power, unitIndex, unknownId, typicalSpacing) {
 //   Augments the covariance system with a Lagrange multiplier to enforce
 //   the unbiasedness constraint (weights sum to 1), giving optimal linear
 //   unbiased prediction at the query location.
-function krigingVote(neighbours, qx, qy, unitIndex, unknownId, range, sill) {
+function krigingVote(neighbours, qx, qy, unitIndex, unknownId, range, sill, nugget = null) {
   const n = neighbours.length;
-  const nugget = sill * 0.05;
+  if (nugget === null) nugget = sill * 0.05;
   const sz = n + 1;
   const K = Array.from({ length: sz }, () => new Array(sz).fill(0));
   for (let i = 0; i < n; i++) {
@@ -520,10 +520,13 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
   geoUnits.forEach(u => { unitIndex[u.code] = u.id; });
   const unknownId = geoUnits.find(u => u.code === 'UNKN')?.id ?? 0;
 
-  // Geostatistical parameters
-  const range = typicalSpacing * 1.5;
-  const sill  = 1.0;
-  const gpLen = typicalSpacing * 0.8;
+  // Geostatistical parameters — use auto-fitted variogram if available
+  const range = options.varRange  ?? typicalSpacing * 1.5;
+  const sill  = options.varSill   ?? 1.0;
+  const gpLen = options.varRange  ? options.varRange * 0.6 : typicalSpacing * 0.8;
+  if (options.varRange) {
+    log(`Using fitted variogram: range=${range.toFixed(1)}m sill=${sill.toFixed(3)} nugget=${(options.varNugget ?? 0).toFixed(3)}`, 'info');
+  }
 
   // ── Neural Implicit Geological Field ──────────────────────────────────────
   if (method === 'neural-implicit') {
@@ -623,7 +626,7 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
           if (!nb.length) {
             result = nearestFallback(allBoreholes, x, y, unitIndex, unknownId);
           } else if (method === 'kriging') {
-            result = krigingVote(nb, x, y, unitIndex, unknownId, range, sill)
+            result = krigingVote(nb, x, y, unitIndex, unknownId, range, sill, options.varNugget ?? null)
                   ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
           } else if (method === 'uk') {
             result = ukVote(nb, x, y, unitIndex, unknownId, range, sill, trendOrder)
