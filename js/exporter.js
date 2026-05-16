@@ -134,6 +134,36 @@ export function initExporter() {
     log(`Formation contacts exported — ${rows.length - 1} contact points.`, 'ok');
   });
 
+  // ── Export point cloud CSV (every voxel centre) ──────────────────────────────
+  document.getElementById('btn-export-pointcloud')?.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('No voxel grid to export.', 'warn'); return; }
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty } = grid;
+    const unitById = {};
+    AppState.geoUnits.forEach(u => { unitById[u.id] = u; });
+    log('Generating point cloud CSV…', 'info');
+    const rows = ['X,Y,Z,Unit_Code,Unit_Name,Certainty'];
+    for (let iz = 0; iz < nz; iz++) {
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          const flat = ix + iy * nx + iz * nx * ny;
+          const uid  = unitIds[flat];
+          if (!uid) continue;
+          const unit = unitById[uid];
+          if (!unit) continue;
+          const x = (O.x + (ix + 0.5) * cs).toFixed(2);
+          const y = (O.z + (iy + 0.5) * cs).toFixed(2);
+          const z = (O.y + (iz + 0.5) * ch).toFixed(2);
+          rows.push([x, y, z, unit.code,
+            `"${(unit.name ?? '').replace(/"/g,'""')}"`,
+            certainty[flat].toFixed(3)].join(','));
+        }
+      }
+    }
+    downloadBlob(new Blob([rows.join('\n')], { type: 'text/csv' }), 'geomodel-pointcloud.csv');
+    log(`Point cloud exported — ${(rows.length - 1).toLocaleString()} points.`, 'ok');
+  });
+
   // ── Export unit properties as CSV ─────────────────────────────────────────
   document.getElementById('btn-export-props')?.addEventListener('click', () => {
     if (!AppState.geoUnits.length) { log('No units to export.', 'warn'); return; }

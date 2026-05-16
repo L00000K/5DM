@@ -251,7 +251,8 @@
         <div id="props-table-wrap" class="props-table-wrap">
           <p class="hint" style="padding:8px">Load borehole data to see unit properties.</p>
         </div>
-        <div class="panel-actions" style="padding:8px 8px 0;gap:6px">
+        <div class="panel-actions" style="padding:8px 8px 0;gap:6px;flex-wrap:wrap">
+          <button id="btn-bs5930-colors" class="btn-secondary btn-sm">⬡ BS5930 Colours</button>
           <button id="btn-export-props" class="btn-secondary btn-sm" disabled>⬇ Props CSV</button>
         </div>
       </div>
@@ -615,6 +616,37 @@
       </div>
 
       <div class="panel-section">
+        <h3>Bearing Capacity</h3>
+        <div class="field-group">
+          <div class="cell-size-row" style="gap:4px;flex-wrap:wrap">
+            <div class="cell-size-field" style="flex:1;min-width:60px">
+              <span class="cell-size-lbl" title="Foundation level (mAOD)">Z</span>
+              <input type="number" id="bear-found-level" placeholder="mAOD" step="0.5" class="cell-size-input">
+            </div>
+            <div class="cell-size-field" style="flex:1;min-width:52px">
+              <span class="cell-size-lbl" title="Foundation width (m)">B</span>
+              <input type="number" id="bear-width" value="2" min="0.1" step="0.5" class="cell-size-input">
+            </div>
+            <div class="cell-size-field" style="flex:1;min-width:52px">
+              <span class="cell-size-lbl" title="Foundation length (m)">L</span>
+              <input type="number" id="bear-length" value="2" min="0.1" step="0.5" class="cell-size-input">
+            </div>
+            <div class="cell-size-field" style="flex:1;min-width:52px">
+              <span class="cell-size-lbl" title="Embedment depth (m)">z</span>
+              <input type="number" id="bear-depth" value="1" min="0" step="0.25" class="cell-size-input">
+            </div>
+            <div class="cell-size-field" style="flex:1;min-width:52px">
+              <span class="cell-size-lbl" title="Factor of safety">FS</span>
+              <input type="number" id="bear-fs" value="3" min="1" step="0.5" class="cell-size-input">
+            </div>
+          </div>
+          <p class="hint">Uses Cu and φ' from Props tab · Skempton + Meyerhof</p>
+        </div>
+        <button id="btn-calc-bearing" class="btn-secondary btn-sm" style="width:100%">⊕ Calculate Bearing Capacity</button>
+        <div id="bearing-results" class="bearing-results"></div>
+      </div>
+
+      <div class="panel-section">
         <h3>Stratigraphy</h3>
         <canvas id="strat-canvas" class="strat-canvas" hidden></canvas>
         <p class="hint" id="strat-hint">Build model to see stratigraphic column</p>
@@ -629,6 +661,8 @@
         <div class="settings-divider">Analysis Data</div>
         <button id="btn-export-contacts" class="btn-secondary" disabled>⬇ Formation Contacts</button>
         <button id="btn-export-bh-csv" class="btn-secondary" disabled>⬇ BH Logs CSV</button>
+        <div class="settings-divider">GIS / Analysis</div>
+        <button id="btn-export-pointcloud" class="btn-secondary" disabled>⬇ Point Cloud CSV</button>
         <div class="settings-divider">Unit Properties</div>
         <button id="btn-export-props" class="btn-secondary" disabled>⬇ Unit Properties CSV</button>
       </div>

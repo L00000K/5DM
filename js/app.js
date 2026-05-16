@@ -12,9 +12,10 @@ import { FenceSection } from './fence-section.js';
 import { IsopachMap  } from './isopach.js';
 import { ModelReport } from './report.js';
 import { PlanView } from './plan-view.js';
-import { renderPropertiesTable } from './properties.js';
+import { renderPropertiesTable, applyBS5930Colors } from './properties.js';
 import { saveSession, loadSession, hasSavedSession } from './session.js';
 import { calculateSettlement, renderSettlementResults } from './settlement.js';
+import { calculateBearingCapacity, renderBearingResults } from './bearing.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -231,6 +232,7 @@ function initReset() {
     setEnabled('btn-export-obj', false);
     setEnabled('btn-export-json', false);
     setEnabled('btn-export-vtk', false);
+    setEnabled('btn-export-pointcloud', false);
     setEnabled('btn-export-bh-csv', false);
     setEnabled('btn-export-props', false);
     setEnabled('btn-isopach', false);
@@ -407,6 +409,7 @@ function initBuildModel() {
       setEnabled('btn-export-obj', true);
       setEnabled('btn-export-json', true);
       setEnabled('btn-export-vtk', true);
+      setEnabled('btn-export-pointcloud', true);
       setEnabled('btn-build-model', true);
       setEnabled('btn-apply-constraints', true);
       setEnabled('btn-isopach', true);
@@ -460,6 +463,49 @@ function initSettlement() {
       const hasCalc = result.layers.some(l => l.settlement !== null);
       log(`Settlement: ${hasCalc ? result.total.toFixed(1) + ' mm total' : 'set Cc and e0 in Props tab'}.`, hasCalc ? 'ok' : 'warn');
     }
+  });
+}
+
+// ── Bearing capacity calculator ───────────────────────────────────────────────
+function initBearingCapacity() {
+  const btn = document.getElementById('btn-calc-bearing');
+  const res = document.getElementById('bearing-results');
+  if (!btn || !res) return;
+
+  btn.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('Build model first.', 'warn'); return; }
+    const foundElev = parseFloat(document.getElementById('bear-found-level')?.value ?? '0');
+    const B  = parseFloat(document.getElementById('bear-width')?.value ?? '2');
+    const L  = parseFloat(document.getElementById('bear-length')?.value ?? '2');
+    const z  = parseFloat(document.getElementById('bear-depth')?.value ?? '1');
+    const FS = parseFloat(document.getElementById('bear-fs')?.value ?? '3');
+    if ([foundElev, B, L, z, FS].some(isNaN)) {
+      log('Enter valid foundation parameters.', 'warn'); return;
+    }
+    const result = calculateBearingCapacity(grid, AppState.geoUnits, foundElev, B, L, z, FS);
+    renderBearingResults(result, res);
+    if (result && !result.error) {
+      const qa = result.undrained?.qa ?? result.drained?.qa;
+      log(`Bearing capacity: q_allow = ${qa} kPa (FS ${FS}) — unit: ${result.unit.code}`, 'ok');
+    }
+  });
+}
+
+// ── BS5930 colour presets ──────────────────────────────────────────────────────
+function initColorPresets() {
+  document.getElementById('btn-bs5930-colors')?.addEventListener('click', () => {
+    if (!AppState.geoUnits.length) { log('Load data first.', 'warn'); return; }
+    const n = applyBS5930Colors(AppState.geoUnits);
+    updateLegend();
+    renderPropertiesTable(AppState.geoUnits, () => updateLegend());
+    if (AppState.scene && AppState.voxelGrid) {
+      AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
+      updateVolumeStats();
+      updateUnitStats();
+      updateStratColumn();
+    }
+    log(`BS5930 colours applied — ${n} unit${n !== 1 ? 's' : ''} matched.`, n > 0 ? 'ok' : 'warn');
   });
 }
 
@@ -1393,6 +1439,8 @@ async function init() {
   initCameraPresets();
   initSession();
   initSettlement();
+  initBearingCapacity();
+  initColorPresets();
   initWelcomeOverlay();
 
   // Sample tile buttons (left panel)

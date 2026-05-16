@@ -121,6 +121,62 @@ export function exportPropertiesCSV(geoUnits) {
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
 
+// ── BS5930 / BGS colour presets ────────────────────────────────────────────────
+// Applies standard UK geological display colours based on unit code and name.
+// Matches by code prefix (case-insensitive), then by geological keyword in name.
+const _BS_BY_CODE = {
+  mg: '#7a6a42', fill: '#7a6a42', fil: '#7a6a42', made: '#7a6a42',
+  lc: '#5b6a8a', lcla: '#5b6a8a',
+  rtd: '#D4A843', tg: '#c8a855',
+  grvl: '#c8aa60', grv: '#c8aa60', sag: '#c8aa60',
+  sa: '#e8d5a0', snd: '#e8d5a0', sand: '#e8d5a0',
+  acl: '#4A7C59', al: '#4A7C59', all: '#4A7C59',
+  ch: '#f0ede0', ck: '#e8e4d8', chlk: '#e8e4d8',
+  wck: '#c8b89a', wch: '#c8b89a',
+  ts: '#5c3d1e', top: '#5c3d1e',
+  ss: '#b8603a', sdst: '#b8603a',
+  ms: '#6a7a8a', mdst: '#6a7a8a', mds: '#6a7a8a',
+  ls: '#b8c8d0', lmst: '#b8c8d0',
+  pt: '#3a2a1a', peat: '#3a2a1a',
+  cl: '#8a90a0', cly: '#8a90a0',
+  sl: '#a0b090', slt: '#a0b090',
+  rk: '#808080', rock: '#808080',
+  scl: '#7a88a0',
+  hd: '#c8b090', head: '#c8b090',
+};
+const _BS_BY_KEYWORD = [
+  ['made ground', '#7a6a42'], ['fill', '#7a6a42'],
+  ['london clay', '#5b6a8a'],
+  ['river terrace', '#D4A843'],
+  ['gravel', '#c8aa60'], ['sand', '#e8d5a0'],
+  ['alluvial', '#4A7C59'], ['alluvium', '#4A7C59'],
+  ['chalk', '#e8e4d8'],
+  ['sandstone', '#b8603a'],
+  ['mudstone', '#6a7a8a'],
+  ['limestone', '#b8c8d0'],
+  ['peat', '#3a2a1a'],
+  ['silt', '#a0b090'],
+  ['topsoil', '#5c3d1e'],
+  ['clay', '#8a90a0'],
+  ['rock', '#808080'],
+];
+
+export function applyBS5930Colors(geoUnits) {
+  let matched = 0;
+  for (const u of geoUnits) {
+    const codeKey = u.code.toLowerCase().replace(/[^a-z]/g, '');
+    if (_BS_BY_CODE[codeKey]) {
+      u.color = _BS_BY_CODE[codeKey];
+      matched++;
+      continue;
+    }
+    const nameLow = (u.name ?? '').toLowerCase();
+    const found = _BS_BY_KEYWORD.find(([kw]) => nameLow.includes(kw));
+    if (found) { u.color = found[1]; matched++; }
+  }
+  return matched;
+}
+
 function _esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }

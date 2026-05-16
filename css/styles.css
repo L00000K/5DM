@@ -1937,6 +1937,52 @@ kbd {
   padding: 0 3px;
 }
 
+/* ── Bearing capacity results ── */
+.bearing-results {
+  margin-top: 8px;
+  font-size: 11px;
+}
+.bearing-unit-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  background: var(--bg-raised);
+  border-radius: 4px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--text-primary);
+}
+.bearing-params-row {
+  font-size: 10px;
+  color: var(--text-mid);
+  font-family: var(--font-mono);
+  margin-bottom: 6px;
+}
+.bearing-section {
+  margin-top: 8px;
+}
+.bearing-mode-hdr {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-mid);
+  margin-bottom: 3px;
+  font-weight: 600;
+}
+.bearing-highlight td {
+  background: rgba(74,188,132,0.10);
+  font-weight: 600;
+}
+.bearing-qa {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+.bearing-error {
+  color: var(--log-warn);
+}
+
 /* ── Responsive ── */
 @media (max-width: 768px) {
   #app-main {
