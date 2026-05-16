@@ -196,6 +196,19 @@ function buildBoreholes(groups) {
     if (layers.length > 0) {
       const bh = { id, x, y, groundLevel: gl, depth: dep, layers };
       if (gwtDepth != null) bh.gwtDepth = gwtDepth;
+
+      // Drillhole deviation from TRAN group (minimum curvature survey data)
+      const tranRows = (groups['TRAN'] || []).filter(r =>
+        (r['LOCA_ID'] || r['HOLE_ID']) === id
+      );
+      if (tranRows.length >= 2) {
+        bh.deviation = tranRows.map(r => ({
+          depth: parseFloat(r['TRAN_DPTH'] || r['DEPT'] || '0'),
+          incl:  parseFloat(r['TRAN_INCL'] || '0'),
+          azim:  parseFloat(r['TRAN_AZMH'] || r['TRAN_AZIM'] || '0'),
+        })).filter(s => isFinite(s.depth));
+      }
+
       boreholes.push(bh);
     }
   });

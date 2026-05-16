@@ -3,6 +3,52 @@ import { buildStratRankMap, stratigraphicConsistencyPenalty } from './semantic-e
 
 const MIN_BH_DIST = 0.1;
 
+// ── Minimum-curvature drillhole trajectory ─────────────────────────────────────
+// survey = [{depth, incl (° from vertical), azim (° from North)}] sorted ascending
+// Returns [{depth, dx, dy}] cumulative horizontal offsets from collar (dx=Easting, dy=Northing)
+function computeTrajectory(bh) {
+  const survey = bh.deviation;
+  if (!survey || survey.length < 2) return null;
+  const st = [...survey].sort((a, b) => a.depth - b.depth);
+  if (st[0].depth > 0.01) st.unshift({ depth: 0, incl: 0, azim: st[0].azim });
+
+  const result = [{ depth: st[0].depth, dx: 0, dy: 0 }];
+  let dx = 0, dy = 0;
+  for (let i = 1; i < st.length; i++) {
+    const i1 = st[i - 1].incl * Math.PI / 180, i2 = st[i].incl * Math.PI / 180;
+    const a1 = st[i - 1].azim * Math.PI / 180, a2 = st[i].azim * Math.PI / 180;
+    const di = st[i].depth - st[i - 1].depth;
+    // Dogleg severity → ratio factor for minimum curvature
+    const cosDL = Math.cos(i2 - i1) - Math.sin(i1) * Math.sin(i2) * (1 - Math.cos(a2 - a1));
+    const dl = Math.acos(Math.max(-1, Math.min(1, cosDL)));
+    const RF = dl < 0.0001 ? 1 : 2 * Math.tan(dl / 2) / dl;
+    // Easting (+x) and Northing (+y) increments
+    dx += di / 2 * (Math.sin(i1) * Math.sin(a1) + Math.sin(i2) * Math.sin(a2)) * RF;
+    dy += di / 2 * (Math.sin(i1) * Math.cos(a1) + Math.sin(i2) * Math.cos(a2)) * RF;
+    result.push({ depth: st[i].depth, dx, dy });
+  }
+  return result;
+}
+
+// Returns {dx, dy} — horizontal offset from collar at measured depth d
+function getDeviatedXY(bh, d) {
+  const traj = bh._trajectory;
+  if (!traj) return { dx: 0, dy: 0 };
+  if (d <= traj[0].depth) return { dx: traj[0].dx, dy: traj[0].dy };
+  const last = traj[traj.length - 1];
+  if (d >= last.depth) return { dx: last.dx, dy: last.dy };
+  for (let i = 1; i < traj.length; i++) {
+    if (traj[i].depth >= d) {
+      const t = (d - traj[i - 1].depth) / (traj[i].depth - traj[i - 1].depth);
+      return {
+        dx: traj[i - 1].dx + t * (traj[i].dx - traj[i - 1].dx),
+        dy: traj[i - 1].dy + t * (traj[i].dy - traj[i - 1].dy),
+      };
+    }
+  }
+  return { dx: last.dx, dy: last.dy };
+}
+
 // ── Gaussian elimination with partial pivoting ────────────────────────────────
 function solveLinear(Ain, bin) {
   const n = bin.length;
@@ -86,22 +132,28 @@ class TinyMLP {
 }
 
 // ── BH data at a query depth ──────────────────────────────────────────────────
+// Uses deviated (minimum-curvature) position when trajectory data is available.
 function getCandidates(boreholes, x, y, z, sinAz = 0, cosAz = 1, anisoRatio = 1) {
   const out = [];
   for (const bh of boreholes) {
-    // Anisotropic distance: scale perpendicular-to-strike by 1/ratio
-    const dx = bh.x - x, dy = bh.y - y;
-    const dAlong = dx * sinAz + dy * cosAz;         // along strike
-    const dPerp  = dx * cosAz - dy * sinAz;         // across strike
-    const dist2d = Math.hypot(dAlong, dPerp / anisoRatio);
-    const depth  = (bh.groundLevel ?? 0) - z;
+    const depth = (bh.groundLevel ?? 0) - z;
     if (!bh.layers.length || depth < 0) continue;
     let layer;
-    if      (depth < bh.layers[0].top)                        layer = bh.layers[0];
-    else if (depth > bh.layers[bh.layers.length - 1].base)    layer = bh.layers[bh.layers.length - 1];
+    if      (depth < bh.layers[0].top)                       layer = bh.layers[0];
+    else if (depth > bh.layers[bh.layers.length - 1].base)   layer = bh.layers[bh.layers.length - 1];
     else layer = bh.layers.find(l => depth >= l.top && depth <= l.base);
     if (!layer?.unitCode) continue;
-    out.push({ dist: Math.max(dist2d, MIN_BH_DIST), x: bh.x, y: bh.y,
+
+    // Apply deviation correction at layer midpoint
+    const layerMid = (layer.top + layer.base) * 0.5;
+    const { dx: devX, dy: devY } = getDeviatedXY(bh, layerMid);
+    const bhX = bh.x + devX, bhY = bh.y + devY;
+
+    const ddx = bhX - x, ddy = bhY - y;
+    const dAlong = ddx * sinAz + ddy * cosAz;
+    const dPerp  = ddx * cosAz - ddy * sinAz;
+    const dist2d = Math.hypot(dAlong, dPerp / anisoRatio);
+    out.push({ dist: Math.max(dist2d, MIN_BH_DIST), x: bhX, y: bhY,
                unitCode: layer.unitCode, layerCert: layer.certainty ?? 0.8 });
   }
   return out;
@@ -216,6 +268,68 @@ function gpVote(neighbours, qx, qy, unitIndex, unknownId, lengthScale) {
   return makeResult(bc, sc, bv / wPos, wPos, sv, certainty, unitIndex, unknownId);
 }
 
+// ── Universal Kriging (polynomial drift removal, order 1 = linear trend) ──────
+//   Fits a polynomial trend surface to the domain, then Kriges residuals.
+//   Order 0 = Ordinary Kriging. Order 1 = linear (regional dip/tilt).
+//   Order 2 = quadratic (fold structures, bowl-shaped stratigraphy).
+function ukVote(neighbours, qx, qy, unitIndex, unknownId, range, sill, trendOrder) {
+  const n = neighbours.length;
+  const nugget = sill * 0.05;
+
+  const basis = (x, y) => {
+    if (trendOrder <= 0) return [1];
+    if (trendOrder === 1) return [1, x, y];
+    return [1, x, y, x * y, x * x, y * y];
+  };
+  const f0 = basis(qx, qy);
+  const p  = f0.length;
+  if (n < p) return null; // underdetermined
+
+  const sz = n + p;
+  const K = Array.from({ length: sz }, () => new Array(sz).fill(0));
+
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const d = Math.hypot(neighbours[i].x - neighbours[j].x, neighbours[i].y - neighbours[j].y);
+      K[i][j] = i === j ? sill + nugget : sill - gammaSpherical(d, range, sill);
+    }
+    const fi = basis(neighbours[i].x, neighbours[i].y);
+    for (let j = 0; j < p; j++) {
+      K[i][n + j] = fi[j];
+      K[n + j][i] = fi[j];
+    }
+  }
+
+  const rhs = new Array(sz).fill(0);
+  for (let i = 0; i < n; i++) {
+    const d = Math.hypot(neighbours[i].x - qx, neighbours[i].y - qy);
+    rhs[i] = sill - gammaSpherical(d, range, sill);
+  }
+  for (let j = 0; j < p; j++) rhs[n + j] = f0[j];
+
+  let sol;
+  try { sol = solveLinear(K, rhs); } catch { return null; }
+
+  const krigVar = Math.max(0,
+    sill
+    - sol.slice(0, n).reduce((s, wi, i) => s + wi * rhs[i], 0)
+    - sol.slice(n).reduce((s, li, j) => s + li * f0[j], 0));
+  const certainty = Math.max(0.05, 1 - Math.sqrt(krigVar / (sill + 1e-9)));
+
+  const votes = {};
+  let wPos = 0;
+  for (let i = 0; i < n; i++) {
+    const wi = Math.max(0, sol[i]) * neighbours[i].layerCert;
+    votes[neighbours[i].unitCode] = (votes[neighbours[i].unitCode] ?? 0) + wi;
+    wPos += wi;
+  }
+  if (wPos < 1e-12) return null;
+  const sorted = Object.entries(votes).sort((a, b) => b[1] - a[1]);
+  const [bc, bv] = sorted[0];
+  const [sc, sv = 0] = sorted[1] ?? [];
+  return makeResult(bc, sc, bv / wPos, wPos, sv, certainty * (bv / wPos), unitIndex, unknownId);
+}
+
 // ── Neural Network: train on BH observations, return per-voxel predict fn ────
 //   A two-layer MLP (3 → 32 → nUnits) trained with mini-batch SGD and a
 //   cosine-annealed learning rate. Each BH layer contributes three training
@@ -292,6 +406,7 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
   const kNeighbors  = Math.max(1, options.kNeighbors ?? 5);
   const idwPower    = Math.max(0.5, options.idwPower ?? 2);
   const method      = options.method ?? 'idw';
+  const trendOrder  = options.trendOrder ?? 1;
   const onProgress  = options.onProgress ?? null;
   const stratRanks  = buildStratRankMap(options.stratOrder ?? []);
   // Anisotropy: anisoAzimuth = strike direction (degrees from North), anisoRatio > 1 = elongated along strike
@@ -299,6 +414,11 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
   const anisoRatio = Math.max(1, options.anisoRatio ?? 1);
   const anisoSinAz = Math.sin(anisoAz);
   const anisoCosAz = Math.cos(anisoAz);
+
+  // Pre-compute deviation trajectories (minimum curvature)
+  for (const bh of boreholes) {
+    bh._trajectory = (bh.deviation?.length >= 2) ? computeTrajectory(bh) : null;
+  }
 
   // ── 1. Bounding box ────────────────────────────────────────────────────────
   const xs  = boreholes.map(b => b.x);
@@ -337,7 +457,7 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
     log(`Cell size auto-increased to ${cellSize} m (>500 K voxel cap)`, 'warn');
   }
 
-  const methodLabel = { idw: 'IDW', kriging: 'Kriging', gp: 'Gauss. Process', nn: 'Neural Net' }[method] ?? method;
+  const methodLabel = { idw: 'IDW', kriging: 'Kriging', gp: 'Gauss. Process', nn: 'Neural Net', uk: `UK (order ${trendOrder})` }[method] ?? method;
   log(`Grid ${nx}×${ny}×${nz} = ${(nx * ny * nz).toLocaleString()} voxels @ ${cellSize} m | ${methodLabel} K=${kNeighbors}`, 'info');
 
   const total       = nx * ny * nz;
@@ -390,6 +510,9 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
             result = nearestFallback(boreholes, x, y, unitIndex, unknownId);
           } else if (method === 'kriging') {
             result = krigingVote(nb, x, y, unitIndex, unknownId, range, sill)
+                  ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
+          } else if (method === 'uk') {
+            result = ukVote(nb, x, y, unitIndex, unknownId, range, sill, trendOrder)
                   ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
           } else if (method === 'gp') {
             result = gpVote(nb, x, y, unitIndex, unknownId, gpLen)

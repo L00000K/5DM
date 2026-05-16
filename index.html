@@ -234,7 +234,22 @@
               <span class="method-label">Neural Network</span>
               <span class="method-desc">MLP — learns non-linear spatial patterns</span>
             </label>
+            <label class="method-option">
+              <input type="radio" name="interp-method" value="uk">
+              <span class="method-label">Universal Kriging</span>
+              <span class="method-desc">Kriging with polynomial drift — models regional dip/tilt</span>
+            </label>
           </div>
+        </div>
+
+        <div id="uk-trend-panel" style="display:none;margin-top:6px">
+          <div class="settings-divider">Trend Surface Order</div>
+          <select id="uk-trend-order" class="isopach-select" style="width:100%">
+            <option value="0">Order 0 — constant (≡ Ordinary Kriging)</option>
+            <option value="1" selected>Order 1 — linear (regional dip / tilt)</option>
+            <option value="2">Order 2 — quadratic (bowl / fold structure)</option>
+          </select>
+          <p class="hint" style="margin-top:4px">Higher order captures larger-scale trends but needs more boreholes to be stable.</p>
         </div>
 
         <div id="variogram-panel" style="display:none;margin-top:6px">

@@ -52,6 +52,7 @@ export const AppState = {
   stratOrder: [],
   anisoAzimuth: 0,
   anisoRatio: 1,
+  trendOrder: 1,
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
@@ -142,11 +143,18 @@ function initInterpolationSettings() {
     radio.addEventListener('change', () => {
       AppState.interpMethod = radio.value;
       const vPanel = document.getElementById('variogram-panel');
-      if (vPanel) vPanel.style.display = radio.value === 'kriging' ? 'block' : 'none';
-      if (radio.value === 'kriging' && AppState.classifiedBH.length) {
+      const ukPanel = document.getElementById('uk-trend-panel');
+      if (vPanel) vPanel.style.display = ['kriging', 'uk'].includes(radio.value) ? 'block' : 'none';
+      if (ukPanel) ukPanel.style.display = radio.value === 'uk' ? 'block' : 'none';
+      if (['kriging', 'uk'].includes(radio.value) && AppState.classifiedBH.length) {
         _renderVariogram(AppState.classifiedBH);
       }
     });
+  });
+
+  const trendSel = document.getElementById('uk-trend-order');
+  trendSel?.addEventListener('change', () => {
+    AppState.trendOrder = parseInt(trendSel.value);
   });
 
   const azInput   = document.getElementById('aniso-azimuth');
@@ -561,6 +569,7 @@ function initBuildModel() {
           stratOrder: _stratOrder,
           anisoAzimuth: AppState.anisoAzimuth,
           anisoRatio:   AppState.anisoRatio,
+          trendOrder:   AppState.trendOrder,
           onProgress: p => setBuildProgress(p) }
       );
       showBuildProgress(false);
