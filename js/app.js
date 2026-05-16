@@ -7,6 +7,7 @@ import { initScene } from './scene.js';
 import { initLayerControls } from './layer-controls.js';
 import { initExporter } from './exporter.js';
 import { parseConstraints, applyConstraints, constraintSummary } from './constraints.js';
+import { parseGeoMap } from './geo-map.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -115,14 +116,17 @@ function initInterpolationSettings() {
   });
 }
 
-// ── Collapsible topo section ───────────────────────────────────────────────────
+// ── Collapsible sections ───────────────────────────────────────────────────────
 function initCollapsibles() {
-  const toggle = document.getElementById('topo-toggle');
-  const section = document.getElementById('topo-section');
-  toggle?.addEventListener('click', () => {
-    section.hidden = !section.hidden;
-    const arrow = toggle.querySelector('.collapse-arrow');
-    if (arrow) arrow.textContent = section.hidden ? '›' : '⌄';
+  [['topo-toggle', 'topo-section'], ['geomap-toggle', 'geomap-section']].forEach(([tid, sid]) => {
+    const toggle  = document.getElementById(tid);
+    const section = document.getElementById(sid);
+    if (!toggle || !section) return;
+    toggle.addEventListener('click', () => {
+      section.hidden = !section.hidden;
+      const arrow = toggle.querySelector('.collapse-arrow');
+      if (arrow) arrow.textContent = section.hidden ? '›' : '⌄';
+    });
   });
 }
 
@@ -291,6 +295,7 @@ function initConstraints() {
     AppState.parsedConstraints = parseConstraints(text, AppState.geoUnits);
     const count = applyConstraints(AppState.voxelGrid, AppState.parsedConstraints, AppState.geoUnits);
     AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
+    updateVolumeStats();
     renderConstraintSummary(constraintSummary(AppState.parsedConstraints));
     log(`Constraints applied — ${count} voxels reassigned.`, 'ok');
   });
@@ -359,6 +364,7 @@ function initBuildModel() {
       );
       updateInfoPanel();
       AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
+      updateVolumeStats();
       log(`Model ready — ${AppState.voxelGrid.nx}×${AppState.voxelGrid.ny}×${AppState.voxelGrid.nz} grid.`, 'ok');
       setEnabled('btn-export-gltf', true);
       setEnabled('btn-export-obj', true);
@@ -374,6 +380,7 @@ function initBuildModel() {
         if (actionable.length) {
           const count = applyConstraints(AppState.voxelGrid, AppState.parsedConstraints, AppState.geoUnits);
           AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
+          updateVolumeStats();
           renderConstraintSummary(constraintSummary(AppState.parsedConstraints));
           if (count > 0) log(`Auto-applied ${actionable.length} constraints — ${count} voxels adjusted.`, 'ok');
         }
@@ -425,6 +432,127 @@ export function updateLegend() {
       if (AppState.scene) AppState.scene.setUnitVisibility(unit.code, hidden);
     });
     container.appendChild(item);
+  });
+}
+
+// ── View mode buttons ──────────────────────────────────────────────────────────
+function initViewModeButtons() {
+  document.querySelectorAll('.view-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (AppState.scene) AppState.scene.setViewMode(btn.dataset.mode);
+    });
+  });
+}
+
+// ── Virtual BH button ──────────────────────────────────────────────────────────
+function initVBHButton() {
+  const btn = document.getElementById('btn-vbh');
+  const toggle = () => {
+    if (!AppState.scene) return;
+    AppState.scene.setVBHMode(!AppState.scene._vbhMode);
+    btn?.classList.toggle('active', AppState.scene._vbhMode);
+  };
+  btn?.addEventListener('click', toggle);
+  window.addEventListener('geomodel:toggle-vbh', toggle);
+  document.getElementById('log-popup-close')?.addEventListener('click', () => {
+    AppState.scene?._hideLogPopup();
+    AppState.scene?.setVBHMode(false);
+    btn?.classList.remove('active');
+  });
+}
+
+// ── Geological map import ──────────────────────────────────────────────────────
+function initGeoMapImport() {
+  const dropZone  = document.getElementById('drop-geomap');
+  const fileInput = document.getElementById('file-geomap');
+  const fileInfo  = document.getElementById('geomap-file-info');
+  if (!dropZone || !fileInput) return;
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') fileInput.click();
+  });
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const file = e.dataTransfer?.files[0];
+    if (file) parseGeoMapFile(file, fileInfo);
+  });
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) parseGeoMapFile(fileInput.files[0], fileInfo);
+  });
+}
+
+function parseGeoMapFile(file, infoEl) {
+  if (!AppState.geoUnits.length) {
+    log('Load borehole data first so unit codes can be resolved.', 'warn');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const { boreholes, count, skipped } = parseGeoMap(
+      e.target.result, AppState.geoUnits, AppState.rawBoreholes
+    );
+    if (!count) {
+      log(`Geological map: no valid rows parsed (${skipped} skipped).`, 'warn');
+      return;
+    }
+    const real = AppState.rawBoreholes.filter(b => !b.synthetic);
+    AppState.classifiedBH = [...real, ...boreholes];
+    infoEl.innerHTML = `<div class="file-item">
+      <span class="file-name">${escHtml(file.name)}</span>
+      <span class="file-size">${count} pts</span></div>`;
+    log(`Geological map: ${count} constraint points added (${skipped} skipped).`, 'ok');
+  };
+  reader.readAsText(file);
+}
+
+// ── Surface opacity ────────────────────────────────────────────────────────────
+function initSurfaceOpacity() {
+  const slider = document.getElementById('surface-opacity');
+  const val    = document.getElementById('surface-opacity-val');
+  slider?.addEventListener('input', () => {
+    const op = parseInt(slider.value) / 100;
+    if (val) val.textContent = `${slider.value}%`;
+    if (AppState.scene) AppState.scene.setSurfaceOpacity(op);
+  });
+}
+
+// ── Volume statistics ──────────────────────────────────────────────────────────
+function updateVolumeStats() {
+  const el = document.getElementById('unit-volumes');
+  if (!el) return;
+  const grid = AppState.voxelGrid;
+  const geoUnits = AppState.geoUnits;
+  if (!grid || !geoUnits.length) {
+    el.innerHTML = '<p class="hint">Build model to see volumes</p>';
+    return;
+  }
+  const cellVol = grid.cellSize * grid.cellSize * grid.cellHeight;
+  const counts = {};
+  geoUnits.forEach(u => { counts[u.id] = 0; });
+  grid.unitIds.forEach(id => { if (id && counts[id] !== undefined) counts[id]++; });
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+
+  el.innerHTML = '';
+  geoUnits.forEach(unit => {
+    const n   = counts[unit.id] ?? 0;
+    const vol = (n * cellVol);
+    const pct = total > 0 ? (n / total * 100).toFixed(0) : 0;
+    const row = document.createElement('div');
+    row.className = 'vol-row';
+    row.innerHTML = `
+      <div class="vol-row-hdr">
+        <span class="vol-code" style="color:${unit.color}">${escHtml(unit.code)}</span>
+        <span class="vol-num">${vol < 1000 ? vol.toFixed(0) : (vol/1000).toFixed(1)+'k'} m³</span>
+        <span class="vol-pct">${pct}%</span>
+      </div>
+      <div class="vol-bar-wrap">
+        <div class="vol-bar-fill" style="width:${pct}%;background:${unit.color}"></div>
+      </div>`;
+    el.appendChild(row);
   });
 }
 
@@ -536,15 +664,19 @@ async function init() {
   initInterpolationSettings();
   initCollapsibles();
   initTopoUpload();
+  initGeoMapImport();
   initReset();
   initApiKeyModal();
   initCertaintySlider();
   initTransparencyControls();
+  initSurfaceOpacity();
   initVerticalExaggeration();
   initBHSticksToggle();
   initConstraints();
   initRunAI();
   initBuildModel();
+  initViewModeButtons();
+  initVBHButton();
   initWelcomeOverlay();
 
   // Sample tile buttons (left panel)

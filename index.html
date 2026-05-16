@@ -48,6 +48,22 @@
         </div>
         <div id="bh-file-list" class="file-list"></div>
 
+        <!-- Geological map (collapsible) -->
+        <div class="collapsible-hdr" id="geomap-toggle">
+          <span>Geological Map <span class="badge-opt">CSV optional</span></span>
+          <span class="collapse-arrow">›</span>
+        </div>
+        <div id="geomap-section" class="collapsible-body" hidden>
+          <div class="drop-zone drop-zone-sm" id="drop-geomap" tabindex="0" role="button">
+            <div class="drop-icon" style="font-size:18px">⬇</div>
+            <div class="drop-label" style="font-size:12px">Geological Map CSV</div>
+            <div class="drop-hint">Columns: X, Y, UnitCode</div>
+            <input type="file" id="file-geomap" accept=".csv,.txt" hidden>
+          </div>
+          <div id="geomap-file-info" class="file-list"></div>
+          <p class="hint">Pins surface outcrop in the interpolation</p>
+        </div>
+
         <!-- Topography (collapsible) -->
         <div class="collapsible-hdr" id="topo-toggle">
           <span>Topography <span class="badge-opt">CSV optional</span></span>
@@ -312,10 +328,31 @@
       <!-- Viewer controls (bottom-left) -->
       <div class="viewer-controls">
         <button id="btn-open-slicer" class="btn-open-slicer">✂ Section</button>
+        <button id="btn-vbh" class="btn-open-slicer" title="Virtual Borehole — click on model (K)">⊕ VBH</button>
+        <div class="view-mode-ctrl">
+          <button class="view-mode-btn active" data-mode="voxels" title="Show voxels (V)">Voxels</button>
+          <button class="view-mode-btn" data-mode="surfaces" title="Show surfaces (S)">Surfaces</button>
+          <button class="view-mode-btn" data-mode="both" title="Show both (B)">Both</button>
+        </div>
         <div class="vert-exag-ctrl">
           <span class="vert-exag-lbl">VE</span>
           <input type="number" id="vert-exag" value="1" min="0.1" max="20" step="0.5" class="vert-exag-input">
           <span class="vert-exag-x">×</span>
+        </div>
+      </div>
+
+      <!-- Virtual BH / BH click log popup -->
+      <div id="log-popup" class="log-popup" hidden>
+        <div class="log-popup-hdr">
+          <div>
+            <div id="log-popup-title" class="log-popup-title">Virtual BH</div>
+            <div id="log-popup-subtitle" class="log-popup-sub"></div>
+          </div>
+          <button id="log-popup-close" class="slicer-close-btn" title="Close">✕</button>
+        </div>
+        <div class="log-popup-body">
+          <div id="log-strips" class="log-strips"></div>
+          <div id="log-labels" class="log-labels"></div>
         </div>
       </div>
 
@@ -375,6 +412,22 @@
           <input type="checkbox" id="show-bh-sticks" checked>
           <span>Show BH log sticks</span>
         </label>
+
+        <div class="field-group" style="margin-top:10px">
+          <label>Surface Opacity</label>
+          <div class="range-row">
+            <input type="range" id="surface-opacity" min="0" max="100" value="55">
+            <span id="surface-opacity-val" class="range-readout">55%</span>
+          </div>
+          <p class="hint">Applies to formation surfaces view</p>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3>Unit Volumes</h3>
+        <div id="unit-volumes" class="unit-volumes">
+          <p class="hint">Build model to see volumes</p>
+        </div>
       </div>
 
       <div class="panel-section">
