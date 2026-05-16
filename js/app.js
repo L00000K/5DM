@@ -460,6 +460,7 @@ function initReset() {
     setEnabled('btn-export-pointcloud', false);
     setEnabled('btn-export-stats', false);
     setEnabled('btn-export-bh-csv', false);
+    setEnabled('btn-export-ags', false);
     setEnabled('btn-export-props', false);
     setEnabled('btn-auto-params', false);
     setEnabled('btn-isopach', false);
@@ -541,6 +542,7 @@ async function loadDemoSite(demoName) {
     setEnabled('btn-run-ai', true);
     setEnabled('btn-build-model', true);
     setEnabled('btn-export-bh-csv', true);
+      setEnabled('btn-export-ags', true);
     setEnabled('btn-export-props', true);
     setEnabled('btn-auto-params', true);
     setEnabled('btn-interpret-geology', true);
@@ -607,6 +609,7 @@ function initRunAI() {
       AppState.geoUnits = units;
       AppState.classifiedBH = classified;
       setEnabled('btn-export-bh-csv', true);
+      setEnabled('btn-export-ags', true);
       setEnabled('btn-export-props', true);
       setEnabled('btn-auto-params', true);
       updateLegend();
@@ -1442,6 +1445,7 @@ function initSession() {
     setEnabled('btn-run-ai', AppState.classifiedBH.length > 0);
     setEnabled('btn-build-model', AppState.classifiedBH.length > 0);
     setEnabled('btn-export-bh-csv', true);
+      setEnabled('btn-export-ags', true);
     setEnabled('btn-export-props', true);
     setEnabled('btn-auto-params', true);
     hideWelcome();
@@ -2347,10 +2351,10 @@ function updateUnitStats() {
   }
   const { nx, ny, nz, cellHeight: ch, origin, unitIds, certainty } = grid;
 
-  // Compute per-unit stats
+  // Per-unit stats + depth histogram (count per iz level)
   const stats = {};
   geoUnits.forEach(u => {
-    stats[u.id] = { count: 0, certSum: 0, minElev: Infinity, maxElev: -Infinity };
+    stats[u.id] = { count: 0, certSum: 0, minElev: Infinity, maxElev: -Infinity, depthCounts: new Float32Array(nz) };
   });
 
   for (let iz = 0; iz < nz; iz++) {
@@ -2363,18 +2367,39 @@ function updateUnitStats() {
         const s = stats[uid];
         s.count++;
         s.certSum += certainty[flat];
+        s.depthCounts[iz]++;
         s.minElev  = Math.min(s.minElev, elev);
         s.maxElev  = Math.max(s.maxElev, elev);
       }
     }
   }
 
+  // Volume per voxel
+  const { cellSize: cs } = grid;
+  const voxelVol = cs * cs * ch;
+
   el.innerHTML = '';
   geoUnits.forEach(unit => {
-    const s   = stats[unit.id];
+    const s = stats[unit.id];
     if (!s || !s.count) return;
-    const avgCert = (s.certSum / s.count * 100).toFixed(0);
-    const thick   = (s.maxElev - s.minElev).toFixed(1);
+    const avgCert  = (s.certSum / s.count * 100).toFixed(0);
+    const thick    = (s.maxElev - s.minElev).toFixed(1);
+    const volume   = (s.count * voxelVol).toFixed(0);
+    const maxDC    = Math.max(...s.depthCounts);
+
+    // Build inline depth histogram SVG (horizontal bars, each iz = one row)
+    const svgH  = Math.min(nz * 4, 120);
+    const svgW  = 80;
+    const barMaxW = svgW - 2;
+    const barH  = Math.max(1, svgH / nz);
+    const bars  = Array.from(s.depthCounts)
+      .reverse() // top of model at top
+      .map((cnt, i) => {
+        const w = maxDC > 0 ? (cnt / maxDC) * barMaxW : 0;
+        const y = i * barH;
+        return `<rect x="0" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${(barH - 0.5).toFixed(1)}" fill="${unit.color}" opacity="0.8"/>`;
+      }).join('');
+
     const div = document.createElement('div');
     div.className = 'stat-row';
     div.innerHTML = `
@@ -2383,15 +2408,17 @@ function updateUnitStats() {
         <span class="stat-code">${escHtml(unit.code)}</span>
         <span class="stat-name">${escHtml(unit.name)}</span>
       </div>
-      <div class="stat-grid">
-        <span class="stat-lbl">Span</span>
-        <span class="stat-val">${thick} m</span>
-        <span class="stat-lbl">Cert.</span>
-        <span class="stat-val">${avgCert}%</span>
-        <span class="stat-lbl">Top</span>
-        <span class="stat-val">${s.maxElev.toFixed(1)} m</span>
-        <span class="stat-lbl">Base</span>
-        <span class="stat-val">${s.minElev.toFixed(1)} m</span>
+      <div style="display:flex;gap:8px;align-items:flex-start;margin-top:4px">
+        <svg width="${svgW}" height="${svgH}" style="flex-shrink:0;background:var(--bg-surface);border-radius:3px" title="Depth distribution">
+          ${bars}
+        </svg>
+        <div class="stat-grid" style="flex:1">
+          <span class="stat-lbl">Span</span><span class="stat-val">${thick} m</span>
+          <span class="stat-lbl">Cert.</span><span class="stat-val">${avgCert}%</span>
+          <span class="stat-lbl">Top</span><span class="stat-val">${s.maxElev.toFixed(1)} m</span>
+          <span class="stat-lbl">Base</span><span class="stat-val">${s.minElev.toFixed(1)} m</span>
+          <span class="stat-lbl">Vol</span><span class="stat-val">${Number(volume).toLocaleString()} m³</span>
+        </div>
       </div>`;
     el.appendChild(div);
   });
@@ -2610,6 +2637,7 @@ function parseGeoMapFile(file, infoEl) {
       <span class="file-name">${escHtml(file.name)}</span>
       <span class="file-size">${count} pts</span></div>`;
     setEnabled('btn-export-bh-csv', true);
+      setEnabled('btn-export-ags', true);
     log(`Geological map: ${count} constraint points added (${skipped} skipped).`, 'ok');
   };
   reader.readAsText(file);

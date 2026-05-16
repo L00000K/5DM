@@ -316,6 +316,81 @@ export function initExporter() {
     log(`Formation surfaces exported — ${objParts.length} surface(s).`, 'ok');
   });
 
+  // ── Export classified BH data as AGS 4.x ────────────────────────────────
+  document.getElementById('btn-export-ags')?.addEventListener('click', () => {
+    const bhs = AppState.classifiedBH?.filter(b => !b.synthetic);
+    if (!bhs?.length) { log('No borehole data to export.', 'warn'); return; }
+    const lines = [];
+    const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const d = v => v != null ? `"${parseFloat(v).toFixed(3)}"` : '""';
+
+    // AGS 4.x file header
+    lines.push('"GROUP","PROJ"');
+    lines.push('"HEADING","PROJ_ID","PROJ_NAME","PROJ_LOC","PROJ_CLNT","PROJ_CONT","PROJ_ENG","PROJ_DATE"');
+    lines.push('"UNIT","","","","","","","yyyy-mm-dd"');
+    const today = new Date().toISOString().slice(0, 10);
+    lines.push(`"DATA","GeoModel AI Export","","","","","",${q(today)}`);
+    lines.push('');
+
+    // TRAN group (file transmission)
+    lines.push('"GROUP","TRAN"');
+    lines.push('"HEADING","TRAN_RTYP","TRAN_PROD","TRAN_VER","TRAN_STAT","TRAN_DESC","TRAN_AGS","TRAN_RECV","TRAN_DTTM"');
+    lines.push('"UNIT","","","","","","","",""');
+    lines.push(`"DATA","DATA","GeoModel AI","1.0","FINAL","Classified ground investigation data","4.0","","${today}T00:00:00"`);
+    lines.push('');
+
+    // LOCA group — borehole locations
+    lines.push('"GROUP","LOCA"');
+    lines.push('"HEADING","LOCA_ID","LOCA_TYPE","LOCA_STAT","LOCA_NATE","LOCA_NATN","LOCA_GREF","LOCA_GL","LOCA_FDEP","LOCA_STAR","LOCA_PURP","LOCA_TERM","LOCA_ENDD"');
+    lines.push('"UNIT","","","","m","m","","m","m","yyyy-mm-dd","","",""');
+    bhs.forEach(bh => {
+      const dep = bh.depth ?? (bh.layers.length ? Math.max(...bh.layers.map(l => l.base)) : 0);
+      lines.push([
+        '"DATA"', q(bh.id), '"BH"', '"S"',
+        d(bh.x), d(bh.y), '"OSGB36"', d(bh.groundLevel),
+        d(dep), q(today), '"Geotechnical investigation"', '"GND"', '""',
+      ].join(','));
+    });
+    lines.push('');
+
+    // GEOL group — geology layers (classified)
+    lines.push('"GROUP","GEOL"');
+    lines.push('"HEADING","LOCA_ID","GEOL_TOP","GEOL_BASE","GEOL_DESC","GEOL_LEG","GEOL_UNIT","GEOL_CERT"');
+    lines.push('"UNIT","","m","m","","","",""');
+    bhs.forEach(bh => {
+      bh.layers.forEach(l => {
+        const unit = AppState.geoUnits.find(u => u.code === l.unitCode);
+        lines.push([
+          '"DATA"', q(bh.id), d(l.top), d(l.base),
+          q(l.description ?? ''), q(l.unitCode ?? ''),
+          q(unit?.name ?? ''), d(l.certainty ?? ''),
+        ].join(','));
+      });
+    });
+    lines.push('');
+
+    // ISPT group — SPT data where present
+    const hasN = bhs.some(bh => bh.layers.some(l => l.sptN != null));
+    if (hasN) {
+      lines.push('"GROUP","ISPT"');
+      lines.push('"HEADING","LOCA_ID","ISPT_TOP","ISPT_NVAL","ISPT_REP","ISPT_COR"');
+      lines.push('"UNIT","","m","","",""');
+      bhs.forEach(bh => {
+        bh.layers.forEach(l => {
+          if (l.sptN == null) return;
+          const mid = ((l.top ?? 0) + (l.base ?? 0)) / 2;
+          lines.push(['"DATA"', q(bh.id), d(mid), d(l.sptN), '"Y"', '""'].join(','));
+        });
+      });
+      lines.push('');
+    }
+
+    const ags = lines.join('\r\n');
+    downloadBlob(new Blob([ags], { type: 'text/plain;charset=utf-8' }),
+      `geomodel-export-${today}.ags`);
+    log(`AGS 4.x exported — ${bhs.length} borehole(s).`, 'ok');
+  });
+
   // ── Export borehole logs as CSV ──────────────────────────────────────────
   document.getElementById('btn-export-bh-csv')?.addEventListener('click', () => {
     const bhs = AppState.classifiedBH?.filter(b => !b.synthetic);
