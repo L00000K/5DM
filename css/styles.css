@@ -1345,6 +1345,19 @@ input[type="range"] {
   text-overflow: ellipsis;
 }
 
+/* ── Isopach select ── */
+.isopach-select {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 3px 6px;
+  cursor: pointer;
+  max-width: 140px;
+}
+.isopach-select:focus { outline: none; border-color: var(--accent); }
+
 /* ── Unit volumes ── */
 .unit-volumes {
   display: flex;

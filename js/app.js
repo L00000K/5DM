@@ -9,6 +9,7 @@ import { initExporter } from './exporter.js';
 import { parseConstraints, applyConstraints, constraintSummary } from './constraints.js';
 import { parseGeoMap } from './geo-map.js';
 import { FenceSection } from './fence-section.js';
+import { IsopachMap  } from './isopach.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -29,6 +30,7 @@ export const AppState = {
   parsedConstraints: [],
   topoPoints: null,
   fenceSection: null,
+  isopachMap: null,
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
@@ -219,6 +221,7 @@ function initReset() {
     setEnabled('btn-export-gltf', false);
     setEnabled('btn-export-obj', false);
     setEnabled('btn-export-json', false);
+    setEnabled('btn-isopach', false);
     if (AppState.scene) AppState.scene.clear();
     showWelcome();
     switchTab('data');
@@ -384,6 +387,7 @@ function initBuildModel() {
       setEnabled('btn-export-json', true);
       setEnabled('btn-build-model', true);
       setEnabled('btn-apply-constraints', true);
+      setEnabled('btn-isopach', true);
 
       // Auto-apply pre-set constraints
       const constraintText = document.getElementById('constraints-text').value.trim();
@@ -406,6 +410,16 @@ function initBuildModel() {
       console.error(err);
       setEnabled('btn-build-model', true);
     }
+  });
+}
+
+// ── Isopach map ──────────────────────────────────────────────────────────────
+function initIsopachMap() {
+  AppState.isopachMap = new IsopachMap();
+
+  document.getElementById('btn-isopach')?.addEventListener('click', () => {
+    if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
+    AppState.isopachMap.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
   });
 }
 
@@ -961,6 +975,7 @@ async function init() {
   initBuildModel();
   initViewModeButtons();
   initVBHButton();
+  initIsopachMap();
   initFenceSection();
   initScreenshot();
   initBackgroundToggle();

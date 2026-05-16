@@ -310,6 +310,21 @@
         </div>
       </div>
 
+      <!-- Isopach / thickness map panel -->
+      <div id="isopach-panel" class="isopach-panel fence-panel" hidden>
+        <div class="fence-panel-hdr">
+          <span class="fence-title">Isopach Map</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <select id="isopach-unit-select" class="isopach-select"></select>
+            <button id="isopach-export" class="btn-ghost btn-sm" title="Export as PNG">⬇ PNG</button>
+            <button id="isopach-close" class="slicer-close-btn" title="Close">✕</button>
+          </div>
+        </div>
+        <div class="fence-canvas-wrap">
+          <canvas id="isopach-canvas" class="fence-canvas"></canvas>
+        </div>
+      </div>
+
       <!-- Fence / cross-section panel -->
       <div id="fence-panel" class="fence-panel" hidden>
         <div class="fence-panel-hdr">
@@ -482,6 +497,7 @@
         <div id="unit-volumes" class="unit-volumes">
           <p class="hint">Build model to see volumes</p>
         </div>
+        <button id="btn-isopach" class="btn-secondary btn-sm" disabled style="margin-top:8px;width:100%">⊞ Isopach Map</button>
       </div>
 
       <div class="panel-section">
