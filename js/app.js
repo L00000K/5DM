@@ -19,6 +19,7 @@ import { calculateSettlement, renderSettlementResults } from './settlement.js';
 import { calculateBearingCapacity, renderBearingResults } from './bearing.js';
 import { calculatePileCapacity, renderPileResults } from './pile.js';
 import { parseLabCSV } from './lab-import.js';
+import { BHLogView } from './bh-log-view.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -41,7 +42,9 @@ export const AppState = {
   fenceSection: null,
   isopachMap: null,
   planView: null,
+  bhLogView: null,
   report: null,
+  stratOrder: [],
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
@@ -382,6 +385,7 @@ function initRunAI() {
       updateLegend();
       updateBHTable();
       updateBHChart();
+      AppState.bhLogView?.draw(classified.filter(b => !b.synthetic), units);
       log(`Analysis complete — ${units.length} units classified.`, 'ok');
       setEnabled('btn-build-model', true);
       setEnabled('btn-run-ai', true);
@@ -599,6 +603,7 @@ function initProjectConfig() {
       updateBHChart();
       updateStratColumn();
       renderPropertiesTable(AppState.geoUnits, () => updateLegend());
+      AppState.bhLogView?.draw(AppState.classifiedBH.filter(b => !b.synthetic), AppState.geoUnits);
       setEnabled('btn-run-ai', true);
       setEnabled('btn-build-model', AppState.classifiedBH.length > 0);
       setEnabled('btn-export-bh-csv', AppState.classifiedBH.length > 0);
@@ -956,6 +961,21 @@ function initUnitEditor() {
   btnApply?.addEventListener('click', apply);
   btnClose?.addEventListener('click', () => { modal.hidden = true; });
   modal.querySelector('.modal-backdrop')?.addEventListener('click', () => { modal.hidden = true; });
+}
+
+// ── Borehole Log Strip View ────────────────────────────────────────────────────
+function initBHLogView() {
+  AppState.bhLogView = new BHLogView();
+
+  // Redraw when user switches to the Logs tab and data is available
+  document.querySelectorAll('.tab-btn[data-tab="logs"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const bhs = AppState.classifiedBH.filter(b => !b.synthetic);
+      if (bhs.length && AppState.geoUnits.length) {
+        AppState.bhLogView.draw(bhs, AppState.geoUnits);
+      }
+    });
+  });
 }
 
 // ── Groundwater table ─────────────────────────────────────────────────────────
@@ -1943,6 +1963,7 @@ async function init() {
   initColorPresets();
   initAutoParams();
   initUnitEditor();
+  initBHLogView();
   initWelcomeOverlay();
 
   // Sample tile buttons (left panel)

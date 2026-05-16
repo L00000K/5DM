@@ -43,6 +43,7 @@
         <button class="tab-btn" data-tab="analysis" role="tab">Log</button>
         <button class="tab-btn" data-tab="bhdata" role="tab">Table</button>
         <button class="tab-btn" data-tab="properties" role="tab">Props</button>
+        <button class="tab-btn" data-tab="logs" role="tab">Logs</button>
       </div>
 
       <!-- DATA TAB -->
@@ -276,6 +277,22 @@
           <button id="btn-auto-params" class="btn-secondary btn-sm" disabled title="Use Claude (or demo heuristics) to fill in missing geotechnical parameters for each unit">🧠 Auto Params</button>
           <button id="btn-bs5930-colors" class="btn-secondary btn-sm">⬡ BS5930 Colours</button>
           <button id="btn-export-props" class="btn-secondary btn-sm" disabled>⬇ Props CSV</button>
+        </div>
+      </div>
+
+      <!-- BH LOG STRIPS TAB -->
+      <div class="tab-content" id="tab-logs" role="tabpanel">
+        <p class="hint" style="padding:8px 8px 4px">Graphical borehole log strips with geological units and SPT N values.</p>
+        <div style="padding:6px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <label style="font-size:11px;color:var(--text-mid)">Scale (px/m):
+            <input type="range" id="bh-log-scale" min="8" max="60" value="20" step="2" style="width:80px;vertical-align:middle">
+            <span id="bh-log-scale-lbl" style="font-size:11px;color:var(--text-mid)">20</span>
+          </label>
+          <button id="btn-bh-log-export" class="btn-secondary btn-sm" disabled>⬇ Export SVG</button>
+        </div>
+        <div id="bh-log-wrap" style="overflow:auto;flex:1;min-height:0;padding:0 4px 8px">
+          <svg id="bh-log-svg" xmlns="http://www.w3.org/2000/svg" style="display:block"></svg>
+          <p id="bh-log-hint" class="hint" style="padding:8px">Load classified borehole data to see log strips.</p>
         </div>
       </div>
 
