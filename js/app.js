@@ -245,6 +245,7 @@ function initReset() {
     setEnabled('btn-model-report', false);
     setEnabled('btn-plan-view', false);
     setEnabled('btn-export-contacts', false);
+    setEnabled('btn-export-surfaces', false);
     updateStratColumn();
     if (AppState.scene) AppState.scene.clear();
     showWelcome();
@@ -435,6 +436,7 @@ function initBuildModel() {
       setEnabled('btn-model-report', true);
       setEnabled('btn-plan-view', true);
       setEnabled('btn-export-contacts', true);
+      setEnabled('btn-export-surfaces', true);
       AppState.report?.compute(AppState.voxelGrid, AppState.classifiedBH, AppState.geoUnits);
       AppState._origUnitIds = null; // invalidate topo clip cache after rebuild
       AppState._onTopoClipUpdate?.();
@@ -840,6 +842,120 @@ function initShortcutsModal() {
       show();
     }
   });
+}
+
+// ── Unit Editor Modal ─────────────────────────────────────────────────────────
+function initUnitEditor() {
+  const modal   = document.getElementById('modal-unit-editor');
+  const list    = document.getElementById('unit-editor-list');
+  const btnOpen = document.getElementById('btn-edit-units');
+  const btnAdd  = document.getElementById('btn-add-unit');
+  const btnApply= document.getElementById('btn-unit-editor-apply');
+  const btnClose= document.getElementById('btn-unit-editor-close');
+  if (!modal) return;
+
+  // Track draft units (copy so edits are cancelable)
+  let draft = [];
+
+  function _nextId() {
+    return (Math.max(0, ...draft.map(u => u.id)) + 1);
+  }
+
+  function _randomColor() {
+    const hue = Math.floor(Math.random() * 360);
+    return `hsl(${hue},45%,45%)`;
+  }
+
+  function _hslToHex(hsl) {
+    // Accepts #xxx or hsl(...) or any CSS color
+    if (hsl.startsWith('#')) return hsl;
+    const el = document.createElement('canvas');
+    el.width = el.height = 1;
+    const ctx = el.getContext('2d');
+    ctx.fillStyle = hsl;
+    ctx.fillRect(0, 0, 1, 1);
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+    return `#${[r, g, b].map(x => x.toString(16).padStart(2, '0')).join('')}`;
+  }
+
+  function buildRow(unit) {
+    const row = document.createElement('div');
+    row.className = 'unit-editor-row';
+    row.dataset.uid = unit.id;
+    row.innerHTML = `
+      <input type="color" class="ue-color" value="${_hslToHex(unit.color ?? '#888888')}" title="Unit colour">
+      <input type="text"  class="ue-code input-sm" value="${unit.code ?? ''}" placeholder="Code" maxlength="8" title="Short code">
+      <input type="text"  class="ue-name input-sm" value="${unit.name ?? ''}" placeholder="Name" style="flex:1" title="Full name">
+      <input type="text"  class="ue-desc input-sm" value="${unit.description ?? ''}" placeholder="Description (optional)" style="flex:2" title="Description">
+      <button class="btn-ghost btn-sm ue-del" title="Delete unit">✕</button>
+    `;
+    row.querySelector('.ue-del').addEventListener('click', () => {
+      draft = draft.filter(u => u.id !== unit.id);
+      row.remove();
+    });
+    return row;
+  }
+
+  function open() {
+    // Deep copy so cancel doesn't corrupt state
+    draft = AppState.geoUnits.map(u => ({ ...u, params: { ...(u.params ?? {}) } }));
+    list.innerHTML = '';
+    if (!draft.length) {
+      // Seed with default units if project is empty
+      draft = [
+        { id: 1, code: 'MG',  name: 'Made Ground',            color: '#8B6914', description: 'Variable fill material' },
+        { id: 2, code: 'RTD', name: 'River Terrace Deposits',  color: '#D4A843', description: 'Gravel with sand' },
+        { id: 3, code: 'LC',  name: 'London Clay',             color: '#4A6080', description: 'Stiff fissured clay' },
+        { id: 4, code: 'CH',  name: 'Chalk',                   color: '#EDE8D8', description: 'Soft to medium hard chalk' },
+      ];
+    }
+    draft.forEach(u => list.appendChild(buildRow(u)));
+    modal.hidden = false;
+  }
+
+  function apply() {
+    // Read current form values back into draft
+    list.querySelectorAll('.unit-editor-row').forEach(row => {
+      const uid  = parseInt(row.dataset.uid, 10);
+      const unit = draft.find(u => u.id === uid);
+      if (!unit) return;
+      unit.color       = row.querySelector('.ue-color').value;
+      unit.code        = row.querySelector('.ue-code').value.trim().toUpperCase();
+      unit.name        = row.querySelector('.ue-name').value.trim();
+      unit.description = row.querySelector('.ue-desc').value.trim();
+    });
+
+    // Remove blanks and duplicates
+    const seen = new Set();
+    draft = draft.filter(u => {
+      if (!u.code || seen.has(u.code)) return false;
+      seen.add(u.code);
+      return true;
+    });
+
+    AppState.geoUnits = draft;
+
+    // Refresh all dependant UI
+    updateLegend();
+    renderPropertiesTable(AppState.geoUnits, () => updateLegend());
+    setEnabled('btn-run-ai', AppState.geoUnits.length > 0 && AppState.classifiedBH.length === 0);
+    setEnabled('btn-auto-params', AppState.geoUnits.length > 0);
+    setEnabled('btn-export-props', AppState.geoUnits.length > 0);
+    log(`Unit definitions updated — ${AppState.geoUnits.length} unit(s).`, 'ok');
+    modal.hidden = true;
+  }
+
+  btnOpen?.addEventListener('click', open);
+  btnAdd?.addEventListener('click', () => {
+    const unit = { id: _nextId(), code: '', name: '', color: _randomColor(), description: '' };
+    draft.push(unit);
+    const row = buildRow(unit);
+    list.appendChild(row);
+    row.querySelector('.ue-code')?.focus();
+  });
+  btnApply?.addEventListener('click', apply);
+  btnClose?.addEventListener('click', () => { modal.hidden = true; });
+  modal.querySelector('.modal-backdrop')?.addEventListener('click', () => { modal.hidden = true; });
 }
 
 // ── Groundwater table ─────────────────────────────────────────────────────────
@@ -1826,6 +1942,7 @@ async function init() {
   initPileCapacity();
   initColorPresets();
   initAutoParams();
+  initUnitEditor();
   initWelcomeOverlay();
 
   // Sample tile buttons (left panel)

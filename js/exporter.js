@@ -241,6 +241,81 @@ export function initExporter() {
     log('Unit properties CSV exported.', 'ok');
   });
 
+  // ── Export formation surfaces as OBJ (one surface per unit) ─────────────
+  document.getElementById('btn-export-surfaces')?.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('No voxel grid to export.', 'warn'); return; }
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds } = grid;
+    const unitById = {};
+    AppState.geoUnits.forEach(u => { unitById[u.id] = u; });
+
+    // For each unit build a grid of top elevations (NaN = absent)
+    const unitList = AppState.geoUnits.filter(u => u.id);
+    const objParts = [];
+    let vtxOffset = 0;
+
+    for (const unit of unitList) {
+      // topZ[iy][ix] = elevation of topmost voxel of this unit
+      const topZ = Array.from({ length: ny }, () => new Float32Array(nx).fill(NaN));
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          for (let iz = nz - 1; iz >= 0; iz--) {
+            if (unitIds[ix + iy * nx + iz * nx * ny] === unit.id) {
+              topZ[iy][ix] = O.y + (iz + 1) * ch; // top of voxel
+              break;
+            }
+          }
+        }
+      }
+
+      // Triangulate the surface using a simple grid mesh
+      // Skip cells where either corner is absent
+      const verts = [];
+      const faces = [];
+
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          const z  = topZ[iy][ix];
+          const wx = O.x + ix * cs + cs * 0.5;
+          const wy = O.z + iy * cs + cs * 0.5;
+          verts.push([wx, wy, isNaN(z) ? O.y : z, isNaN(z)]);
+        }
+      }
+
+      // Build quad faces only where all 4 corners have data
+      for (let iy = 0; iy < ny - 1; iy++) {
+        for (let ix = 0; ix < nx - 1; ix++) {
+          const i00 = iy * nx + ix;
+          const i10 = iy * nx + ix + 1;
+          const i01 = (iy + 1) * nx + ix;
+          const i11 = (iy + 1) * nx + ix + 1;
+          if (verts[i00][3] || verts[i10][3] || verts[i01][3] || verts[i11][3]) continue;
+          faces.push([i00, i10, i11]);
+          faces.push([i00, i11, i01]);
+        }
+      }
+
+      if (!faces.length) continue;
+
+      const lines = [];
+      lines.push(`# GeoModel AI — Formation surface: ${unit.code} ${unit.name}`);
+      lines.push(`g ${unit.code}`);
+      for (const [x, y, z] of verts) {
+        lines.push(`v ${x.toFixed(3)} ${z.toFixed(3)} ${(-y).toFixed(3)}`); // OBJ: Y-up
+      }
+      for (const [a, b, c] of faces) {
+        lines.push(`f ${a + 1 + vtxOffset} ${b + 1 + vtxOffset} ${c + 1 + vtxOffset}`);
+      }
+      vtxOffset += verts.length;
+      objParts.push(lines.join('\n'));
+    }
+
+    if (!objParts.length) { log('No formation surfaces to export.', 'warn'); return; }
+    const blob = new Blob([objParts.join('\n\n')], { type: 'text/plain' });
+    downloadBlob(blob, 'formation-surfaces.obj');
+    log(`Formation surfaces exported — ${objParts.length} surface(s).`, 'ok');
+  });
+
   // ── Export borehole logs as CSV ──────────────────────────────────────────
   document.getElementById('btn-export-bh-csv')?.addEventListener('click', () => {
     const bhs = AppState.classifiedBH?.filter(b => !b.synthetic);

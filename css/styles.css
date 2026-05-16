@@ -1142,6 +1142,37 @@ input[type="range"] {
 .modal-actions { display: flex; gap: 8px; }
 .modal-note { font-size: 11px !important; color: var(--text-dim) !important; }
 
+/* ── Unit Editor Modal ── */
+.unit-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+.unit-editor-row:last-child { border-bottom: none; }
+.ue-color {
+  width: 30px;
+  height: 26px;
+  padding: 1px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.ue-code { width: 64px; flex-shrink: 0; font-family: var(--font-mono); }
+.input-sm {
+  padding: 4px 7px;
+  font-size: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+}
+.input-sm:focus { outline: 1px solid var(--accent); }
+
 /* ── Tooltip ── */
 .tooltip {
   position: absolute;

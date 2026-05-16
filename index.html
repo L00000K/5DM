@@ -283,6 +283,7 @@
       <div class="panel-actions">
         <button id="btn-run-ai" class="btn-primary" disabled>Run AI Analysis →</button>
         <button id="btn-interpret-geology" class="btn-secondary" disabled title="Use Claude to interpret site geology, generate constraints and hazard flags">🧠 Interpret Geology</button>
+        <button id="btn-edit-units" class="btn-secondary" title="Add or edit geological unit definitions">✎ Edit Units</button>
         <button id="btn-build-model" class="btn-primary" disabled>Build 3D Model →</button>
       </div>
 
@@ -717,7 +718,8 @@
         <button id="btn-export-json" class="btn-secondary" disabled>⬇ JSON</button>
         <button id="btn-export-vtk"  class="btn-secondary" disabled>⬇ VTK (Paraview)</button>
         <div class="settings-divider">Analysis Data</div>
-        <button id="btn-export-contacts" class="btn-secondary" disabled>⬇ Formation Contacts</button>
+        <button id="btn-export-contacts" class="btn-secondary" disabled>⬇ Formation Contacts CSV</button>
+        <button id="btn-export-surfaces" class="btn-secondary" disabled title="Export the top surface of each geological unit as a 3D OBJ mesh">⬇ Formation Surfaces OBJ</button>
         <button id="btn-export-bh-csv" class="btn-secondary" disabled>⬇ BH Logs CSV</button>
         <div class="settings-divider">GIS / Analysis</div>
         <button id="btn-export-pointcloud" class="btn-secondary" disabled>⬇ Point Cloud CSV</button>
@@ -768,6 +770,23 @@
         <button id="btn-demo-mode" class="btn-ghost">Use Demo Mode</button>
       </div>
       <p class="modal-note">Demo mode uses pre-classified data — no key needed.</p>
+    </div>
+  </div>
+
+  <!-- ── UNIT EDITOR MODAL ── -->
+  <div id="modal-unit-editor" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modal-unit-title">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content" style="max-width:560px">
+      <h2 id="modal-unit-title">Geological Units</h2>
+      <p>Define the geological units for this project. Units can also be discovered automatically during AI analysis.</p>
+      <div id="unit-editor-list" style="max-height:340px;overflow-y:auto;margin:12px 0"></div>
+      <div class="modal-actions" style="justify-content:space-between">
+        <button id="btn-add-unit" class="btn-secondary">+ Add Unit</button>
+        <div style="display:flex;gap:8px">
+          <button id="btn-unit-editor-apply" class="btn-primary">Apply</button>
+          <button id="btn-unit-editor-close" class="btn-ghost">Close</button>
+        </div>
+      </div>
     </div>
   </div>
 
