@@ -347,6 +347,60 @@ export async function runAIAnalysis(boreholes, apiKey, demoMode) {
   return { units: geoUnits, classified };
 }
 
+// ── Infer geotechnical parameters from unit description ────────────────────────
+export async function inferUnitParameters(unit, apiKey, demoMode) {
+  if (demoMode || !apiKey) {
+    return _demoParams(unit);
+  }
+  const messages = [{
+    role: 'user',
+    content: `Based on this geological unit, infer typical UK geotechnical engineering parameters for preliminary design.
+
+Unit: ${unit.code} — ${unit.name}
+Description: ${unit.description ?? '(none)'}
+
+Respond with JSON only (no explanation):
+{
+  "gamma_kNm3":  number or null,
+  "cu_kPa":      number or null,
+  "phi_deg":     number or null,
+  "cprime_kPa":  number or null,
+  "E_MPa":       number or null,
+  "Cc":          number or null,
+  "e0":          number or null,
+  "N_spt":       number or null,
+  "notes":       "one sentence justification"
+}
+`
+  }];
+  return callClaude(messages, apiKey);
+}
+
+function _demoParams(unit) {
+  const n = (unit.name ?? unit.code).toLowerCase();
+  const d = (unit.description ?? '').toLowerCase();
+  const all = n + ' ' + d;
+  // Material heuristics for UK geology
+  if (/made ground|fill|rubble/.test(all))
+    return { gamma_kNm3: 18, cu_kPa: null, phi_deg: 28, cprime_kPa: 0, E_MPa: 5,  Cc: null, e0: null, N_spt: 8,  notes: 'Typical UK made ground parameters' };
+  if (/chalk/.test(all))
+    return { gamma_kNm3: 20, cu_kPa: null, phi_deg: 35, cprime_kPa: 5, E_MPa: 80, Cc: null, e0: null, N_spt: 30, notes: 'Chalk — highly variable; SPT N from in-situ' };
+  if (/gravel|terrace|rtd|sand and gravel/.test(all))
+    return { gamma_kNm3: 20, cu_kPa: null, phi_deg: 35, cprime_kPa: 0, E_MPa: 40, Cc: null, e0: null, N_spt: 30, notes: 'Dense river terrace gravel' };
+  if (/sand/.test(all))
+    return { gamma_kNm3: 19, cu_kPa: null, phi_deg: 32, cprime_kPa: 0, E_MPa: 25, Cc: null, e0: null, N_spt: 20, notes: 'Loose to medium dense sand' };
+  if (/london clay|lc/.test(all))
+    return { gamma_kNm3: 20, cu_kPa: 120, phi_deg: 25, cprime_kPa: 5, E_MPa: 60,  Cc: 0.15, e0: 0.7, N_spt: 30, notes: 'London Clay — stiff fissured clay' };
+  if (/soft|alluvial|estuarine/.test(all))
+    return { gamma_kNm3: 16, cu_kPa: 20,  phi_deg: 24, cprime_kPa: 0, E_MPa: 3,   Cc: 0.5,  e0: 1.2, N_spt: 4,  notes: 'Soft alluvial clay — settlement-critical' };
+  if (/peat/.test(all))
+    return { gamma_kNm3: 11, cu_kPa: 8,   phi_deg: 20, cprime_kPa: 0, E_MPa: 0.5, Cc: 2.0,  e0: 3.0, N_spt: 2,  notes: 'Peat — highly compressible' };
+  if (/clay/.test(all))
+    return { gamma_kNm3: 19, cu_kPa: 60,  phi_deg: 24, cprime_kPa: 0, E_MPa: 15,  Cc: 0.3,  e0: 0.9, N_spt: 15, notes: 'Generic firm clay' };
+  // Generic
+  return { gamma_kNm3: 19, cu_kPa: null, phi_deg: 30, cprime_kPa: 0, E_MPa: 20, Cc: null, e0: null, N_spt: null, notes: 'Generic parameters — update from test data' };
+}
+
 // ── Default units (fallback) ───────────────────────────────────────────────────
 function defaultUnits() {
   return [

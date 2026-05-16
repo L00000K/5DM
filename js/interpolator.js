@@ -1,4 +1,5 @@
 import { log } from './app.js';
+import { buildStratRankMap, stratigraphicConsistencyPenalty } from './semantic-engine.js';
 
 const MIN_BH_DIST = 0.1;
 
@@ -288,6 +289,7 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
   const idwPower    = Math.max(0.5, options.idwPower ?? 2);
   const method      = options.method ?? 'idw';
   const onProgress  = options.onProgress ?? null;
+  const stratRanks  = buildStratRankMap(options.stratOrder ?? []);
 
   // ── 1. Bounding box ────────────────────────────────────────────────────────
   const xs  = boreholes.map(b => b.x);
@@ -388,8 +390,18 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
           }
         }
 
+        let cert = result.certainty;
+        if (stratRanks.size && result.unitId) {
+          const winCode = geoUnits.find(u => u.id === result.unitId)?.code ?? '';
+          const depth   = topZ - z; // depth below max ground level
+          const penalty = stratigraphicConsistencyPenalty(
+            winCode, depth, x, y, boreholes, stratRanks, typicalSpacing * 2,
+          );
+          cert *= penalty;
+        }
+
         unitIds[idx]      = result.unitId;
-        certainty[idx]    = result.certainty;
+        certainty[idx]    = Math.max(0.05, cert);
         blendUnitIds[idx] = result.blendUnitId;
         blendRatios[idx]  = result.blendRatio;
       }

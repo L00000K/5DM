@@ -1,7 +1,7 @@
 import { initApiKeyModal } from './api-key.js';
 import { initUploader } from './data-parser.js';
 import { initTextInput } from './text-input.js';
-import { runAIAnalysis, interpretGeology, inferStratOrderFromData } from './claude-client.js';
+import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters } from './claude-client.js';
 import { exportConfig, importConfig } from './project-config.js';
 import { buildVoxelGrid } from './interpolator.js';
 import { initScene } from './scene.js';
@@ -240,6 +240,7 @@ function initReset() {
     setEnabled('btn-export-stats', false);
     setEnabled('btn-export-bh-csv', false);
     setEnabled('btn-export-props', false);
+    setEnabled('btn-auto-params', false);
     setEnabled('btn-isopach', false);
     setEnabled('btn-model-report', false);
     setEnabled('btn-plan-view', false);
@@ -311,6 +312,7 @@ async function loadDemoSite(demoName) {
     setEnabled('btn-build-model', true);
     setEnabled('btn-export-bh-csv', true);
     setEnabled('btn-export-props', true);
+    setEnabled('btn-auto-params', true);
     setEnabled('btn-interpret-geology', true);
     log(`${data.site?.name ?? demoName} — ${AppState.rawBoreholes.length} boreholes loaded.`, 'ok');
 
@@ -375,6 +377,7 @@ function initRunAI() {
       AppState.classifiedBH = classified;
       setEnabled('btn-export-bh-csv', true);
       setEnabled('btn-export-props', true);
+      setEnabled('btn-auto-params', true);
       updateLegend();
       updateBHTable();
       updateBHChart();
@@ -399,10 +402,18 @@ function initBuildModel() {
     try {
       showBuildProgress(true);
       await new Promise(r => setTimeout(r, 0));
+      const { order: _stratOrder } = AppState.classifiedBH.length
+        ? inferStratOrderFromData(AppState.classifiedBH, AppState.geoUnits)
+        : { order: [] };
+      AppState.stratOrder = _stratOrder;
+      if (_stratOrder.length) {
+        log(`Stratigraphic order: ${_stratOrder.join(' → ')}`, 'info');
+      }
       AppState.voxelGrid = await buildVoxelGrid(
         AppState.classifiedBH, AppState.geoUnits, AppState.cellSizeH,
         { kNeighbors: AppState.kNeighbors, idwPower: AppState.idwPower,
           method: AppState.interpMethod, cellSizeZ: AppState.cellSizeZ,
+          stratOrder: _stratOrder,
           onProgress: p => setBuildProgress(p) }
       );
       showBuildProgress(false);
@@ -590,6 +601,7 @@ function initProjectConfig() {
       setEnabled('btn-build-model', AppState.classifiedBH.length > 0);
       setEnabled('btn-export-bh-csv', AppState.classifiedBH.length > 0);
       setEnabled('btn-export-props', AppState.geoUnits.length > 0);
+      setEnabled('btn-auto-params', AppState.geoUnits.length > 0);
       hideWelcome();
       log(`Project loaded: ${AppState.geoUnits.length} units, ${AppState.classifiedBH.length} BH. Click "Build 3D Model".`, 'ok');
       switchTab('data');
@@ -688,6 +700,45 @@ function initColorPresets() {
       updateStratColumn();
     }
     log(`BS5930 colours applied — ${n} unit${n !== 1 ? 's' : ''} matched.`, n > 0 ? 'ok' : 'warn');
+  });
+}
+
+// ── Auto-infer geotechnical parameters via Claude ─────────────────────────────
+function initAutoParams() {
+  document.getElementById('btn-auto-params')?.addEventListener('click', async () => {
+    if (!AppState.geoUnits.length) { log('Load data first.', 'warn'); return; }
+    const btn = document.getElementById('btn-auto-params');
+    btn.disabled = true;
+    btn.textContent = '⏳ Inferring…';
+    const demoMode = !AppState.apiKey;
+    log(`Auto-inferring parameters for ${AppState.geoUnits.length} unit(s)${demoMode ? ' (demo)' : ' via Claude'}…`, 'info');
+
+    let updated = 0;
+    for (const unit of AppState.geoUnits) {
+      try {
+        const p = await inferUnitParameters(unit, AppState.apiKey, demoMode);
+        if (!unit.params) unit.params = {};
+        // Map inferred fields → unit.params, only filling gaps (don't overwrite lab data)
+        const MAP = {
+          gamma_kNm3: 'gamma', cu_kPa: 'cu', phi_deg: 'phi',
+          cprime_kPa: 'cprime', E_MPa: 'E', Cc: 'Cc', e0: 'e0', N_spt: 'N_spt',
+        };
+        for (const [src, dst] of Object.entries(MAP)) {
+          if (p[src] != null && unit.params[dst] == null) {
+            unit.params[dst] = p[src];
+          }
+        }
+        if (p.notes) unit._autoParamNotes = p.notes;
+        updated++;
+      } catch (err) {
+        log(`Auto-params failed for ${unit.code}: ${err.message}`, 'warn');
+      }
+    }
+
+    renderPropertiesTable(AppState.geoUnits, () => updateLegend());
+    btn.disabled = false;
+    btn.textContent = '🧠 Auto Params';
+    log(`Auto-params: ${updated}/${AppState.geoUnits.length} unit(s) updated.`, 'ok');
   });
 }
 
@@ -857,6 +908,7 @@ function initSession() {
     setEnabled('btn-build-model', AppState.classifiedBH.length > 0);
     setEnabled('btn-export-bh-csv', true);
     setEnabled('btn-export-props', true);
+    setEnabled('btn-auto-params', true);
     hideWelcome();
     log(`Session restored — ${AppState.classifiedBH.length} BH, ${AppState.geoUnits.length} units. Click "Build 3D Model" to regenerate.`, 'ok');
     switchTab('data');
@@ -1773,6 +1825,7 @@ async function init() {
   initBearingCapacity();
   initPileCapacity();
   initColorPresets();
+  initAutoParams();
   initWelcomeOverlay();
 
   // Sample tile buttons (left panel)
