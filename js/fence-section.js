@@ -225,4 +225,138 @@ export class FenceSection {
     a.download = `section-${new Date().toISOString().slice(0, 10)}.png`;
     a.click();
   }
+
+  // ── Export DXF ────────────────────────────────────────────────────────────
+  // Exports the cross-section as an AutoCAD R12 DXF file.
+  // Each geological unit gets its own LAYER; unit contacts are drawn as filled
+  // SOLID entities. BH stick centrelines are exported as LINE entities.
+  exportDXF() {
+    const args = this._lastArgs;
+    if (!args) return;
+    const { grid, geoUnits, normal, centerD, thickness, boreholes } = args;
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty } = grid;
+
+    const unitById = {};
+    geoUnits.forEach(u => { unitById[u.id] = u; });
+
+    const along = { x: normal.z, z: -normal.x };
+    const cx0   = O.x + nx * cs * 0.5;
+    const cz0   = O.z + ny * cs * 0.5;
+    const proj  = centerD - (normal.x * cx0 + normal.z * cz0);
+    const sx0   = cx0 + normal.x * proj;
+    const sz0   = cz0 + normal.z * proj;
+    const worldW = Math.max(nx * cs, ny * cs) * 1.1;
+    const botY   = O.y;
+    const topY   = O.y + nz * ch;
+
+    // DXF helper
+    const lines = [];
+    const d = (code, value) => lines.push(`${code}\n${value}`);
+
+    // Header
+    d(0, 'SECTION'); d(2, 'HEADER');
+    d(9,'$ACADVER'); d(1,'AC1009'); // R12
+    d(9,'$INSUNITS'); d(70,6); // meters
+    d(0,'ENDSEC');
+
+    // Tables (minimal: just layer defs)
+    d(0,'SECTION'); d(2,'TABLES');
+    d(0,'TABLE'); d(2,'LAYER'); d(70, geoUnits.length + 3);
+    for (const u of geoUnits) {
+      // Convert hex color to AutoCAD color index (ACI) — approximate
+      const ci = _hexToACI(u.color ?? '#888888');
+      d(0,'LAYER'); d(2, u.code ?? 'UNKN'); d(70,0); d(62, ci); d(6,'CONTINUOUS');
+    }
+    d(0,'LAYER'); d(2,'BOREHOLES');  d(70,0); d(62,7); d(6,'CONTINUOUS');
+    d(0,'LAYER'); d(2,'GRID');       d(70,0); d(62,8); d(6,'CONTINUOUS');
+    d(0,'ENDTAB'); d(0,'ENDSEC');
+
+    // Entities
+    d(0,'SECTION'); d(2,'ENTITIES');
+
+    const N_COLS = 150;
+    const colW   = worldW / N_COLS;
+
+    for (let ci = 0; ci < N_COLS; ci++) {
+      const t    = (ci / (N_COLS - 1)) - 0.5;
+      const dist = t * worldW;
+      const wx   = sx0 + along.x * dist;
+      const wz   = sz0 + along.z * dist;
+      const ix = Math.floor((wx - O.x) / cs);
+      const iy = Math.floor((wz - O.z) / cs);
+      if (ix < 0 || ix >= nx || iy < 0 || iy >= ny) continue;
+
+      const sPos = dist; // position along section line
+
+      for (let iz = 0; iz < nz; iz++) {
+        const uid  = unitIds[ix + iy * nx + iz * nx * ny];
+        const unit = unitById[uid];
+        if (!unit) continue;
+
+        const y0 = botY + iz * ch;
+        const y1 = y0 + ch;
+        const x0 = sPos - colW / 2;
+        const x1 = sPos + colW / 2;
+
+        // SOLID entity (filled quad) — DXF SOLID uses 4 corner points
+        d(0,'SOLID'); d(8, unit.code ?? 'UNKN');
+        d(10, x0.toFixed(3)); d(20, y0.toFixed(3)); d(30,'0');
+        d(11, x1.toFixed(3)); d(21, y0.toFixed(3)); d(31,'0');
+        d(12, x0.toFixed(3)); d(22, y1.toFixed(3)); d(32,'0');
+        d(13, x1.toFixed(3)); d(23, y1.toFixed(3)); d(33,'0');
+      }
+    }
+
+    // BH sticks
+    (boreholes ?? []).filter(b => !b.synthetic).forEach(bh => {
+      const distToPlane = Math.abs(normal.x * bh.x + normal.z * bh.y - centerD);
+      if (distToPlane > thickness * 0.55) return;
+      const sDist = along.x * (bh.x - sx0) + along.z * (bh.y - sz0);
+      const gl   = bh.groundLevel ?? topY;
+      const dep  = bh.depth ?? (bh.layers?.length ? Math.max(...bh.layers.map(l => l.base)) : 10);
+      const bhBot = gl - dep;
+      d(0,'LINE'); d(8,'BOREHOLES');
+      d(10, sDist.toFixed(3)); d(20, bhBot.toFixed(3)); d(30,'0');
+      d(11, sDist.toFixed(3)); d(21, gl.toFixed(3)); d(31,'0');
+      // Label
+      d(0,'TEXT'); d(8,'BOREHOLES');
+      d(10, sDist.toFixed(3)); d(20, (gl + 0.5).toFixed(3)); d(30,'0');
+      d(40, 1.0); d(1, bh.id ?? 'BH');
+    });
+
+    // Grid lines
+    const tickStep = (topY - botY) <= 15 ? 1 : (topY - botY) <= 50 ? 5 : 10;
+    for (let ev = Math.ceil(botY / tickStep) * tickStep; ev <= topY + 0.01; ev += tickStep) {
+      const halfW = worldW * 0.5;
+      d(0,'LINE'); d(8,'GRID');
+      d(10,(-halfW).toFixed(1)); d(20, ev.toFixed(1)); d(30,'0');
+      d(11, halfW.toFixed(1)); d(21, ev.toFixed(1)); d(31,'0');
+    }
+
+    d(0,'ENDSEC'); d(0,'EOF');
+
+    const dxfText = lines.join('\n');
+    const blob = new Blob([dxfText], { type: 'application/dxf' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = `section-${new Date().toISOString().slice(0,10)}.dxf`; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+}
+
+// AutoCAD Color Index approximation from hex string
+function _hexToACI(hex) {
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+  // Simple mapping to 7 basic ACI colors
+  const colors = [
+    [255,0,0,1],[255,255,0,2],[0,255,0,3],[0,255,255,4],
+    [0,0,255,5],[255,0,255,6],[255,255,255,7],
+    [128,128,128,8],[128,64,0,9],[0,128,128,4],
+  ];
+  let best = 7, bestD = Infinity;
+  for (const [cr,cg,cb,ci] of colors) {
+    const d = (r-cr)**2 + (g-cg)**2 + (b-cb)**2;
+    if (d < bestD) { bestD = d; best = ci; }
+  }
+  return best;
 }

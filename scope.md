@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-16 (batch 10 update)
+> Last updated: 2026-05-16 (batch 11 update)
 
 ---
 
@@ -306,9 +306,10 @@ Seven methods, all operating on the same voxel grid:
 ## 6. Planned / Backlog Features
 
 ### 6.1 Near-term
-- [ ] **LLM geometric shape constraints** (see §5.3 above) — highest priority
-- [ ] **Per-unit geometry descriptors** (see §5.2) — per-unit variogram range and anisotropy
-- [ ] **DXF export** — 2D cross-section exported as DXF polylines for CAD tools (AutoCAD, Revit)
+- [x] **LLM geometric shape constraints** — palaeochannels, lenses, buried hills (§5.3)
+- [x] **Per-unit geometry descriptors** — corrLength, anisoRatio, anisoAzimuth per unit; table in Properties tab; IDW-weighted effective range fed to kriging/GP/RBF vote functions
+- [x] **DXF export** — fence cross-section as AutoCAD R12 DXF with LAYER table, SOLID fills, BH sticks
+- [x] **Seismic liquefaction (CPT)** — Robertson & Wride (1998) CSR/CRR framework; Ic soil classification; iterative qc1N normalisation; fines correction; LPI (Iwasaki); per-CPT SVG FS profile; summary table
 - [ ] **Contact surface orientation statistics** — dip / strike / azimuth statistics per unit contact; stereonet already implemented, add summary table
 - [ ] **Dipping fault throw** — fault modelling with vertical throw applied to unit contacts (not just interpolation boundary)
 
@@ -324,7 +325,7 @@ Seven methods, all operating on the same voxel grid:
 - [ ] **Multiple scenario comparison** — side-by-side or diff view of two interpretations
 - [ ] **Time-lapse / construction sequence** — model changes as excavation or construction proceeds
 - [ ] **3D slope stability** — full 3D sliding surface rather than 2D Bishop
-- [ ] **Seismic liquefaction CPT method** (Robertson & Wride) — full Ic-based liquefaction assessment from CPT data
+- [x] **Seismic liquefaction CPT method** (Robertson & Wride) — completed in §6.1
 
 ---
 

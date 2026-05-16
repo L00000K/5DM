@@ -27,6 +27,7 @@ import { CPTLogView } from './cpt-log-view.js';
 import { parseCPT } from './data-parser.js';
 import { computeOrientations, orientationStats, renderStereonet, renderRoseDiagram } from './stereonet.js';
 import { bishopAnalysis, renderSlopeSection } from './slope-stability.js';
+import { assessLiquefaction, renderLiquefactionProfile, summarizeCPTLiquefaction } from './liquefaction.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -1389,6 +1390,7 @@ function initCPTImport() {
       AppState.cptLogs = all;
       if (info) info.textContent = `${all.length} CPT log(s) loaded`;
       AppState.cptLogView.draw(all);
+      window.dispatchEvent(new CustomEvent('geomodel:cpt-loaded'));
     }
   };
 
@@ -1869,6 +1871,12 @@ function initFenceSection() {
       slicer._thickness,
       AppState.classifiedBH
     );
+  });
+
+  document.getElementById('fence-export-dxf')?.addEventListener('click', () => {
+    if (!AppState.fenceSection?._lastArgs) { log('Show a cross-section first.', 'warn'); return; }
+    AppState.fenceSection.exportDXF();
+    log('Cross-section exported as DXF.', 'ok');
   });
 }
 
@@ -3032,6 +3040,7 @@ async function init() {
   initStereonet();
   initSlopeStability();
   initGeoFeatures();
+  initLiquefaction();
 
   // Sample tile buttons (left panel)
   document.querySelectorAll('.sample-tile').forEach(btn => {
@@ -3221,6 +3230,73 @@ function initSlopeStability() {
         log(`Slope stability error: ${err.message}`, 'error');
       } finally {
         btn.disabled = false; btn.textContent = '⚖ Run Bishop Analysis';
+      }
+    }, 10);
+  });
+}
+
+function initLiquefaction() {
+  const btn      = document.getElementById('btn-liquefaction');
+  const summary  = document.getElementById('liq-summary');
+  const profiles = document.getElementById('liq-profiles');
+  if (!btn || !summary || !profiles) return;
+
+  // Enable button once CPT logs exist
+  window.addEventListener('geomodel:cpt-loaded', () => setEnabled('btn-liquefaction', true));
+  // Also enable if CPT data already present when panel first shown
+  if (AppState.cptLogs?.length) setEnabled('btn-liquefaction', true);
+
+  btn.addEventListener('click', () => {
+    const logs = AppState.cptLogs;
+    if (!logs?.length) { log('No CPT data loaded — upload CPT file first.', 'warn'); return; }
+
+    const opts = {
+      amax:  parseFloat(document.getElementById('liq-amax')?.value)  || 0.15,
+      Mw:    parseFloat(document.getElementById('liq-mw')?.value)    || 7.0,
+      gwt:   parseFloat(document.getElementById('liq-gwt')?.value)   || 2.0,
+      gamma: parseFloat(document.getElementById('liq-gamma')?.value) || 18.0,
+    };
+
+    btn.disabled = true; btn.textContent = '⏳ Computing…';
+    log(`Liquefaction assessment: PGA=${opts.amax}g, Mw=${opts.Mw}, GWT=${opts.gwt}m`, 'info');
+
+    setTimeout(() => {
+      try {
+        const results = summarizeCPTLiquefaction(logs, opts);
+        const maxLPI = Math.max(...results.map(r => r.result.lpi));
+        const nLiquefy = results.filter(r => r.result.lpi >= 2).length;
+
+        const lpiCol = maxLPI < 2 ? '#4a7c59' : maxLPI < 5 ? '#f1c40f' : maxLPI < 15 ? '#e67e22' : '#c0392b';
+        summary.innerHTML = `<div style="background:${lpiCol}22;border:1px solid ${lpiCol};border-radius:4px;padding:5px 8px;margin-bottom:4px">
+          <b style="color:${lpiCol}">${nLiquefy}/${results.length} CPT logs at risk</b>
+          <span style="color:var(--text-mid)"> · Max LPI = ${maxLPI.toFixed(1)} (${results.find(r=>r.result.lpi===maxLPI)?.result.lpiRating})</span>
+        </div>
+        <table style="width:100%;font-size:10px;border-collapse:collapse">
+          <tr><th style="text-align:left;color:var(--text-mid);padding:2px">CPT</th>
+              <th style="color:var(--text-mid);padding:2px">LPI</th>
+              <th style="color:var(--text-mid);padding:2px">Rating</th>
+              <th style="color:var(--text-mid);padding:2px">Min FS</th></tr>
+          ${results.map(r => `<tr>
+            <td style="padding:2px;color:var(--text-primary)">${r.log.id}</td>
+            <td style="padding:2px;text-align:right;color:${r.lpiCol};font-weight:bold">${r.result.lpi.toFixed(1)}</td>
+            <td style="padding:2px;text-align:center;color:${r.lpiCol}">${r.result.lpiRating}</td>
+            <td style="padding:2px;text-align:right;color:var(--text-mid)">${isFinite(r.minFS) ? r.minFS.toFixed(2) : '—'}</td>
+          </tr>`).join('')}
+        </table>`;
+
+        profiles.innerHTML = results.map(r =>
+          `<div style="text-align:center">
+            <div style="font-size:9px;color:var(--text-mid);margin-bottom:2px">${r.log.id}</div>
+            ${renderLiquefactionProfile(r.result, 180, 260)}
+          </div>`
+        ).join('');
+
+        log(`Liquefaction complete — max LPI ${maxLPI.toFixed(1)}, ${nLiquefy} at-risk CPT logs`, nLiquefy ? 'warn' : 'ok');
+      } catch (err) {
+        summary.innerHTML = `<p class="hint" style="color:#e84040">Error: ${err.message}</p>`;
+        log(`Liquefaction error: ${err.message}`, 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = '⚡ Run Liquefaction Assessment';
       }
     }, 10);
   });

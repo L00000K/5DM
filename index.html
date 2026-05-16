@@ -602,6 +602,7 @@
           <span id="fence-title" class="fence-title">Geological Cross-Section</span>
           <div style="display:flex;gap:6px;align-items:center">
             <button id="fence-export" class="btn-ghost btn-sm" title="Export as PNG">⬇ PNG</button>
+            <button id="fence-export-dxf" class="btn-ghost btn-sm" title="Export cross-section as DXF for AutoCAD">⬇ DXF</button>
             <button id="fence-close" class="slicer-close-btn" title="Close">✕</button>
           </div>
         </div>
@@ -1019,6 +1020,28 @@
         </div>
         <button id="btn-slope-stability" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:6px">⚖ Run Bishop Analysis</button>
         <div id="slope-results" style="font-size:11px"></div>
+      </div>
+
+      <div class="panel-section">
+        <h3>Seismic Liquefaction (CPT)</h3>
+        <p class="hint" style="font-size:9px;margin-bottom:6px">Robertson &amp; Wride (1998) — requires CPT data loaded.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px">
+          <label style="font-size:10px;color:var(--text-mid)">PGA (g)
+            <input id="liq-amax" type="number" class="props-input" style="width:100%;margin-top:2px" value="0.15" min="0.01" max="1" step="0.01">
+          </label>
+          <label style="font-size:10px;color:var(--text-mid)">Mw
+            <input id="liq-mw" type="number" class="props-input" style="width:100%;margin-top:2px" value="7.0" min="5" max="9" step="0.1">
+          </label>
+          <label style="font-size:10px;color:var(--text-mid)">GWT depth (m)
+            <input id="liq-gwt" type="number" class="props-input" style="width:100%;margin-top:2px" value="2.0" min="0" step="0.5">
+          </label>
+          <label style="font-size:10px;color:var(--text-mid)">γ (kN/m³)
+            <input id="liq-gamma" type="number" class="props-input" style="width:100%;margin-top:2px" value="18" min="14" max="22" step="0.5">
+          </label>
+        </div>
+        <button id="btn-liquefaction" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:6px">⚡ Run Liquefaction Assessment</button>
+        <div id="liq-summary" style="font-size:10px;margin-bottom:4px"></div>
+        <div id="liq-profiles" style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center"></div>
       </div>
 
       <div class="panel-section">

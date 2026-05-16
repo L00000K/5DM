@@ -591,6 +591,18 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
     log(`Using fitted variogram: range=${range.toFixed(1)}m sill=${sill.toFixed(3)} nugget=${(options.varNugget ?? 0).toFixed(3)}`, 'info');
   }
 
+  // Per-unit geometry descriptors: corrLength, anisoRatio, anisoAzimuth
+  const unitGeomMap = {};
+  for (const u of geoUnits) {
+    if (u.geom && (u.geom.corrLength != null || u.geom.anisoRatio != null || u.geom.anisoAzimuth != null)) {
+      unitGeomMap[u.code] = u.geom;
+    }
+  }
+  const hasPerUnitGeom = Object.keys(unitGeomMap).length > 0;
+  if (hasPerUnitGeom) {
+    log(`Per-unit geometry active for: ${Object.keys(unitGeomMap).join(', ')}`, 'info');
+  }
+
   // ── Neural Implicit Geological Field ──────────────────────────────────────
   if (method === 'neural-implicit') {
     log('Building geological context from unit descriptions…', 'info');
@@ -696,20 +708,35 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
 
           if (!nb.length) {
             result = nearestFallback(allBoreholes, x, y, unitIndex, unknownId);
-          } else if (method === 'kriging') {
-            result = krigingVote(nb, x, y, unitIndex, unknownId, range, sill, options.varNugget ?? null)
-                  ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
-          } else if (method === 'uk') {
-            result = ukVote(nb, x, y, unitIndex, unknownId, range, sill, trendOrder)
-                  ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
-          } else if (method === 'gp') {
-            result = gpVote(nb, x, y, unitIndex, unknownId, gpLen)
-                  ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
-          } else if (method === 'rbf') {
-            result = rbfVote(nb, x, y, unitIndex, unknownId, null)
-                  ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
           } else {
-            result = idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
+            // Per-unit corrLength: IDW-weighted mean of each candidate's unit corrLength
+            let effRange = range, effGpLen = gpLen;
+            if (hasPerUnitGeom) {
+              let wSum = 0, wRange = 0;
+              for (const n of nb) {
+                const w = n.layerCert / (n.dist * n.dist + 1e-6);
+                const r = unitGeomMap[n.unitCode]?.corrLength ?? range;
+                wRange += w * r; wSum += w;
+              }
+              if (wSum > 0) { effRange = wRange / wSum; effGpLen = effRange * 0.6; }
+            }
+
+            if (method === 'kriging') {
+              result = krigingVote(nb, x, y, unitIndex, unknownId, effRange, sill, options.varNugget ?? null)
+                    ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
+            } else if (method === 'uk') {
+              result = ukVote(nb, x, y, unitIndex, unknownId, effRange, sill, trendOrder)
+                    ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
+            } else if (method === 'gp') {
+              result = gpVote(nb, x, y, unitIndex, unknownId, effGpLen)
+                    ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
+            } else if (method === 'rbf') {
+              const effEps = hasPerUnitGeom ? effRange * 0.4 : null;
+              result = rbfVote(nb, x, y, unitIndex, unknownId, effEps)
+                    ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
+            } else {
+              result = idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
+            }
           }
         }
 

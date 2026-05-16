@@ -1860,6 +1860,28 @@ input[type="range"] {
   border-color: var(--accent);
   background: var(--accent-glow);
 }
+.props-geom-sep {
+  border-left: 2px solid var(--accent);
+  color: var(--accent);
+  text-align: center !important;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+.props-geom-subrow th {
+  font-size: 10px;
+  font-weight: 500;
+  color: #7a9ab8;
+  border-top: none;
+}
+.props-geom-subrow th:first-child,
+.props-geom-subrow th:nth-child(2) { border-right: none; }
+.props-geom-cell {
+  border-left: 1px solid var(--accent-glow);
+}
+.props-geom-cell .props-input {
+  width: 44px;
+  border-color: #2a4060;
+}
 
 /* ── Plan view panel ── */
 .plan-view-slider { height: 16px; }

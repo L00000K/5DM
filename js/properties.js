@@ -26,9 +26,10 @@ export function renderPropertiesTable(geoUnits, onUpdate) {
     return;
   }
 
-  // Ensure all units have a params object
+  // Ensure all units have a params object and a geom descriptor object
   geoUnits.forEach(u => {
     if (!u.params) u.params = { ...DEFAULT_PARAMS };
+    if (!u.geom)   u.geom   = {};
   });
 
   const cols = [
@@ -42,10 +43,22 @@ export function renderPropertiesTable(geoUnits, onUpdate) {
     { key: 'N_spt',  label: 'N (SPT)',     placeholder: '—'   },
   ];
 
+  // Geometry descriptor columns (stored in unit.geom)
+  const geomCols = [
+    { key: 'corrLength',  label: 'L (m)',    placeholder: 'auto', title: 'Per-unit correlation length (m) — overrides global variogram range for this unit' },
+    { key: 'anisoRatio',  label: 'AR',       placeholder: '1',    title: 'Anisotropy ratio for this unit (along-strike vs across-strike search)' },
+    { key: 'anisoAzimuth',label: 'Az°',      placeholder: '0',    title: 'Anisotropy strike azimuth for this unit (° from North)' },
+  ];
+
   let html = `<table class="props-table">
     <thead><tr>
       <th>Code</th><th>Name</th>
       ${cols.map(c => `<th>${c.label}</th>`).join('')}
+      <th class="props-geom-sep" colspan="${geomCols.length}" title="Per-unit geostatistical geometry overrides">Geometry ▾</th>
+    </tr><tr class="props-geom-subrow">
+      <th colspan="2"></th>
+      ${cols.map(() => '<th></th>').join('')}
+      ${geomCols.map(c => `<th title="${c.title}">${c.label}</th>`).join('')}
     </tr></thead>
     <tbody>`;
 
@@ -56,8 +69,14 @@ export function renderPropertiesTable(geoUnits, onUpdate) {
       ${cols.map(c => {
         const val = u.params[c.key] ?? '';
         return `<td><input class="props-input" type="number" data-uid="${u.id}"
-          data-field="${c.key}" value="${val}" placeholder="${c.placeholder}"
+          data-field="${c.key}" data-store="params" value="${val}" placeholder="${c.placeholder}"
           min="0" step="any"></td>`;
+      }).join('')}
+      ${geomCols.map(c => {
+        const val = u.geom?.[c.key] ?? '';
+        return `<td class="props-geom-cell"><input class="props-input" type="number" data-uid="${u.id}"
+          data-field="${c.key}" data-store="geom" value="${val}" placeholder="${c.placeholder}"
+          min="0" step="any" title="${c.title}"></td>`;
       }).join('')}
     </tr>`;
   }
@@ -82,15 +101,22 @@ export function renderPropertiesTable(geoUnits, onUpdate) {
     });
   });
 
-  // Wire parameter inputs
+  // Wire parameter + geometry inputs
   wrap.querySelectorAll('.props-input').forEach(input => {
     input.addEventListener('change', () => {
       const uid   = parseInt(input.dataset.uid);
       const field = input.dataset.field;
+      const store = input.dataset.store ?? 'params';
       const unit  = geoUnits.find(u => u.id === uid);
       if (!unit) return;
       const val = input.value.trim();
-      unit.params[field] = val === '' ? null : parseFloat(val);
+      const num = val === '' ? null : parseFloat(val);
+      if (store === 'geom') {
+        if (!unit.geom) unit.geom = {};
+        unit.geom[field] = num;
+      } else {
+        unit.params[field] = num;
+      }
       onUpdate?.();
     });
   });
