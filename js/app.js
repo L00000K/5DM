@@ -221,6 +221,7 @@ function initReset() {
     setEnabled('btn-export-gltf', false);
     setEnabled('btn-export-obj', false);
     setEnabled('btn-export-json', false);
+    setEnabled('btn-export-bh-csv', false);
     setEnabled('btn-isopach', false);
     if (AppState.scene) AppState.scene.clear();
     showWelcome();
@@ -285,6 +286,7 @@ async function loadDemoSite(demoName) {
     updateBHChart();
     setEnabled('btn-run-ai', true);
     setEnabled('btn-build-model', true);
+    setEnabled('btn-export-bh-csv', true);
     log(`${data.site?.name ?? demoName} — ${AppState.rawBoreholes.length} boreholes loaded.`, 'ok');
 
     setTimeout(() => document.getElementById('btn-build-model').click(), 200);
@@ -346,6 +348,7 @@ function initRunAI() {
       );
       AppState.geoUnits = units;
       AppState.classifiedBH = classified;
+      setEnabled('btn-export-bh-csv', true);
       updateLegend();
       updateBHTable();
       updateBHChart();
@@ -802,6 +805,7 @@ function parseGeoMapFile(file, infoEl) {
     infoEl.innerHTML = `<div class="file-item">
       <span class="file-name">${escHtml(file.name)}</span>
       <span class="file-size">${count} pts</span></div>`;
+    setEnabled('btn-export-bh-csv', true);
     log(`Geological map: ${count} constraint points added (${skipped} skipped).`, 'ok');
   };
   reader.readAsText(file);
