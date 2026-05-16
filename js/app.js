@@ -1376,7 +1376,10 @@ function initModelReport() {
 
   document.getElementById('btn-model-report')?.addEventListener('click', () => {
     if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
-    AppState.report.exportHTML(AppState.voxelGrid, AppState.classifiedBH, AppState.geoUnits);
+    // Compute fresh risk report for inclusion in the HTML export
+    const gwt       = parseFloat(document.getElementById('gwt-elevation')?.value ?? '') || null;
+    const riskRpt   = assessRisk(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH, gwt);
+    AppState.report.exportHTML(AppState.voxelGrid, AppState.classifiedBH, AppState.geoUnits, riskRpt);
     log('Report HTML downloaded.', 'ok');
   });
 

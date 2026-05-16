@@ -271,7 +271,7 @@ export class ModelReport {
     el.innerHTML = html;
   }
 
-  exportHTML(grid, classifiedBH, geoUnits) {
+  exportHTML(grid, classifiedBH, geoUnits, riskReport = null) {
     if (!grid) return;
     const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty } = grid;
     const bhs = classifiedBH.filter(b => !b.synthetic);
@@ -285,35 +285,180 @@ export class ModelReport {
     const total    = Object.values(counts).reduce((a, b) => a + b, 0);
     const cellVol  = cs * cs * ch;
     const dateStr  = new Date().toLocaleDateString('en-GB', { year:'numeric', month:'long', day:'numeric' });
+    const unitByCode = {};
+    geoUnits.forEach(u => { unitByCode[u.code] = u; });
 
+    // ── Unit table rows ────────────────────────────────────────────────────────
     const unitRows = geoUnits.map(u => {
       const n    = counts[u.id] ?? 0;
       const vol  = Math.round(n * cellVol).toLocaleString();
       const pct  = total > 0 ? (n / total * 100).toFixed(1) : '0';
       const cert = n > 0 ? ((certSums[u.id] / n) * 100).toFixed(0) + '%' : '—';
+      const p    = u.params ?? {};
+      const cu   = p.cu    != null ? p.cu.toFixed(0)    : '—';
+      const phi  = p.phi   != null ? p.phi.toFixed(0)   : '—';
+      const Cc   = p.Cc    != null ? p.Cc.toFixed(3)    : '—';
+      const E    = p.E     != null ? p.E.toFixed(0)     : '—';
+      const gam  = p.gamma != null ? p.gamma.toFixed(1) : '—';
+      const nspt = p.N_spt != null ? p.N_spt.toFixed(0) : '—';
       return `<tr>
         <td><span class="swatch" style="background:${u.color}"></span>${u.code}</td>
         <td>${u.name}</td>
-        <td>${u.description ?? '—'}</td>
-        <td>${vol}</td>
-        <td>${pct}%</td>
-        <td>${cert}</td>
+        <td style="font-size:11px;color:#677">${u.description ?? '—'}</td>
+        <td>${vol}</td><td>${pct}%</td><td>${cert}</td>
+        <td>${gam}</td><td>${cu}</td><td>${phi}</td><td>${Cc}</td><td>${E}</td><td>${nspt}</td>
       </tr>`;
     }).join('');
 
+    // ── Borehole register rows ─────────────────────────────────────────────────
     const bhRows = bhs.map(bh => {
-      const maxBase = bh.layers.length ? Math.max(...bh.layers.map(l => l.base)) : (bh.depth ?? 0);
-      const units   = [...new Set(bh.layers.map(l => l.unitCode).filter(Boolean))].join(', ');
+      const maxBase  = bh.layers.length ? Math.max(...bh.layers.map(l => l.base)) : (bh.depth ?? 0);
+      const units    = [...new Set(bh.layers.map(l => l.unitCode).filter(Boolean))].join(', ');
+      const meanSPT  = (() => {
+        const vals = bh.layers.filter(l => l.sptN != null).map(l => l.sptN);
+        return vals.length ? (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(0) : '—';
+      })();
       return `<tr>
         <td><strong>${bh.id}</strong></td>
-        <td>${bh.x?.toFixed(1) ?? '—'}</td>
-        <td>${bh.y?.toFixed(1) ?? '—'}</td>
+        <td>${bh.x?.toFixed(1) ?? '—'}</td><td>${bh.y?.toFixed(1) ?? '—'}</td>
         <td>${bh.groundLevel?.toFixed(1) ?? '—'}</td>
-        <td>${maxBase.toFixed(1)}</td>
-        <td>${bh.layers.length}</td>
-        <td>${units}</td>
+        <td>${maxBase.toFixed(1)}</td><td>${bh.layers.length}</td>
+        <td style="font-size:11px">${units}</td><td>${meanSPT}</td>
       </tr>`;
     }).join('');
+
+    // ── Site plan SVG ──────────────────────────────────────────────────────────
+    const planSVG = (() => {
+      if (!bhs.length) return '<p style="color:#999">No borehole data</p>';
+      const margin = 24;
+      const svgW = 520, svgH = 320;
+      const xs = bhs.map(b => b.x), ys = bhs.map(b => b.y);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      const rangeX = Math.max(maxX - minX, 1), rangeY = Math.max(maxY - minY, 1);
+      const scX = (svgW - margin*2) / rangeX, scY = (svgH - margin*2) / rangeY;
+      const sc = Math.min(scX, scY);
+      const offX = margin + ((svgW - margin*2) - rangeX * sc) / 2;
+      const offY = margin + ((svgH - margin*2) - rangeY * sc) / 2;
+      const px = x => (offX + (x - minX) * sc).toFixed(1);
+      const py = y => (offY + (maxY - y) * sc).toFixed(1); // flip Y
+
+      const dots = bhs.map(bh => {
+        const glStr = bh.groundLevel != null ? ` GL:${bh.groundLevel.toFixed(1)}mAOD` : '';
+        const unitList = [...new Set(bh.layers.map(l=>l.unitCode).filter(Boolean))];
+        const topUnit  = unitByCode[unitList[0]];
+        const fill = topUnit?.color ?? '#6688aa';
+        return `<circle cx="${px(bh.x)}" cy="${py(bh.y)}" r="5" fill="${fill}" stroke="#fff" stroke-width="1.5"/>
+<text x="${(parseFloat(px(bh.x))+8).toFixed(1)}" y="${(parseFloat(py(bh.y))+4).toFixed(1)}" font-size="9" fill="#334">${bh.id}${glStr}</text>`;
+      }).join('\n');
+
+      // Grid extent rectangle
+      const ox = (offX + (O.x - minX) * sc).toFixed(1);
+      const oy = (offY + (maxY - (O.z + ny*cs)) * sc).toFixed(1);
+      const gw = (nx * cs * sc).toFixed(1);
+      const gh = (ny * cs * sc).toFixed(1);
+      const gridRect = `<rect x="${ox}" y="${oy}" width="${gw}" height="${gh}" fill="none" stroke="#4a6275" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>`;
+
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgW} ${svgH}" style="width:100%;max-width:${svgW}px;border:1px solid #e0e4ea;border-radius:4px;background:#f8f9fa">
+  <rect width="${svgW}" height="${svgH}" fill="#f8f9fa"/>
+  ${gridRect}
+  ${dots}
+  <text x="8" y="${svgH-6}" font-size="9" fill="#999">Model grid boundary (dashed)  ·  Site Plan — Not to scale</text>
+</svg>`;
+    })();
+
+    // ── Borehole log strips SVG ────────────────────────────────────────────────
+    const logStripsSVG = (() => {
+      if (!bhs.length) return '';
+      const SCALE   = 14;    // px per metre
+      const COL_W   = 22;    // unit colour column width
+      const SPT_W   = 28;    // SPT N bar column width
+      const AXIS_W  = 22;    // depth axis width
+      const BH_W    = AXIS_W + COL_W + SPT_W + 4;
+      const maxDepth = Math.max(...bhs.map(bh =>
+        bh.layers.length ? Math.max(...bh.layers.map(l => l.base)) : 10));
+      const svgH = Math.min(maxDepth * SCALE + 36, 600);
+      const svgW = bhs.length * (BH_W + 8) + 8;
+
+      const strips = bhs.map((bh, bi) => {
+        const gl    = bh.groundLevel ?? 0;
+        const bhX   = 8 + bi * (BH_W + 8);
+        let rows    = '';
+
+        // Unit colour blocks
+        bh.layers.forEach(l => {
+          const unit = unitByCode[l.unitCode];
+          if (!unit) return;
+          const y0  = Math.min(l.top  * SCALE + 26, svgH - 2);
+          const y1  = Math.min(l.base * SCALE + 26, svgH - 2);
+          if (y1 <= y0) return;
+          const col = unit.color ?? '#888';
+          rows += `<rect x="${bhX + AXIS_W}" y="${y0.toFixed(1)}" width="${COL_W}" height="${(y1-y0).toFixed(1)}" fill="${col}"/>`;
+          // Label if tall enough
+          if (y1 - y0 > 10) {
+            rows += `<text x="${(bhX + AXIS_W + COL_W/2).toFixed(1)}" y="${((y0+y1)/2+3).toFixed(1)}" font-size="7" fill="#fff" text-anchor="middle">${unit.code}</text>`;
+          }
+        });
+
+        // SPT N bars
+        bh.layers.forEach(l => {
+          if (l.sptN == null) return;
+          const y    = Math.min(((l.top + l.base) / 2) * SCALE + 26, svgH - 2);
+          const barW = Math.min(l.sptN / 60 * SPT_W, SPT_W);
+          rows += `<rect x="${(bhX + AXIS_W + COL_W + 2).toFixed(1)}" y="${(y-2.5).toFixed(1)}" width="${barW.toFixed(1)}" height="5" fill="#4a6275" opacity="0.7"/>`;
+          rows += `<text x="${(bhX + AXIS_W + COL_W + 4 + barW).toFixed(1)}" y="${(y+2.5).toFixed(1)}" font-size="7" fill="#334">${l.sptN}</text>`;
+        });
+
+        // Depth axis labels every 5m
+        for (let d = 0; d <= maxDepth; d += 5) {
+          const y = d * SCALE + 26;
+          if (y > svgH - 2) break;
+          rows += `<line x1="${bhX + AXIS_W - 4}" y1="${y.toFixed(1)}" x2="${bhX + BH_W}" y2="${y.toFixed(1)}" stroke="#ddd" stroke-width="0.5"/>`;
+          rows += `<text x="${(bhX + AXIS_W - 6).toFixed(1)}" y="${(y+3).toFixed(1)}" font-size="7" fill="#889" text-anchor="end">${d}</text>`;
+        }
+
+        // BH ID header
+        rows += `<text x="${(bhX + AXIS_W + COL_W/2).toFixed(1)}" y="14" font-size="8" font-weight="bold" fill="#334" text-anchor="middle">${bh.id}</text>`;
+        rows += `<text x="${(bhX + AXIS_W + COL_W/2).toFixed(1)}" y="23" font-size="7" fill="#889" text-anchor="middle">${gl.toFixed(1)}mAOD</text>`;
+
+        return rows;
+      }).join('');
+
+      return `<div style="overflow-x:auto;margin-bottom:8px">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgW} ${svgH}" style="height:${svgH}px;width:${svgW}px;background:#f8f9fa;border:1px solid #e0e4ea;border-radius:4px">
+  <rect width="${svgW}" height="${svgH}" fill="#f8f9fa"/>
+  <!-- Depth axis label -->
+  <text x="4" y="40" font-size="8" fill="#889" transform="rotate(-90,8,40)">Depth (m)</text>
+  ${strips}
+</svg>
+<p style="font-size:10px;color:#889;margin-top:4px">Left column: geological unit (coloured) · Right column: SPT N value bars (max scale=60)</p>
+</div>`;
+    })();
+
+    // ── Risk assessment section ────────────────────────────────────────────────
+    const riskHTML = (() => {
+      if (!riskReport?.zones?.length) return '';
+      const COLORS = { low:'#4fba6f', medium:'#d4a843', high:'#e06040' };
+      const zoneCards = riskReport.zones.map(z => {
+        const c = COLORS[z.level] ?? '#888';
+        return `<tr>
+          <td style="border-left:4px solid ${c};padding-left:8px"><strong>${z.icon} ${z.name}</strong></td>
+          <td><span style="background:${c};color:#fff;padding:1px 6px;border-radius:3px;font-size:11px">${z.level.toUpperCase()}</span></td>
+          <td>${z.pct}%</td>
+          <td style="font-size:11px;color:#677">${z.description}</td>
+        </tr>`;
+      }).join('');
+      const oc = COLORS[riskReport.overallLevel] ?? '#888';
+      return `<h2>Geotechnical Risk Assessment</h2>
+<p style="font-size:12px;margin-bottom:8px">Overall Risk: <strong style="color:${oc}">${(riskReport.overallLevel??'').toUpperCase()}</strong></p>
+<table><tr><th>Hazard</th><th>Level</th><th>Site %</th><th>Description</th></tr>${zoneCards}</table>`;
+    })();
+
+    const meanCert = (() => {
+      let s=0,n=0;
+      for (let i=0;i<unitIds.length;i++) if(unitIds[i]){s+=certainty[i];n++;}
+      return n ? (s/n*100).toFixed(0)+'%' : '—';
+    })();
 
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -322,45 +467,55 @@ export class ModelReport {
 <title>GeoModel AI — Site Investigation Report</title>
 <style>
   *{box-sizing:border-box}
-  body{font-family:Arial,Helvetica,sans-serif;color:#1c2a38;padding:40px;max-width:960px;margin:0 auto;font-size:13px}
+  body{font-family:Arial,Helvetica,sans-serif;color:#1c2a38;padding:40px;max-width:980px;margin:0 auto;font-size:13px}
   h1{font-size:22px;color:#1c2a38;border-bottom:3px solid #4a6275;padding-bottom:10px;margin-bottom:4px}
-  .meta{color:#8898a8;font-size:11px;margin-bottom:28px}
-  h2{font-size:13px;text-transform:uppercase;letter-spacing:0.8px;color:#4a6275;margin:28px 0 8px;border-bottom:1px solid #e4e8ec;padding-bottom:4px}
-  table{width:100%;border-collapse:collapse;margin-bottom:16px}
-  th{background:#f0f2f5;padding:6px 10px;text-align:left;border-bottom:2px solid #c8cdd6;font-size:11px;text-transform:uppercase;letter-spacing:0.4px}
-  td{padding:5px 10px;border-bottom:1px solid #eaeef2;vertical-align:middle}
+  .meta{color:#8898a8;font-size:11px;margin-bottom:24px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:0.8px;color:#4a6275;margin:28px 0 8px;border-bottom:1px solid #e4e8ec;padding-bottom:4px}
+  table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px}
+  th{background:#f0f2f5;padding:5px 8px;text-align:left;border-bottom:2px solid #c8cdd6;font-size:10px;text-transform:uppercase;letter-spacing:0.4px}
+  td{padding:4px 8px;border-bottom:1px solid #eaeef2;vertical-align:middle}
   tr:last-child td{border-bottom:none}
-  .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}
+  .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:middle}
   .badge{display:inline-block;background:#d04040;color:#fff;font-size:10px;padding:2px 7px;border-radius:3px;margin-left:10px;vertical-align:middle}
-  .footer{margin-top:48px;padding-top:12px;border-top:1px solid #e4e8ec;color:#8898a8;font-size:10px}
-  .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+  .footer{margin-top:48px;padding-top:12px;border-top:1px solid #e4e8ec;color:#8898a8;font-size:10px;line-height:1.5}
+  .info-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:16px}
   .info-cell{background:#f8f9fa;border-radius:4px;padding:10px 14px}
   .info-label{font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:#8898a8}
   .info-value{font-size:18px;font-weight:700;color:#1c2a38;margin-top:2px}
+  @media print{.footer{page-break-before:always}}
 </style>
 </head>
 <body>
 <h1>Site Investigation Report <span class="badge">PROOF OF CONCEPT</span></h1>
-<p class="meta">Generated by GeoModel AI · ${dateStr}</p>
+<p class="meta">Generated by GeoModel AI — probabilistic 3D ground model · ${dateStr}</p>
 
 <div class="info-grid">
-  <div class="info-cell"><div class="info-label">Total Voxels</div><div class="info-value">${(nx*ny*nz).toLocaleString()}</div></div>
   <div class="info-cell"><div class="info-label">Boreholes</div><div class="info-value">${bhs.length}</div></div>
-  <div class="info-cell"><div class="info-label">Grid</div><div class="info-value">${nx}×${ny}×${nz}</div></div>
-  <div class="info-cell"><div class="info-label">Cell Size</div><div class="info-value">${cs}×${cs}×${ch.toFixed(2)} m</div></div>
+  <div class="info-cell"><div class="info-label">Geo. Units</div><div class="info-value">${geoUnits.length}</div></div>
+  <div class="info-cell"><div class="info-label">Voxels</div><div class="info-value">${(nx*ny*nz).toLocaleString()}</div></div>
+  <div class="info-cell"><div class="info-label">Mean Certainty</div><div class="info-value">${meanCert}</div></div>
 </div>
 
-<h2>Geological Units</h2>
+<h2>Site Plan</h2>
+${planSVG}
+
+<h2>Geological Units — Volumes &amp; Parameters</h2>
 <table>
-  <tr><th>Code</th><th>Name</th><th>Description</th><th>Volume (m³)</th><th>Model %</th><th>Mean Certainty</th></tr>
+  <tr><th>Code</th><th>Name</th><th>Description</th><th>Vol. (m³)</th><th>%</th><th>Cert.</th>
+    <th>γ (kN/m³)</th><th>Cu (kPa)</th><th>φ′ (°)</th><th>Cc</th><th>E (MPa)</th><th>SPT N</th></tr>
   ${unitRows}
 </table>
 
+<h2>Borehole Log Strips</h2>
+${logStripsSVG}
+
 <h2>Borehole Register</h2>
 <table>
-  <tr><th>BH ID</th><th>X (m)</th><th>Y (m)</th><th>GL (mAOD)</th><th>Depth (m)</th><th>Layers</th><th>Units</th></tr>
+  <tr><th>BH ID</th><th>X (m)</th><th>Y (m)</th><th>GL (mAOD)</th><th>Depth (m)</th><th>Layers</th><th>Units</th><th>Mean SPT N</th></tr>
   ${bhRows}
 </table>
+
+${riskHTML}
 
 <h2>Model Grid</h2>
 <table>
@@ -369,10 +524,10 @@ export class ModelReport {
   <tr><td>Horizontal cell size</td><td>${cs} m</td></tr>
   <tr><td>Vertical cell height</td><td>${ch.toFixed(2)} m</td></tr>
   <tr><td>Grid origin (X, Y, Z)</td><td>(${O.x.toFixed(1)}, ${O.y.toFixed(1)}, ${O.z.toFixed(1)})</td></tr>
-  <tr><td>Geological units</td><td>${geoUnits.length}</td></tr>
+  <tr><td>Grid world extent</td><td>${(nx*cs).toFixed(0)} × ${(ny*cs).toFixed(0)} × ${(nz*ch).toFixed(0)} m</td></tr>
 </table>
 
-<p class="footer">This report is automatically generated from a probabilistic 3D interpolation model. It is intended for illustrative purposes only and must not be used for design, construction, or contractual purposes without independent verification by a qualified geotechnical engineer.</p>
+<p class="footer"><strong>DISCLAIMER:</strong> This report is automatically generated from a probabilistic 3D interpolation model built from limited site investigation data. It is intended for project management and preliminary design purposes only. All ground conditions, geotechnical parameters, and risk assessments must be independently verified by a suitably qualified and experienced geotechnical engineer before being used for design, specification, or construction. This document does not constitute a geotechnical investigation report and should not be used as such.</p>
 </body>
 </html>`;
 
