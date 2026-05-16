@@ -1,7 +1,8 @@
 import { initApiKeyModal } from './api-key.js';
 import { initUploader } from './data-parser.js';
 import { initTextInput } from './text-input.js';
-import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel, oracleRefinement, generateReportNarrative } from './claude-client.js';
+import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel, oracleRefinement, generateReportNarrative, parseGeologicalFeatures } from './claude-client.js';
+import { parseShapesFromClaude, generateShapeBoreholes } from './geo-shapes.js';
 import { exportConfig, importConfig } from './project-config.js';
 import { buildVoxelGrid, buildVoxelGridMonteCarlo } from './interpolator.js';
 import { initScene } from './scene.js';
@@ -68,6 +69,7 @@ export const AppState = {
   monteCarloEnabled: false,
   mcRealisations: 20,
   faultPlanes: [],
+  shapeBoreholes: [],
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
@@ -576,6 +578,7 @@ async function loadDemoSite(demoName) {
     setEnabled('btn-auto-params', true);
     setEnabled('btn-interpret-geology', true);
     setEnabled('btn-semantic-model', true);
+    setEnabled('btn-parse-features', true);
     log(`${data.site?.name ?? demoName} — ${AppState.rawBoreholes.length} boreholes loaded.`, 'ok');
 
     setTimeout(() => document.getElementById('btn-build-model').click(), 200);
@@ -653,6 +656,7 @@ function initRunAI() {
       setEnabled('btn-run-ai', true);
       setEnabled('btn-interpret-geology', true);
       setEnabled('btn-semantic-model', true);
+      setEnabled('btn-parse-features', true);
       saveSession(AppState);
     } catch (err) {
       log(`AI analysis failed: ${err.message}`, 'error');
@@ -690,6 +694,12 @@ function initBuildModel() {
         const interval = AppState.compositingInterval;
         bhForModel = compositeBH(AppState.classifiedBH, interval);
         log(`Compositing BH data at ${interval}m intervals → ${bhForModel.reduce((s,b)=>s+b.layers.length,0)} intervals`, 'info');
+      }
+
+      // Inject shape boreholes (geological feature primitives)
+      if (AppState.shapeBoreholes?.length) {
+        bhForModel = [...bhForModel, ...AppState.shapeBoreholes];
+        log(`Injecting ${AppState.shapeBoreholes.length} geological feature virtual boreholes`, 'info');
       }
 
       // Extract fault planes from constraint text before building
@@ -3021,6 +3031,7 @@ async function init() {
   initWelcomeOverlay();
   initStereonet();
   initSlopeStability();
+  initGeoFeatures();
 
   // Sample tile buttons (left panel)
   document.querySelectorAll('.sample-tile').forEach(btn => {
@@ -3053,6 +3064,66 @@ async function init() {
 
   window.addEventListener('geomodel:data-loaded', e => {
     if (e.detail?.boreholes?.length) hideWelcome();
+  });
+}
+
+// ── Geological feature shape injection ───────────────────────────────────────
+function initGeoFeatures() {
+  const btn    = document.getElementById('btn-parse-features');
+  const result = document.getElementById('feature-parse-result');
+  if (!btn) return;
+
+  btn.addEventListener('click', async () => {
+    const text = document.getElementById('input-geo-features')?.value?.trim();
+    if (!text) { log('Enter feature descriptions first.', 'warn'); return; }
+    if (!AppState.geoUnits.length) { log('Run AI Analysis first to classify units.', 'warn'); return; }
+
+    btn.disabled = true; btn.textContent = '⏳ Parsing features…';
+    if (result) result.textContent = 'Parsing…';
+
+    try {
+      const bhs    = AppState.classifiedBH.filter(b => !b.synthetic);
+      const xs     = bhs.map(b => b.x), ys = bhs.map(b => b.y);
+      const bbox   = {
+        minX: xs.length ? Math.min(...xs) : 0,
+        maxX: xs.length ? Math.max(...xs) : 100,
+        minY: ys.length ? Math.min(...ys) : 0,
+        maxY: ys.length ? Math.max(...ys) : 100,
+        maxGL: Math.max(...bhs.map(b => b.groundLevel ?? 0), 0),
+      };
+      const apiKey  = sessionStorage.getItem('anthropic_api_key') ?? '';
+      const demoMode = !apiKey;
+
+      log(`Parsing geological feature descriptions${demoMode ? ' (demo)' : ' via Claude'}…`, 'info');
+      const shapes = await parseGeologicalFeatures(text, AppState.geoUnits, bbox, apiKey, demoMode);
+
+      // Resolve unit codes in shape objects
+      const resolved = parseShapesFromClaude(shapes, AppState.geoUnits);
+
+      // Generate virtual boreholes from shape primitives
+      const shapeBHs = generateShapeBoreholes(resolved, bbox, AppState.semanticWeight ?? 0.3);
+      AppState.shapeBoreholes = shapeBHs;
+
+      const nShapes = resolved.length, nBHs = shapeBHs.length;
+      log(`Feature injection: ${nShapes} shape(s) → ${nBHs} virtual observation point(s)`, 'ok');
+
+      if (result) {
+        const items = resolved.map(s =>
+          `• ${s.feature_type ?? '?'} — ${s.unit?.code ?? s.unit_code ?? 'unknown'} (${((s.confidence ?? 0.5) * 100).toFixed(0)}% confidence)`
+        ).join('\n');
+        result.textContent = items || 'No features parsed';
+      }
+
+      // Show rebuild hint
+      setEnabled('btn-build-model', AppState.classifiedBH.length > 0);
+      log('Rebuild the 3D model to apply injected shape features.', 'info');
+    } catch (err) {
+      log(`Feature parsing error: ${err.message}`, 'error');
+      if (result) result.textContent = `Error: ${err.message}`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '✦ Parse & Inject Features →';
+    }
   });
 }
 

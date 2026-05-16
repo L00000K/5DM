@@ -677,6 +677,125 @@ function _demoNarrative(geoUnits, classifiedBH) {
   };
 }
 
+// ── Parse geological feature descriptions into shape primitives ───────────────
+// Returns array of shape objects compatible with geo-shapes.js.
+export async function parseGeologicalFeatures(featureText, geoUnits, bbox, apiKey, demoMode) {
+  if (!featureText?.trim()) return [];
+
+  if (demoMode || !apiKey) {
+    return _demoShapes(featureText, geoUnits, bbox);
+  }
+
+  const unitList = geoUnits.map(u => `${u.code} (${u.name ?? ''})`).join(', ');
+  const { minX = 0, maxX = 100, minY = 0, maxY = 100 } = bbox ?? {};
+
+  const system = `You are a geotechnical expert. Parse geological feature descriptions into structured shape primitives for a 3D ground model. Respond ONLY with valid JSON — an array of shape objects, no markdown.
+
+Available unit codes: ${unitList}
+Site bounds: E ${minX.toFixed(0)}–${maxX.toFixed(0)} m, N ${minY.toFixed(0)}–${maxY.toFixed(0)} m
+
+Each shape object must have:
+{
+  "feature_type": "palaeochannel"|"lens"|"buried_hill"|"fold"|"pinch_out",
+  "unit_code": "CODE" or null,
+  "confidence": 0.0–1.0,
+  "centroid_x_frac": 0–1,
+  "centroid_y_frac": 0–1,
+  "orientation_deg": 0–360,
+  // palaeochannel: width_m, max_depth_m, length_m
+  // lens: rx_m, ry_m, rz_m
+  // buried_hill: amplitude_m, half_width_m
+  "description": "brief"
+}`;
+
+  const resp = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 1024,
+      system,
+      messages: [{ role: 'user', content: featureText }],
+    }),
+  });
+
+  if (!resp.ok) {
+    const e = await resp.json().catch(() => ({}));
+    throw new Error(e?.error?.message || `API error ${resp.status}`);
+  }
+
+  const data = await resp.json();
+  const text = (data.content?.[0]?.text ?? '').replace(/^```[a-z]*\n?/i,'').replace(/\n?```$/i,'').trim();
+  try {
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    throw new Error(`Shape parse returned non-JSON: ${text.slice(0,120)}`);
+  }
+}
+
+function _demoShapes(text, geoUnits, bbox) {
+  const lower = text.toLowerCase();
+  const shapes = [];
+  const { minX=0, maxX=100, minY=0, maxY=100 } = bbox ?? {};
+  const firstUnit = geoUnits.find(u => u.code !== 'UNKN');
+
+  if (/palaeochannel|channel|trough/.test(lower)) {
+    shapes.push({
+      feature_type: 'palaeochannel',
+      unit_code: firstUnit?.code ?? null,
+      confidence: 0.6,
+      centroid_x_frac: 0.5,
+      centroid_y_frac: 0.67,
+      orientation_deg: 90,
+      width_m: 40,
+      max_depth_m: 6,
+      length_m: (maxX - minX) * 0.6,
+      description: 'Demo palaeochannel (east–west)',
+    });
+  }
+  if (/lens|pod|lenticle/.test(lower)) {
+    shapes.push({
+      feature_type: 'lens',
+      unit_code: firstUnit?.code ?? null,
+      confidence: 0.55,
+      centroid_x_frac: 0.4,
+      centroid_y_frac: 0.5,
+      orientation_deg: 45,
+      rx_m: 25, ry_m: 15, rz_m: 4,
+      description: 'Demo sand lens',
+    });
+  }
+  if (/hill|dome|mound|ridge/.test(lower)) {
+    shapes.push({
+      feature_type: 'buried_hill',
+      unit_code: geoUnits.find(u => /chalk|rock|bedrock/i.test(u.name ?? ''))?.code ?? firstUnit?.code,
+      confidence: 0.7,
+      centroid_x_frac: 0.5,
+      centroid_y_frac: 0.5,
+      amplitude_m: 8,
+      half_width_m: 35,
+      description: 'Demo buried bedrock hill',
+    });
+  }
+  if (!shapes.length) {
+    shapes.push({
+      feature_type: 'lens',
+      unit_code: firstUnit?.code ?? null,
+      confidence: 0.45,
+      centroid_x_frac: 0.5,
+      centroid_y_frac: 0.5,
+      rx_m: 20, ry_m: 20, rz_m: 5,
+      description: 'Demo geological body (generic)',
+    });
+  }
+  return shapes;
+}
+
 // ── Default units (fallback) ───────────────────────────────────────────────────
 function defaultUnits() {
   return [

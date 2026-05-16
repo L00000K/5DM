@@ -330,6 +330,15 @@
           <p id="orientation-result" class="hint" style="margin-top:3px"></p>
         </div>
 
+        <div class="settings-divider">Geological Features ✦ AI</div>
+        <div class="field-group">
+          <label for="input-geo-features">Feature Descriptions</label>
+          <textarea id="input-geo-features" rows="5"
+            placeholder="Describe geological features in plain English:&#10;&#10;A palaeochannel filled with soft alluvial clay runs roughly east–west through the northern third, ~50m wide, up to 8m deep.&#10;&#10;A sand lens exists in the western part of the site.&#10;&#10;The chalk bedrock forms a buried hill in the centre."></textarea>
+          <button id="btn-parse-features" class="btn-secondary btn-sm" style="margin-top:4px;width:100%;background:linear-gradient(135deg,var(--accent-cyan) 0%,#2a6aad 100%);color:#fff;border:none" disabled>✦ Parse &amp; Inject Features →</button>
+          <div id="feature-parse-result" class="hint" style="margin-top:4px"></div>
+        </div>
+
         <div class="settings-divider">Semantic Information</div>
         <div class="field-group">
           <label for="input-unit-desc">Unit Descriptions</label>
