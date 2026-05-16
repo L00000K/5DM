@@ -1,8 +1,10 @@
-// ── Isopach / thickness map + depth / elevation maps ─────────────────────────
+// ── Isopach / thickness map + depth / elevation / settlement / certainty maps ──
 // Modes:
-//   thick  — per-column unit thickness (isopach)
-//   topZ   — elevation of unit top contact (mAOD)
-//   baseZ  — elevation of unit base contact (mAOD)
+//   thick   — per-column unit thickness (isopach)
+//   topZ    — elevation of unit top contact (mAOD)
+//   baseZ   — elevation of unit base contact (mAOD)
+//   settle  — total 1D consolidation settlement per column (mm)
+//   cert    — mean certainty across all voxels per column (0–1)
 
 export class IsopachMap {
   constructor() {
@@ -16,14 +18,24 @@ export class IsopachMap {
     this._visible   = false;
     this._lastArgs  = null;
 
+    this._settleInputs = document.getElementById('isopach-settle-inputs');
+    this._foundLevel   = document.getElementById('isopach-found-level');
+    this._loadKpa      = document.getElementById('isopach-load-kpa');
+
     this._closeBtn?.addEventListener('click', () => this.hide());
     this._exportBtn?.addEventListener('click', () => this._exportPNG());
     this._select?.addEventListener('change', () => {
       if (this._lastArgs) this._redraw();
     });
     this._modeSelect?.addEventListener('change', () => {
+      const mode = this._modeSelect.value;
+      if (this._settleInputs) {
+        this._settleInputs.style.display = mode === 'settle' ? 'flex' : 'none';
+      }
       if (this._lastArgs) this._redraw();
     });
+    this._foundLevel?.addEventListener('change', () => { if (this._lastArgs) this._redraw(); });
+    this._loadKpa?.addEventListener('change',    () => { if (this._lastArgs) this._redraw(); });
 
     window.addEventListener('keydown', e => {
       if (e.key === 'Escape' && this._visible) this.hide();
@@ -51,13 +63,22 @@ export class IsopachMap {
     const args = this._lastArgs;
     if (!args || !this._canvas || !this._ctx) return;
     const { grid, geoUnits, boreholes } = args;
-    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds } = grid;
-
-    const targetId = parseInt(this._select?.value ?? geoUnits[0]?.id ?? 0);
-    const unit     = geoUnits.find(u => u.id === targetId);
-    if (!unit) return;
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty } = grid;
 
     const mode = this._modeSelect?.value ?? 'thick';
+
+    // For unit-specific modes, require a valid unit selection
+    const targetId = parseInt(this._select?.value ?? geoUnits[0]?.id ?? 0);
+    const unit     = geoUnits.find(u => u.id === targetId);
+    if (!unit && (mode === 'thick' || mode === 'topZ' || mode === 'baseZ')) return;
+
+    // Build unitById lookup for settle mode
+    const unitById = {};
+    geoUnits.forEach(u => { unitById[u.id] = u; });
+
+    // Foundation params for settle mode
+    const foundElev  = parseFloat(this._foundLevel?.value ?? '') || (O.y + nz * ch * 0.5);
+    const appliedKPa = parseFloat(this._loadKpa?.value ?? '50') || 50;
 
     // ── Compute per-column values ───────────────────────────────────────────
     const vals = new Float32Array(nx * ny).fill(NaN);
@@ -75,17 +96,24 @@ export class IsopachMap {
         } else if (mode === 'topZ') {
           for (let iz = nz - 1; iz >= 0; iz--) {
             if (unitIds[ix + iy * nx + iz * nx * ny] === targetId) {
-              v = O.y + (iz + 1) * ch;
-              break;
+              v = O.y + (iz + 1) * ch; break;
             }
           }
         } else if (mode === 'baseZ') {
           for (let iz = 0; iz < nz; iz++) {
             if (unitIds[ix + iy * nx + iz * nx * ny] === targetId) {
-              v = O.y + iz * ch;
-              break;
+              v = O.y + iz * ch; break;
             }
           }
+        } else if (mode === 'settle') {
+          v = _settlementAtCol(grid, unitById, ix, iy, foundElev, appliedKPa);
+        } else if (mode === 'cert') {
+          let sum = 0, cnt = 0;
+          for (let iz = 0; iz < nz; iz++) {
+            const flat = ix + iy * nx + iz * nx * ny;
+            if (unitIds[flat]) { sum += certainty[flat]; cnt++; }
+          }
+          v = cnt > 0 ? sum / cnt : NaN;
         }
         vals[ix + iy * nx] = v;
         if (!isNaN(v)) { if (v < vMin) vMin = v; if (v > vMax) vMax = v; }
@@ -120,9 +148,10 @@ export class IsopachMap {
         const v = vals[ix + iy * nx];
         if (isNaN(v)) continue;
         const norm = (v - vMin) / vRange;
-        ctx.fillStyle = mode === 'thick'
-          ? isopachColor(unit.color, norm)
-          : elevColor(norm);
+        ctx.fillStyle = mode === 'thick'   ? isopachColor(unit.color, norm)
+                      : mode === 'cert'    ? certColor(norm)
+                      : mode === 'settle'  ? settleColor(norm)
+                      : elevColor(norm);
         ctx.fillRect(
           PAD + ix * cellPxW,
           PAD + (ny - 1 - iy) * cellPxH,
@@ -157,30 +186,42 @@ export class IsopachMap {
     const lgX = PAD, lgY = PAD + drawH + 8, lgW = drawW, lgH = 12;
     for (let i = 0; i < lgW; i++) {
       const t = i / lgW;
-      ctx.fillStyle = mode === 'thick'
-        ? isopachColor(unit.color, t)
-        : elevColor(t);
+      ctx.fillStyle = mode === 'thick'  ? isopachColor(unit?.color ?? '#4a6fa5', t)
+                    : mode === 'cert'   ? certColor(t)
+                    : mode === 'settle' ? settleColor(t)
+                    : elevColor(t);
       ctx.fillRect(lgX + i, lgY, 1, lgH);
     }
     ctx.strokeStyle = '#c8cdd6'; ctx.strokeRect(lgX, lgY, lgW, lgH);
     ctx.fillStyle = '#4a6275'; ctx.font = '10px Inter, sans-serif';
+
+    const modeLabel = mode === 'thick'  ? `${unit?.code} thickness`
+                    : mode === 'topZ'   ? `${unit?.code} top Z (mAOD)`
+                    : mode === 'baseZ'  ? `${unit?.code} base Z (mAOD)`
+                    : mode === 'settle' ? `Settlement (mm) · FD=${foundElev.toFixed(1)} mAOD · q=${appliedKPa} kPa`
+                    : 'Mean certainty (0–1)';
+
+    const loStr = mode === 'settle' ? `${vMin.toFixed(0)} mm`
+                : mode === 'cert'   ? `${(vMin*100).toFixed(0)}%`
+                : `${vMin.toFixed(1)} m`;
+    const hiStr = mode === 'settle' ? `${vMax.toFixed(0)} mm`
+                : mode === 'cert'   ? `${(vMax*100).toFixed(0)}%`
+                : `${vMax.toFixed(1)} m`;
+
     ctx.textAlign = 'left';
-    const lo = mode === 'thick' ? '0 m' : `${vMin.toFixed(1)} m`;
-    const hi = mode === 'thick' ? `${vMax.toFixed(1)} m` : `${vMax.toFixed(1)} m`;
-    ctx.fillText(lo, lgX, lgY + lgH + 12);
+    ctx.fillText(loStr, lgX, lgY + lgH + 12);
     ctx.textAlign = 'right';
-    ctx.fillText(hi, lgX + lgW, lgY + lgH + 12);
+    ctx.fillText(hiStr, lgX + lgW, lgY + lgH + 12);
     ctx.textAlign = 'center';
-    const modeLabel = mode === 'thick' ? `${unit.code} thickness`
-                    : mode === 'topZ'  ? `${unit.code} top Z (mAOD)`
-                    : `${unit.code} base Z (mAOD)`;
     ctx.fillText(modeLabel, lgX + lgW * 0.5, lgY + lgH + 12);
 
     // ── Title ─────────────────────────────────────────────────────────────────
     ctx.fillStyle = '#8898a8';
     ctx.font = 'bold 11px Inter, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`${modeLabel} — ${unit.name}`, PAD, PAD - 6);
+    const titleUnit = (mode === 'thick' || mode === 'topZ' || mode === 'baseZ') && unit
+      ? ` — ${unit.name}` : '';
+    ctx.fillText(`${modeLabel}${titleUnit}`, PAD, PAD - 6);
   }
 
   show() { this._visible = true;  if (this._panel) this._panel.hidden = false; }
@@ -197,12 +238,52 @@ export class IsopachMap {
   }
 }
 
+// ── Per-column settlement (mm) — Terzaghi 1D consolidation ────────────────────
+function _settlementAtCol(grid, unitById, cx, cy, foundElev, appliedKPa) {
+  const { nx, ny, nz, cellHeight: ch, origin: O, unitIds } = grid;
+  let sigmaV = 0, total = 0, hasData = false;
+  for (let iz = nz - 1; iz >= 0; iz--) {
+    const midZ = O.y + iz * ch + ch * 0.5;
+    const unit  = unitById[unitIds[cx + cy * nx + iz * nx * ny]];
+    const gam   = unit?.params?.gamma ?? 19;
+    if (midZ >= foundElev) { sigmaV += gam * ch; continue; }
+    if (!unit)             { sigmaV += gam * ch; continue; }
+    const Cc = unit.params?.Cc ?? null;
+    const e0 = unit.params?.e0 ?? null;
+    if (Cc !== null && e0 !== null && sigmaV > 0) {
+      const ratio = (sigmaV + appliedKPa) / sigmaV;
+      if (ratio > 1) {
+        total += (Cc / (1 + e0)) * ch * 1000 * Math.log10(ratio);
+        hasData = true;
+      }
+    }
+    sigmaV += gam * ch;
+  }
+  return hasData ? total : NaN;
+}
+
 // ── Colour ramps ──────────────────────────────────────────────────────────────
 function isopachColor(hex, norm) {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
   return `rgb(${Math.round(255+(r-255)*norm)},${Math.round(255+(g-255)*norm)},${Math.round(255+(b-255)*norm)})`;
+}
+
+function certColor(norm) {
+  // Red (low) → yellow → green (high certainty)
+  const r = norm < 0.5 ? 220 : Math.round(220 - (norm - 0.5) * 2 * 170);
+  const g = norm < 0.5 ? Math.round(norm * 2 * 200) : 200;
+  const b = 60;
+  return `rgb(${r},${g},${b})`;
+}
+
+function settleColor(norm) {
+  // White (low settlement) → yellow → red (high settlement)
+  const r = 255;
+  const g = Math.round(255 - norm * 220);
+  const b = Math.round(255 - norm * 255);
+  return `rgb(${r},${g},${b})`;
 }
 
 function elevColor(norm) {

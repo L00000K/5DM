@@ -53,6 +53,22 @@
         </div>
         <div id="bh-file-list" class="file-list"></div>
 
+        <!-- Lab data (collapsible) -->
+        <div class="collapsible-hdr" id="lab-toggle">
+          <span>Lab Data <span class="badge-opt">CSV optional</span></span>
+          <span class="collapse-arrow">›</span>
+        </div>
+        <div id="lab-section" class="collapsible-body" hidden>
+          <div class="drop-zone drop-zone-sm" id="drop-lab" tabindex="0" role="button">
+            <div class="drop-icon" style="font-size:18px">⬇</div>
+            <div class="drop-label" style="font-size:12px">Lab Results CSV</div>
+            <div class="drop-hint">Unit_Code, Test_Type, Value</div>
+            <input type="file" id="file-lab" accept=".csv,.txt" hidden>
+          </div>
+          <div id="lab-file-info" class="file-list"></div>
+          <p class="hint">Auto-populates γ, Cu, φ', Cc, e₀… in Props tab</p>
+        </div>
+
         <!-- Geological map (collapsible) -->
         <div class="collapsible-hdr" id="geomap-toggle">
           <span>Geological Map <span class="badge-opt">CSV optional</span></span>
@@ -359,7 +375,15 @@
               <option value="thick">Thickness</option>
               <option value="topZ">Top Z (mAOD)</option>
               <option value="baseZ">Base Z (mAOD)</option>
+              <option value="settle">Settlement (mm)</option>
+              <option value="cert">Mean Certainty</option>
             </select>
+            <span id="isopach-settle-inputs" style="display:none;gap:4px;align-items:center">
+              <input type="number" id="isopach-found-level" placeholder="FD Z mAOD"
+                step="0.5" style="width:88px" class="cell-size-input" title="Foundation level (mAOD)">
+              <input type="number" id="isopach-load-kpa" placeholder="q kPa"
+                value="50" step="5" style="width:62px" class="cell-size-input" title="Applied load (kPa)">
+            </span>
             <button id="isopach-export" class="btn-ghost btn-sm" title="Export as PNG">⬇ PNG</button>
             <button id="isopach-close" class="slicer-close-btn" title="Close">✕</button>
           </div>

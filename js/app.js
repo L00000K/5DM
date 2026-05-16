@@ -17,6 +17,7 @@ import { saveSession, loadSession, hasSavedSession } from './session.js';
 import { calculateSettlement, renderSettlementResults } from './settlement.js';
 import { calculateBearingCapacity, renderBearingResults } from './bearing.js';
 import { calculatePileCapacity, renderPileResults } from './pile.js';
+import { parseLabCSV } from './lab-import.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -1335,6 +1336,49 @@ function initVBHButton() {
   });
 }
 
+// ── Lab data import ────────────────────────────────────────────────────────────
+function initLabImport() {
+  const dropZone  = document.getElementById('drop-lab');
+  const fileInput = document.getElementById('file-lab');
+  const fileInfo  = document.getElementById('lab-file-info');
+  const labToggle = document.getElementById('lab-toggle');
+  const labSection = document.getElementById('lab-section');
+  if (!dropZone || !fileInput) return;
+
+  labToggle?.addEventListener('click', () => {
+    if (!labSection) return;
+    labSection.hidden = !labSection.hidden;
+    const arrow = labToggle.querySelector('.collapse-arrow');
+    if (arrow) arrow.textContent = labSection.hidden ? '›' : '⌄';
+  });
+
+  const parseFile = file => {
+    if (!AppState.geoUnits.length) { log('Load borehole data first so unit codes can be resolved.', 'warn'); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      const { parsed, skipped, updated } = parseLabCSV(e.target.result, AppState.geoUnits);
+      if (!parsed) { log(`Lab import: no rows parsed (${skipped} skipped).`, 'warn'); return; }
+      fileInfo.innerHTML = `<div class="file-item">
+        <span class="file-name">${escHtml(file.name)}</span>
+        <span class="file-size">${parsed} values</span></div>`;
+      renderPropertiesTable(AppState.geoUnits, () => updateLegend());
+      log(`Lab data: ${parsed} values imported · ${updated.join(' · ') || 'no units matched'}`, 'ok');
+    };
+    reader.readAsText(file);
+  };
+
+  dropZone.addEventListener('click', () => fileInput.click());
+  dropZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault(); dropZone.classList.remove('drag-over');
+    const file = e.dataTransfer?.files[0];
+    if (file) parseFile(file);
+  });
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) parseFile(fileInput.files[0]); });
+}
+
 // ── Geological map import ──────────────────────────────────────────────────────
 function initGeoMapImport() {
   const dropZone  = document.getElementById('drop-geomap');
@@ -1539,6 +1583,7 @@ async function init() {
   initInterpolationSettings();
   initCollapsibles();
   initTopoUpload();
+  initLabImport();
   initGeoMapImport();
   initReset();
   initApiKeyModal();
