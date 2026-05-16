@@ -1409,6 +1409,20 @@ input[type="range"] {
 ::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 
+/* ── North arrow ── */
+.north-arrow {
+  position: absolute;
+  bottom: 52px;
+  right: 130px;
+  z-index: 6;
+  pointer-events: none;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.75);
+  backdrop-filter: blur(4px);
+}
+
+.north-arrow[hidden] { display: none; }
+
 /* ── Scale bar ── */
 .scale-bar {
   position: absolute;
@@ -1483,6 +1497,22 @@ input[type="range"] {
   min-width: 30px;
   text-align: right;
   flex-shrink: 0;
+}
+
+/* ── Borehole column chart ── */
+.bh-chart-wrap {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.bh-chart-wrap[hidden] { display: none !important; }
+
+.bh-chart-canvas {
+  display: block;
+  height: 130px;
 }
 
 /* ── Borehole data table ── */

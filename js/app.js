@@ -279,6 +279,7 @@ async function loadDemoSite(demoName) {
     updateLegend();
     updateInfoPanel();
     updateBHTable();
+    updateBHChart();
     setEnabled('btn-run-ai', true);
     setEnabled('btn-build-model', true);
     log(`${data.site?.name ?? demoName} — ${AppState.rawBoreholes.length} boreholes loaded.`, 'ok');
@@ -344,6 +345,7 @@ function initRunAI() {
       AppState.classifiedBH = classified;
       updateLegend();
       updateBHTable();
+      updateBHChart();
       log(`Analysis complete — ${units.length} units classified.`, 'ok');
       setEnabled('btn-build-model', true);
       setEnabled('btn-run-ai', true);
@@ -455,6 +457,67 @@ function initMeasureTool() {
 function initBackgroundToggle() {
   document.getElementById('dark-background')?.addEventListener('change', e => {
     if (AppState.scene) AppState.scene.setBackground(e.target.checked);
+  });
+}
+
+// ── Borehole column chart ─────────────────────────────────────────────────────
+export function updateBHChart() {
+  const wrap   = document.getElementById('bh-chart-wrap');
+  const canvas = document.getElementById('bh-chart-canvas');
+  if (!wrap || !canvas) return;
+
+  const bhs = AppState.classifiedBH.filter(b => !b.synthetic && b.layers?.length);
+  if (!bhs.length || !AppState.geoUnits.length) {
+    wrap.hidden = true;
+    return;
+  }
+
+  const ctx   = canvas.getContext('2d');
+  const PAD   = 8;
+  const BARW  = 22;
+  const GAP   = 5;
+  const H     = 130;
+  const lblH  = 22;
+  const drawH = H - PAD - lblH;
+  const totalW = bhs.length * (BARW + GAP) + PAD * 2;
+
+  canvas.width  = totalW;
+  canvas.height = H;
+  wrap.hidden = false;
+
+  ctx.clearRect(0, 0, totalW, H);
+
+  const unitByCode = {};
+  AppState.geoUnits.forEach(u => { unitByCode[u.code] = u; });
+
+  bhs.forEach((bh, bi) => {
+    const maxDepth = Math.max(...bh.layers.map(l => l.base));
+    if (!maxDepth) return;
+    const x = PAD + bi * (BARW + GAP);
+
+    bh.layers.forEach(layer => {
+      const u = unitByCode[layer.unitCode];
+      if (!u) return;
+      const y0 = PAD + (layer.top  / maxDepth) * drawH;
+      const y1 = PAD + (layer.base / maxDepth) * drawH;
+      ctx.fillStyle = u.color;
+      ctx.fillRect(x, y0, BARW, Math.max(1, y1 - y0));
+    });
+
+    // Frame
+    ctx.strokeStyle = '#c8cdd6';
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(x, PAD, BARW, drawH);
+
+    // Label
+    ctx.fillStyle = '#4a6275';
+    ctx.font = '8px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.save();
+    ctx.translate(x + BARW / 2, H - 4);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText(bh.id, 0, 0);
+    ctx.restore();
   });
 }
 

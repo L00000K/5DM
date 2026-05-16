@@ -64,6 +64,9 @@ class SceneManager {
     this._resizeObserver.observe(this._canvas.parentElement);
     this._onResize();
 
+    this._northArrow = document.getElementById('north-arrow');
+    this._northCtx   = this._northArrow?.getContext('2d');
+
     this._animate();
     this._initTooltip();
     this._initMiddleMouse();
@@ -116,6 +119,7 @@ class SceneManager {
     this._controls.update();
     this._renderer.render(this._scene, this._camera);
     this._updateScaleBar();
+    this._updateNorthArrow();
   }
 
   // ── Scale bar (updates every frame) ──────────────────────────────────────
@@ -591,6 +595,58 @@ class SceneManager {
     this._canvas.addEventListener('auxclick', e => {
       if (e.button === 1) e.preventDefault();
     });
+  }
+
+  // ── North arrow ──────────────────────────────────────────────────────────
+  _updateNorthArrow() {
+    const cvs = this._northArrow;
+    const ctx = this._northCtx;
+    if (!cvs || !ctx) return;
+
+    cvs.hidden = false;
+    const S = 48, cx = S / 2, cy = S / 2, R = 19;
+
+    // Get camera direction projected onto XZ plane
+    const dir = new THREE.Vector3();
+    this._camera.getWorldDirection(dir);
+    dir.y = 0; dir.normalize();
+    // North is -Z in world space (convention). Angle of North in screen space:
+    const angle = Math.atan2(-dir.x, -dir.z); // angle to rotate arrow to point North
+
+    ctx.clearRect(0, 0, S, S);
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+
+    // North (red) half
+    ctx.beginPath();
+    ctx.moveTo(0, -R); ctx.lineTo(-6, 4); ctx.lineTo(0, 0); ctx.closePath();
+    ctx.fillStyle = '#d03030';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(0, -R); ctx.lineTo(6, 4); ctx.lineTo(0, 0); ctx.closePath();
+    ctx.fillStyle = '#b02020';
+    ctx.fill();
+
+    // South (grey) half
+    ctx.beginPath();
+    ctx.moveTo(0, R); ctx.lineTo(-6, -4); ctx.lineTo(0, 0); ctx.closePath();
+    ctx.fillStyle = '#9aaabb';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(0, R); ctx.lineTo(6, -4); ctx.lineTo(0, 0); ctx.closePath();
+    ctx.fillStyle = '#8898a8';
+    ctx.fill();
+
+    ctx.restore();
+
+    // N label
+    ctx.fillStyle = '#1c2a38';
+    ctx.font = 'bold 9px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('N', cx, cy);
   }
 
   // ── Measurement tool ─────────────────────────────────────────────────────

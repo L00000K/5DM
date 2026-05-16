@@ -226,6 +226,9 @@
 
       <!-- ANALYSIS TAB -->
       <div class="tab-content" id="tab-analysis" role="tabpanel">
+        <div id="bh-chart-wrap" class="bh-chart-wrap" hidden>
+          <canvas id="bh-chart-canvas" class="bh-chart-canvas"></canvas>
+        </div>
         <div id="analysis-log" class="analysis-log">
           <div class="log-entry log-info">Run AI Analysis to see results here.</div>
         </div>
@@ -380,6 +383,9 @@
           <div id="log-labels" class="log-labels"></div>
         </div>
       </div>
+
+      <!-- North arrow -->
+      <canvas id="north-arrow" class="north-arrow" width="48" height="48" hidden></canvas>
 
       <!-- Scale bar -->
       <div id="scale-bar" class="scale-bar" hidden>
