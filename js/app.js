@@ -1,7 +1,7 @@
 import { initApiKeyModal } from './api-key.js';
 import { initUploader } from './data-parser.js';
 import { initTextInput } from './text-input.js';
-import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel } from './claude-client.js';
+import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel, oracleRefinement } from './claude-client.js';
 import { exportConfig, importConfig } from './project-config.js';
 import { buildVoxelGrid } from './interpolator.js';
 import { initScene } from './scene.js';
@@ -55,6 +55,8 @@ export const AppState = {
   trendOrder: 1,
   semanticModel: null,
   semanticWeight: 0.3,
+  niEpochs: 400,
+  oracleEnabled: false,
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
@@ -144,10 +146,12 @@ function initInterpolationSettings() {
   document.querySelectorAll('input[name="interp-method"]').forEach(radio => {
     radio.addEventListener('change', () => {
       AppState.interpMethod = radio.value;
-      const vPanel = document.getElementById('variogram-panel');
+      const vPanel  = document.getElementById('variogram-panel');
       const ukPanel = document.getElementById('uk-trend-panel');
-      if (vPanel) vPanel.style.display = ['kriging', 'uk'].includes(radio.value) ? 'block' : 'none';
+      const niPanel = document.getElementById('ni-panel');
+      if (vPanel)  vPanel.style.display  = ['kriging', 'uk'].includes(radio.value) ? 'block' : 'none';
       if (ukPanel) ukPanel.style.display = radio.value === 'uk' ? 'block' : 'none';
+      if (niPanel) niPanel.style.display = radio.value === 'neural-implicit' ? 'block' : 'none';
       if (['kriging', 'uk'].includes(radio.value) && AppState.classifiedBH.length) {
         _renderVariogram(AppState.classifiedBH);
       }
@@ -157,6 +161,14 @@ function initInterpolationSettings() {
   const trendSel = document.getElementById('uk-trend-order');
   trendSel?.addEventListener('change', () => {
     AppState.trendOrder = parseInt(trendSel.value);
+  });
+
+  // Neural implicit controls
+  document.getElementById('ni-epochs')?.addEventListener('change', e => {
+    AppState.niEpochs = parseInt(e.target.value) || 400;
+  });
+  document.getElementById('ni-oracle-toggle')?.addEventListener('change', e => {
+    AppState.oracleEnabled = e.target.checked;
   });
 
   const azInput   = document.getElementById('aniso-azimuth');
@@ -567,6 +579,12 @@ function initBuildModel() {
       if (_stratOrder.length) {
         log(`Stratigraphic order: ${_stratOrder.join(' → ')}`, 'info');
       }
+      const siteHistory = document.getElementById('input-site-history')?.value ?? '';
+      const unitDescs   = Array.from(document.querySelectorAll('#desc-list .desc-item'))
+        .map(el => el.querySelector('.desc-text')?.textContent?.trim() ?? el.textContent.trim())
+        .filter(Boolean);
+      const apiKey = sessionStorage.getItem('anthropic_api_key') ?? '';
+
       AppState.voxelGrid = await buildVoxelGrid(
         AppState.classifiedBH, AppState.geoUnits, AppState.cellSizeH,
         { kNeighbors: AppState.kNeighbors, idwPower: AppState.idwPower,
@@ -577,6 +595,11 @@ function initBuildModel() {
           trendOrder:    AppState.trendOrder,
           semanticModel: AppState.semanticModel,
           semanticWeight: AppState.semanticWeight ?? 0.3,
+          siteHistory, unitDescriptions: unitDescs,
+          niEpochs: AppState.niEpochs ?? 400,
+          oracleApiKey: AppState.oracleEnabled && apiKey ? apiKey : null,
+          oracleRefineFn: oracleRefinement,
+          demoMode: !apiKey,
           onProgress: p => setBuildProgress(p) }
       );
       showBuildProgress(false);

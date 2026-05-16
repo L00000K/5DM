@@ -239,7 +239,25 @@
               <span class="method-label">Universal Kriging</span>
               <span class="method-desc">Kriging with polynomial drift — models regional dip/tilt</span>
             </label>
+            <label class="method-option">
+              <input type="radio" name="interp-method" value="neural-implicit">
+              <span class="method-label">Neural Implicit Field ✦ AI</span>
+              <span class="method-desc">Learns F(x,y,z,text)→unit from BH data; Claude refines uncertain zones</span>
+            </label>
           </div>
+        </div>
+
+        <div id="ni-panel" style="display:none;margin-top:6px">
+          <div class="settings-divider">Neural Implicit Settings</div>
+          <div class="field-group">
+            <label for="ni-epochs">Training Epochs</label>
+            <input type="number" id="ni-epochs" class="input-sm" min="50" max="2000" step="50" value="400">
+          </div>
+          <label class="checkbox-row" style="margin-top:6px;gap:8px;align-items:center;cursor:pointer">
+            <input type="checkbox" id="ni-oracle-toggle">
+            <span style="font-size:11px">Enable LLM Oracle (requires API key)<br><span style="color:var(--text-muted);font-size:10px">Claude reasons about uncertain voxel clusters after training</span></span>
+          </label>
+          <p class="hint" style="margin-top:5px">Geological text descriptions are embedded as keyword vectors and condition the network prior — the same location predicts differently under "palaeochannel" vs "uniform clay".</p>
         </div>
 
         <div id="uk-trend-panel" style="display:none;margin-top:6px">

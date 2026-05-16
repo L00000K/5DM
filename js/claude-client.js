@@ -521,6 +521,79 @@ function _demoSemanticModel(geoUnits) {
   };
 }
 
+// ── Oracle Refinement: reason about uncertain voxel clusters ─────────────────
+// clusters: output of findUncertainClusters()
+// nearbyBH: boreholes near each cluster (caller filters)
+// Returns array of { voxelIdxs, distribution: { code: prob } }
+export async function oracleRefinement(clusters, geoUnits, apiKey, demoMode) {
+  if (!clusters.length) return [];
+  if (demoMode || !apiKey) return _demoOracleResults(clusters, geoUnits);
+
+  const unitList = geoUnits.filter(u => u.code !== 'UNKN')
+    .map(u => `${u.code}: ${u.name} — ${u.description ?? ''}`).join('\n');
+
+  // Send up to 8 largest clusters to Claude in one call to minimise tokens
+  const clusterSummaries = clusters.slice(0, 8).map((cl, i) => ({
+    id: i,
+    world_x: Math.round(cl.worldPos.x),
+    world_y: Math.round(cl.worldPos.z),
+    world_z: Math.round(cl.worldPos.y),
+    voxel_count: cl.voxels.length,
+    mean_entropy: parseFloat(cl.entropy.toFixed(3)),
+  }));
+
+  const messages = [{
+    role: 'user',
+    content: `You are reviewing a 3D geological model that has regions of high uncertainty — places where the neural network cannot determine the geological unit confidently.
+
+GEOLOGICAL UNITS ON SITE:
+${unitList}
+
+UNCERTAIN CLUSTERS (world coordinates in metres, Z = elevation):
+${JSON.stringify(clusterSummaries, null, 2)}
+
+For each cluster, provide a probability distribution over the geological units based on your understanding of typical stratigraphy, the cluster's 3D position, and geological plausibility (e.g. made ground is unlikely at great depth; palaeochannels occur at valley base elevations).
+
+Respond ONLY with JSON:
+{
+  "oracle_patches": [
+    {
+      "cluster_id": 0,
+      "distribution": { "UNIT_CODE": 0.0, ... },
+      "reasoning": "one sentence"
+    }
+  ]
+}`,
+  }];
+
+  try {
+    const result = await callClaude(messages, apiKey);
+    return (result.oracle_patches ?? []).map(patch => ({
+      voxelIdxs: clusters[patch.cluster_id]?.voxels ?? [],
+      distribution: patch.distribution ?? {},
+      reasoning: patch.reasoning ?? '',
+    }));
+  } catch {
+    return _demoOracleResults(clusters, geoUnits);
+  }
+}
+
+function _demoOracleResults(clusters, geoUnits) {
+  const codes = geoUnits.filter(u => u.code !== 'UNKN').map(u => u.code);
+  if (!codes.length) return [];
+  return clusters.slice(0, 8).map(cl => {
+    const dist = {};
+    // Simple heuristic: deepest clusters lean toward last unit, shallowest toward first
+    const depthBias = cl.centroid.iz / 20; // normalised
+    codes.forEach((code, i) => {
+      dist[code] = Math.max(0.05, (i / codes.length < depthBias ? 0.5 : 0.2));
+    });
+    const sum = Object.values(dist).reduce((a, b) => a + b, 0);
+    for (const k of Object.keys(dist)) dist[k] /= sum;
+    return { voxelIdxs: cl.voxels, distribution: dist };
+  });
+}
+
 // ── Default units (fallback) ───────────────────────────────────────────────────
 function defaultUnits() {
   return [

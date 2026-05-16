@@ -1,6 +1,8 @@
 import { log } from './app.js';
 import { buildStratRankMap, stratigraphicConsistencyPenalty,
          descriptionJaccard, meanDescriptionSimilarity, buildTransitionMatrix } from './semantic-engine.js';
+import { trainGeoImplicit, inferGeoImplicit, buildGeoContext,
+         findUncertainClusters, patchWithOracle } from './geo-implicit.js';
 
 const MIN_BH_DIST = 0.1;
 
@@ -502,7 +504,10 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
     log(`Cell size auto-increased to ${cellSize} m (>500 K voxel cap)`, 'warn');
   }
 
-  const methodLabel = { idw: 'IDW', kriging: 'Kriging', gp: 'Gauss. Process', nn: 'Neural Net', uk: `UK (order ${trendOrder})` }[method] ?? method;
+  const methodLabel = {
+    idw: 'IDW', kriging: 'Kriging', gp: 'Gauss. Process', nn: 'Neural Net',
+    uk: `UK (order ${trendOrder})`, 'neural-implicit': 'Neural Implicit Field',
+  }[method] ?? method;
   log(`Grid ${nx}×${ny}×${nz} = ${(nx * ny * nz).toLocaleString()} voxels @ ${cellSize} m | ${methodLabel} K=${kNeighbors}`, 'info');
 
   const total       = nx * ny * nz;
@@ -516,11 +521,75 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
   const unknownId = geoUnits.find(u => u.code === 'UNKN')?.id ?? 0;
 
   // Geostatistical parameters
-  const range = typicalSpacing * 1.5;   // Kriging variogram range
-  const sill  = 1.0;                    // normalised sill
-  const gpLen = typicalSpacing * 0.8;   // GP length-scale
+  const range = typicalSpacing * 1.5;
+  const sill  = 1.0;
+  const gpLen = typicalSpacing * 0.8;
 
-  // Neural network: train once before the main voxel loop
+  // ── Neural Implicit Geological Field ──────────────────────────────────────
+  if (method === 'neural-implicit') {
+    log('Building geological context from unit descriptions…', 'info');
+    const siteHistory = options.siteHistory ?? '';
+    const unitDescs   = options.unitDescriptions ?? [];
+    const geoCtx  = buildGeoContext(geoUnits, siteHistory, unitDescs);
+
+    log(`Training neural implicit field (${options.niEpochs ?? 400} epochs)…`, 'info');
+    if (onProgress) onProgress(0.02);
+
+    const trainedModel = await trainGeoImplicit(
+      allBoreholes, geoUnits, geoCtx,
+      {
+        epochs:          options.niEpochs ?? 400,
+        lr:              0.01,
+        lrMin:           0.001,
+        l2:              0.001,
+        samplesPerLayer: 8,
+        onProgress: (frac, loss) => {
+          if (onProgress) onProgress(0.02 + frac * 0.7);
+          if (frac < 1) log(`  …epoch ${Math.round(frac * (options.niEpochs ?? 400))} loss=${loss?.toFixed(4) ?? '–'}`, 'info');
+        },
+      },
+    );
+
+    if (!trainedModel) {
+      log('Neural implicit training failed (no samples) — falling back to IDW', 'warn');
+      // Fall through to IDW below
+    } else {
+      log('Inferring voxel grid from neural implicit field…', 'info');
+      const gridMeta = { nx, ny, nz, cellSize, cellHeight: cellH, origin: { x: ox, y: oz, z: oy } };
+      const inferred = inferGeoImplicit(trainedModel, gridMeta, geoUnits);
+      unitIds.set(inferred.unitIds);
+      certainty.set(inferred.certainty);
+      blendUnitIds.set(inferred.blendUnitIds);
+      blendRatios.set(inferred.blendRatios);
+
+      // Oracle refinement: find uncertain clusters and pass to injected oracle fn
+      const oracleFn = options.oracleRefineFn;
+      if (oracleFn && options.oracleApiKey) {
+        log('Running LLM oracle on uncertain regions…', 'info');
+        if (onProgress) onProgress(0.78);
+        const clusters = findUncertainClusters(certainty, gridMeta, 0.45, 12);
+        log(`Oracle: found ${clusters.length} uncertain cluster(s)`, 'info');
+        if (clusters.length) {
+          const patches = await oracleFn(clusters, geoUnits, options.oracleApiKey, options.demoMode);
+          patchWithOracle(unitIds, certainty, blendUnitIds, blendRatios, patches, geoUnits);
+          log(`Oracle: applied ${patches.length} probability patch(es)`, 'info');
+        }
+      }
+
+      if (onProgress) onProgress(1);
+      return {
+        nx, ny, nz,
+        cellSize, cellHeight: cellH,
+        origin: { x: ox, y: oz, z: oy },
+        worldWidth:  nx * cellSize,
+        worldHeight: nz * cellH,
+        worldDepth:  ny * cellSize,
+        unitIds, certainty, blendUnitIds, blendRatios,
+      };
+    }
+  }
+
+  // Neural network: train once before the main voxel loop (classic tiny MLP)
   let nnPredict = null;
   if (method === 'nn') {
     log('Training neural network on borehole data…', 'info');
