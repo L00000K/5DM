@@ -8,6 +8,7 @@ import { initLayerControls } from './layer-controls.js';
 import { initExporter } from './exporter.js';
 import { parseConstraints, applyConstraints, constraintSummary } from './constraints.js';
 import { parseGeoMap } from './geo-map.js';
+import { FenceSection } from './fence-section.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -27,6 +28,7 @@ export const AppState = {
   certaintyThreshold: 0,
   parsedConstraints: [],
   topoPoints: null,
+  fenceSection: null,
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
@@ -370,6 +372,7 @@ function initBuildModel() {
       updateInfoPanel();
       AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
       updateVolumeStats();
+      refreshLegendVolumes();
       log(`Model ready — ${AppState.voxelGrid.nx}×${AppState.voxelGrid.ny}×${AppState.voxelGrid.nz} grid.`, 'ok');
       setEnabled('btn-export-gltf', true);
       setEnabled('btn-export-obj', true);
@@ -398,6 +401,25 @@ function initBuildModel() {
       console.error(err);
       setEnabled('btn-build-model', true);
     }
+  });
+}
+
+// ── Fence section (2D cross-section) ─────────────────────────────────────────
+function initFenceSection() {
+  AppState.fenceSection = new FenceSection();
+
+  document.getElementById('slicer-section-btn')?.addEventListener('click', () => {
+    if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
+    const slicer = AppState.scene?.slicer;
+    if (!slicer?._hasSlice) { log('Draw a section line first.', 'warn'); return; }
+    AppState.fenceSection.draw(
+      AppState.voxelGrid,
+      AppState.geoUnits,
+      slicer._normal,
+      slicer._centerD,
+      slicer._thickness,
+      AppState.classifiedBH
+    );
   });
 }
 
@@ -486,14 +508,31 @@ export function updateInfoPanel() {
 export function updateLegend() {
   const container = document.getElementById('unit-legend');
   container.innerHTML = '';
+
+  // Compute volumes if grid available
+  const g   = AppState.voxelGrid;
+  const pcts = {};
+  if (g) {
+    const counts = {};
+    AppState.geoUnits.forEach(u => { counts[u.id] = 0; });
+    g.unitIds.forEach(id => { if (id && counts[id] !== undefined) counts[id]++; });
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    AppState.geoUnits.forEach(u => { pcts[u.code] = total > 0 ? (counts[u.id] / total * 100) : 0; });
+  }
+
   AppState.geoUnits.forEach(unit => {
     const item = document.createElement('div');
     item.className = 'legend-item';
     item.dataset.code = unit.code;
+    const pct = pcts[unit.code];
+    const pctHtml = pct !== undefined
+      ? `<span class="legend-pct">${pct.toFixed(0)}%</span>`
+      : '';
     item.innerHTML = `
       <div class="legend-swatch" style="background:${unit.color}"></div>
       <span class="legend-code">${escHtml(unit.code)}</span>
       <span class="legend-name">${escHtml(unit.name)}</span>
+      ${pctHtml}
       <span class="legend-eye">👁</span>`;
     item.title = unit.description || unit.name;
     item.addEventListener('click', () => {
@@ -505,6 +544,11 @@ export function updateLegend() {
     });
     container.appendChild(item);
   });
+}
+
+// ── Refresh legend with updated volumes after build ───────────────────────────
+function refreshLegendVolumes() {
+  if (AppState.geoUnits.length) updateLegend();
 }
 
 // ── View mode buttons ──────────────────────────────────────────────────────────
@@ -749,6 +793,7 @@ async function init() {
   initBuildModel();
   initViewModeButtons();
   initVBHButton();
+  initFenceSection();
   initScreenshot();
   initBackgroundToggle();
   initWelcomeOverlay();

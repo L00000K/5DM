@@ -307,6 +307,17 @@
         </div>
       </div>
 
+      <!-- Fence / cross-section panel -->
+      <div id="fence-panel" class="fence-panel" hidden>
+        <div class="fence-panel-hdr">
+          <span id="fence-title" class="fence-title">Geological Cross-Section</span>
+          <button id="fence-close" class="slicer-close-btn" title="Close section view">✕</button>
+        </div>
+        <div class="fence-canvas-wrap">
+          <canvas id="fence-canvas" class="fence-canvas"></canvas>
+        </div>
+      </div>
+
       <!-- Slicer panel -->
       <div id="slicer-panel" class="slicer-panel" hidden>
         <div class="slicer-panel-hdr">
@@ -331,6 +342,7 @@
           <button id="slicer-draw-btn" class="btn-secondary btn-sm">✎ Draw Line</button>
           <button id="slicer-clear-btn" class="btn-secondary btn-sm">✕ Clear</button>
         </div>
+        <button id="slicer-section-btn" class="btn-primary btn-sm" style="width:100%">⊞ Show 2D Section</button>
       </div>
 
       <!-- Viewer controls (bottom-left) -->
