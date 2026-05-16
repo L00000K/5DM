@@ -276,24 +276,62 @@ class SceneManager {
     this._controls.update();
   }
 
+  // ── BH label sprite helper ────────────────────────────────────────────────
+  _makeLabelSprite(text, fontSize = 48, bgColor = 'rgba(0,0,0,0.72)', fgColor = '#fff') {
+    const canvas = document.createElement('canvas');
+    const ctx    = canvas.getContext('2d');
+    ctx.font     = `bold ${fontSize}px Arial`;
+    const w = ctx.measureText(text).width + fontSize;
+    canvas.width  = Math.pow(2, Math.ceil(Math.log2(w + 8)));
+    canvas.height = fontSize * 2;
+    ctx.font      = `bold ${fontSize}px Arial`;
+    ctx.fillStyle = bgColor;
+    const pad = fontSize * 0.25;
+    const tw  = ctx.measureText(text).width;
+    ctx.beginPath();
+    ctx.roundRect(canvas.width/2 - tw/2 - pad, pad, tw + pad*2, fontSize + pad, fontSize*0.3);
+    ctx.fill();
+    ctx.fillStyle = fgColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+    const tex = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+    const spr = new THREE.Sprite(mat);
+    spr.scale.set(canvas.width / canvas.height * 4, 4, 1);
+    return spr;
+  }
+
   // ── Borehole sticks ───────────────────────────────────────────────────────
   addBoreholeSticks(classifiedBH, geoUnits) {
     if (this._bhSticks) {
       this._scene.remove(this._bhSticks);
-      this._bhSticks.traverse(obj => { obj.geometry?.dispose(); obj.material?.dispose(); });
+      this._bhSticks.traverse(obj => {
+        obj.geometry?.dispose();
+        if (obj.material) {
+          obj.material.map?.dispose();
+          obj.material.dispose();
+        }
+      });
     }
     const group = new THREE.Group();
     const unitByCode = {};
     geoUnits.forEach(u => { unitByCode[u.code] = u; });
-    const radius = 0.6;
+    const radius   = 0.6;
+    const maxSPT   = 60;    // N value that fills the full bar
+    const sptScale = 3.5;   // bar length at N=maxSPT in metres
+
     classifiedBH.filter(b => !b.synthetic).forEach(bh => {
       if (!bh.layers?.length) return;
       const gl = bh.groundLevel ?? 0;
+
       bh.layers.forEach((layer, li) => {
         const unit = unitByCode[layer.unitCode];
         if (!unit) return;
-        const height = Math.max(layer.base - layer.top, 0.01);
+        const height  = Math.max(layer.base - layer.top, 0.01);
         const midElev = gl - (layer.top + layer.base) * 0.5;
+
+        // Cylinder segment
         const geom = new THREE.CylinderGeometry(radius, radius, height, 8);
         const mat  = new THREE.MeshLambertMaterial({ color: unit.color });
         const mesh = new THREE.Mesh(geom, mat);
@@ -310,8 +348,34 @@ class SceneManager {
           ring.position.set(bh.x, contactElev, bh.y);
           group.add(ring);
         }
+
+        // SPT N horizontal bar extending in +X direction
+        if (layer.sptN != null && layer.sptN > 0) {
+          const barLen = Math.min(layer.sptN / maxSPT, 1) * sptScale;
+          const barH   = Math.min(height * 0.6, 0.8);
+          const barGeom = new THREE.BoxGeometry(barLen, barH, 0.3);
+          const barMat  = new THREE.MeshLambertMaterial({ color: 0x2a4a6a });
+          const bar = new THREE.Mesh(barGeom, barMat);
+          bar.position.set(bh.x + radius + barLen / 2, midElev, bh.y);
+          group.add(bar);
+        }
       });
+
+      // BH ID label sprite at ground level + 2m
+      const topElev = gl + 2;
+      const lbl = this._makeLabelSprite(bh.id, 36);
+      lbl.position.set(bh.x, topElev, bh.y);
+      group.add(lbl);
+
+      // Vertical leader line from ground to label
+      const lineGeom = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(bh.x, gl, bh.y),
+        new THREE.Vector3(bh.x, topElev - 2, bh.y),
+      ]);
+      const line = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0x888888 }));
+      group.add(line);
     });
+
     this._bhSticks = group;
     this._scene.add(group);
   }
