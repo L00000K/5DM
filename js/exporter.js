@@ -164,6 +164,76 @@ export function initExporter() {
     log(`Point cloud exported — ${(rows.length - 1).toLocaleString()} points.`, 'ok');
   });
 
+  // ── Export model statistics CSV ───────────────────────────────────────────
+  document.getElementById('btn-export-stats')?.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('No voxel grid to export.', 'warn'); return; }
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty } = grid;
+    const cellVol = cs * cs * ch;
+    const cellArea = cs * cs;
+
+    // Per-unit accumulators
+    const stats = {};
+    AppState.geoUnits.forEach(u => {
+      stats[u.id] = { count: 0, certSum: 0,
+        minElev: Infinity, maxElev: -Infinity, topCols: 0, topElevSum: 0 };
+    });
+
+    // Scan top-of-unit per column
+    const topElev = {}; // uid → {sum, count}
+    AppState.geoUnits.forEach(u => { topElev[u.id] = { sum: 0, count: 0 }; });
+
+    for (let iy = 0; iy < ny; iy++) {
+      for (let ix = 0; ix < nx; ix++) {
+        const colTop = {}; // first (topmost) occurrence of each unit per column
+        for (let iz = nz - 1; iz >= 0; iz--) {
+          const flat = ix + iy * nx + iz * nx * ny;
+          const uid  = unitIds[flat];
+          if (!uid || !stats[uid]) continue;
+          const elev = O.y + iz * ch + ch * 0.5;
+          const s    = stats[uid];
+          s.count++;
+          s.certSum += certainty[flat];
+          s.minElev = Math.min(s.minElev, elev - ch * 0.5);
+          s.maxElev = Math.max(s.maxElev, elev + ch * 0.5);
+          if (colTop[uid] === undefined) colTop[uid] = elev + ch * 0.5;
+        }
+        for (const [uid, e] of Object.entries(colTop)) {
+          topElev[uid].sum  += e;
+          topElev[uid].count++;
+        }
+      }
+    }
+
+    const totalCount = AppState.geoUnits.reduce((a, u) => a + (stats[u.id]?.count ?? 0), 0);
+    const cols = [
+      'Unit_Code','Unit_Name',
+      'Volume_m3','Area_m2','Pct_Model',
+      'Mean_Top_mAOD','Mean_Base_mAOD','Mean_Thickness_m',
+      'Mean_Certainty_pct',
+    ];
+    const rows = [cols.join(',')];
+    for (const u of AppState.geoUnits) {
+      const s  = stats[u.id];
+      if (!s || !s.count) continue;
+      const vol   = (s.count * cellVol).toFixed(1);
+      const area  = (topElev[u.id].count * cellArea).toFixed(1);
+      const pct   = totalCount > 0 ? (s.count / totalCount * 100).toFixed(1) : '0';
+      const meanTop = topElev[u.id].count > 0
+        ? (topElev[u.id].sum / topElev[u.id].count).toFixed(2) : '';
+      const meanBase = s.minElev !== Infinity ? s.minElev.toFixed(2) : '';
+      const thick    = (s.maxElev !== -Infinity && s.minElev !== Infinity)
+        ? (s.maxElev - s.minElev).toFixed(2) : '';
+      const cert = (s.certSum / s.count * 100).toFixed(1);
+      rows.push([
+        u.code, `"${(u.name ?? '').replace(/"/g, '""')}"`,
+        vol, area, pct, meanTop, meanBase, thick, cert,
+      ].join(','));
+    }
+    downloadBlob(new Blob([rows.join('\n')], { type: 'text/csv' }), 'geomodel-stats.csv');
+    log(`Model statistics exported — ${rows.length - 1} units.`, 'ok');
+  });
+
   // ── Export unit properties as CSV ─────────────────────────────────────────
   document.getElementById('btn-export-props')?.addEventListener('click', () => {
     if (!AppState.geoUnits.length) { log('No units to export.', 'warn'); return; }

@@ -234,6 +234,7 @@ function initReset() {
     setEnabled('btn-export-json', false);
     setEnabled('btn-export-vtk', false);
     setEnabled('btn-export-pointcloud', false);
+    setEnabled('btn-export-stats', false);
     setEnabled('btn-export-bh-csv', false);
     setEnabled('btn-export-props', false);
     setEnabled('btn-isopach', false);
@@ -411,6 +412,7 @@ function initBuildModel() {
       setEnabled('btn-export-json', true);
       setEnabled('btn-export-vtk', true);
       setEnabled('btn-export-pointcloud', true);
+      setEnabled('btn-export-stats', true);
       setEnabled('btn-build-model', true);
       setEnabled('btn-apply-constraints', true);
       setEnabled('btn-isopach', true);

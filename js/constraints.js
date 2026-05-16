@@ -85,6 +85,39 @@ export function parseConstraints(text, geoUnits) {
     }
 
     if (!matched) {
+      // "X dips N degrees [to the] north/south/east/west"
+      m = lower.match(/dips?\s+([\d.]+)\s*(?:degrees?|°)?\s*(?:to\s+(?:the\s+)?)?(north|south|east|west)(?:ern)?/);
+      if (!m) m = lower.match(/dips?\s+(north|south|east|west)(?:ern)?\s*(?:at|@)?\s*([\d.]+)\s*(?:degrees?|°)?/) &&
+                 [null, lower.match(/dips?\s+(north|south|east|west)(?:ern)?/)[1],
+                  lower.match(/([\d.]+)\s*(?:degrees?|°)/)?.[1]];
+      if (m && m[1] && m[2]) {
+        const angleStr = parseFloat(m[1]) ? m[1] : m[2];
+        const dirStr   = isNaN(parseFloat(m[1])) ? m[1] : m[2];
+        const angle    = parseFloat(angleStr);
+        if (!isNaN(angle) && angle >= 0 && angle <= 89) {
+          const unit = findUnit(line);
+          if (unit) {
+            rules.push({ type: 'dip', unitId: unit.id, unitCode: unit.code,
+              dipAngle: angle, dipDir: dirStr.toLowerCase().replace(/ern$/, ''), raw: line });
+            matched = true;
+          }
+        }
+      }
+    }
+
+    if (!matched) {
+      // "Fault/fault zone at X=Nm / northing Nm / easting Nm"  → fault plane rule
+      m = lower.match(/fault(?:\s+zone)?\s+(?:at\s+)?(?:x\s*=?\s*|easting\s+)([-\d.]+)\s*m?/);
+      if (!m) m = lower.match(/fault(?:\s+zone)?\s+(?:at\s+)?(?:y\s*=?\s*|northing\s+)([-\d.]+)\s*m?/);
+      if (m) {
+        const coord = parseFloat(m[1]);
+        const axis  = lower.includes('north') || lower.match(/\by\b/) ? 'y' : 'x';
+        rules.push({ type: 'fault', axis, coord, raw: line });
+        matched = true;
+      }
+    }
+
+    if (!matched) {
       // Semantic note — store but no auto-action
       rules.push({ type: 'note', raw: line });
     }
@@ -123,6 +156,39 @@ export function applyConstraints(grid, rules, geoUnits) {
 
   const actionRules = rules.filter(r => r.type !== 'note');
 
+  // Pre-compute reference elevation (mean top of unit) per dip rule at model centre
+  const centreX = origin.x + (nx / 2) * cs;
+  const centreZ = origin.z + (ny / 2) * cs;
+  const dipRefElev = {};
+  for (const rule of actionRules) {
+    if (rule.type !== 'dip') continue;
+    let maxElevForUnit = -Infinity;
+    const cx = Math.floor(nx / 2), cy = Math.floor(ny / 2);
+    for (let iz = nz - 1; iz >= 0; iz--) {
+      if (unitIds[cx + cy * nx + iz * nx * ny] === rule.unitId) {
+        maxElevForUnit = origin.y + iz * ch + ch;
+        break;
+      }
+    }
+    if (maxElevForUnit === -Infinity) {
+      // Fallback: scan whole grid for mean top of unit
+      let sum = 0, count = 0;
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          for (let iz = nz - 1; iz >= 0; iz--) {
+            if (unitIds[ix + iy * nx + iz * nx * ny] === rule.unitId) {
+              sum += origin.y + iz * ch + ch;
+              count++;
+              break;
+            }
+          }
+        }
+      }
+      maxElevForUnit = count > 0 ? sum / count : 0;
+    }
+    dipRefElev[`${rule.unitId}`] = maxElevForUnit;
+  }
+
   for (let iz = 0; iz < nz; iz++) {
     const voxelElev = origin.y + iz * ch + ch * 0.5;
 
@@ -139,32 +205,49 @@ export function applyConstraints(grid, rules, geoUnits) {
         const voxelX = origin.x + ix * cs + cs * 0.5;
 
         for (const rule of actionRules) {
-          if (rule.unitId !== uid) continue;
-
           let violated = false;
 
-          if (rule.type === 'maxDepth') {
-            const surf = surfaceY[ix + iy * nx];
-            violated = (surf - voxelElev) > rule.maxDepth;
-          } else if (rule.type === 'maxElevation') {
-            violated = voxelElev > rule.maxElev;
-          } else if (rule.type === 'minElevation') {
-            violated = voxelElev < rule.minElev;
-          } else if (rule.type === 'elevRange') {
-            violated = voxelElev < rule.minElev || voxelElev > rule.maxElev;
-          } else if (rule.type === 'spatialZone') {
-            const f = rule.fraction;
-            const dir = rule.direction;
-            if (dir === 'north') violated = voxelZ < siteMaxZ - (siteMaxZ - siteMinZ) * f;
-            if (dir === 'south') violated = voxelZ > siteMinZ + (siteMaxZ - siteMinZ) * f;
-            if (dir === 'east')  violated = voxelX < siteMaxX - (siteMaxX - siteMinX) * f;
-            if (dir === 'west')  violated = voxelX > siteMinX + (siteMaxX - siteMinX) * f;
+          if (rule.type === 'fault') {
+            // Fault rule applies to ALL units — reassign across fault plane
+            const pos = rule.axis === 'x' ? voxelX : voxelZ;
+            // Voxels within 1 cell of fault are always blanked; otherwise skip
+            violated = Math.abs(pos - rule.coord) < cs;
+          } else {
+            if (rule.unitId !== uid) continue;
+
+            if (rule.type === 'maxDepth') {
+              const surf = surfaceY[ix + iy * nx];
+              violated = (surf - voxelElev) > rule.maxDepth;
+            } else if (rule.type === 'maxElevation') {
+              violated = voxelElev > rule.maxElev;
+            } else if (rule.type === 'minElevation') {
+              violated = voxelElev < rule.minElev;
+            } else if (rule.type === 'elevRange') {
+              violated = voxelElev < rule.minElev || voxelElev > rule.maxElev;
+            } else if (rule.type === 'spatialZone') {
+              const f = rule.fraction;
+              const dir = rule.direction;
+              if (dir === 'north') violated = voxelZ < siteMaxZ - (siteMaxZ - siteMinZ) * f;
+              if (dir === 'south') violated = voxelZ > siteMinZ + (siteMaxZ - siteMinZ) * f;
+              if (dir === 'east')  violated = voxelX < siteMaxX - (siteMaxX - siteMinX) * f;
+              if (dir === 'west')  violated = voxelX > siteMinX + (siteMaxX - siteMinX) * f;
+            } else if (rule.type === 'dip') {
+              // Dip rule: unit's top contact shifts linearly with position in dip direction
+              const refElev = dipRefElev[`${rule.unitId}`] ?? 0;
+              const tanDip  = Math.tan(rule.dipAngle * Math.PI / 180);
+              let dipShift = 0;
+              if (rule.dipDir === 'north') dipShift = -(voxelZ - centreZ) * tanDip;
+              if (rule.dipDir === 'south') dipShift =  (voxelZ - centreZ) * tanDip;
+              if (rule.dipDir === 'east')  dipShift = -(voxelX - centreX) * tanDip;
+              if (rule.dipDir === 'west')  dipShift =  (voxelX - centreX) * tanDip;
+              // Unit is violated if above the dipping top surface
+              violated = voxelElev > refElev + dipShift + ch * 0.5;
+            }
           }
 
           if (violated) {
-            // Reassign to second-best unit, or remove (0 = not rendered)
             const bid = blendUnitIds[flat];
-            unitIds[flat]  = (bid && bid !== uid) ? bid : 0;
+            unitIds[flat]   = (bid && bid !== uid) ? bid : 0;
             certainty[flat] = Math.max(0, certainty[flat] - 0.35);
             applied++;
             break;
@@ -179,7 +262,9 @@ export function applyConstraints(grid, rules, geoUnits) {
 
 export function constraintSummary(rules) {
   return rules.map(r => {
-    if (r.type === 'note') return { label: '📝 Note', text: r.raw, active: false };
+    if (r.type === 'note')  return { label: '📝 Note', text: r.raw, active: false };
+    if (r.type === 'fault') return { label: `✓ Fault@${r.coord}m`, text: r.raw, active: true };
+    if (r.type === 'dip')   return { label: `✓ ${r.unitCode} dip`, text: r.raw, active: true };
     return { label: `✓ ${r.unitCode}`, text: r.raw, active: true };
   });
 }
