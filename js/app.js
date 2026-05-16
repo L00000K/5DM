@@ -250,6 +250,7 @@ function initReset() {
     setEnabled('btn-auto-params', false);
     setEnabled('btn-isopach', false);
     setEnabled('btn-model-report', false);
+    setEnabled('btn-validate-model', false);
     setEnabled('btn-plan-view', false);
     setEnabled('btn-export-contacts', false);
     setEnabled('btn-export-surfaces', false);
@@ -442,6 +443,7 @@ function initBuildModel() {
       setEnabled('btn-apply-constraints', true);
       setEnabled('btn-isopach', true);
       setEnabled('btn-model-report', true);
+      setEnabled('btn-validate-model', true);
       setEnabled('btn-plan-view', true);
       setEnabled('btn-export-contacts', true);
       setEnabled('btn-export-surfaces', true);
@@ -1191,6 +1193,17 @@ function initModelReport() {
     if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
     AppState.report.exportHTML(AppState.voxelGrid, AppState.classifiedBH, AppState.geoUnits);
     log('Report HTML downloaded.', 'ok');
+  });
+
+  document.getElementById('btn-validate-model')?.addEventListener('click', () => {
+    if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
+    const result = AppState.report.validateModel(
+      AppState.voxelGrid, AppState.classifiedBH, AppState.geoUnits
+    );
+    if (result) {
+      log(`Model validation: ${result.accuracy}% accuracy across ${result.total} BH layer samples.`,
+        +result.accuracy >= 70 ? 'ok' : 'warn');
+    }
   });
 }
 

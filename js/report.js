@@ -174,6 +174,103 @@ export class ModelReport {
     this._statsEl.innerHTML = html;
   }
 
+  // ── Cross-validation: compare predicted voxel units vs observed BH layers ────
+  validateModel(grid, classifiedBH, geoUnits) {
+    if (!grid) return null;
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds } = grid;
+    const bhs = classifiedBH.filter(b => !b.synthetic && b.layers?.length);
+
+    const unitById = {}, unitByCode = {};
+    geoUnits.forEach(u => { unitById[u.id] = u; unitByCode[u.code] = u; });
+
+    let correct = 0, total = 0;
+    const perUnit = {}; // { code: { correct, total } }
+    const mismatches = [];
+
+    for (const bh of bhs) {
+      // Grid column for this BH
+      const ix = Math.max(0, Math.min(nx - 1, Math.round((bh.x - O.x) / cs - 0.5)));
+      const iy = Math.max(0, Math.min(ny - 1, Math.round((bh.y - O.z) / cs - 0.5)));
+
+      for (const layer of bh.layers) {
+        if (!layer.unitCode) continue;
+        const midDepth = (layer.top + layer.base) / 2;
+        const elev     = (bh.groundLevel ?? 0) - midDepth;
+        const iz       = Math.max(0, Math.min(nz - 1,
+          Math.round((elev - O.y) / ch - 0.5)));
+
+        const predId   = unitIds[ix + iy * nx + iz * nx * ny];
+        const predUnit = unitById[predId];
+        const obsCode  = layer.unitCode;
+
+        if (!perUnit[obsCode]) perUnit[obsCode] = { correct: 0, total: 0 };
+        perUnit[obsCode].total++;
+        total++;
+
+        if (predUnit?.code === obsCode) {
+          correct++;
+          perUnit[obsCode].correct++;
+        } else if (predUnit) {
+          mismatches.push({
+            bh: bh.id, depth: midDepth.toFixed(1),
+            observed: obsCode, predicted: predUnit.code,
+          });
+        }
+      }
+    }
+
+    const accuracy = total > 0 ? (correct / total * 100).toFixed(1) : null;
+    this._renderValidation({ accuracy, total, correct, perUnit, mismatches, geoUnits });
+    return { accuracy, total, correct, perUnit, mismatches };
+  }
+
+  _renderValidation({ accuracy, total, correct, perUnit, mismatches, geoUnits }) {
+    const el = document.getElementById('validation-results');
+    if (!el) return;
+
+    if (accuracy == null) { el.innerHTML = '<p class="hint">No classified layers to validate.</p>'; return; }
+
+    const color = +accuracy >= 80 ? 'var(--green)' : +accuracy >= 60 ? '#c8a855' : '#d04040';
+
+    let html = `
+      <div class="quality-row" style="margin-bottom:6px">
+        <span class="quality-lbl">Overall accuracy</span>
+        <span class="quality-val" style="color:${color};font-size:15px;font-weight:700">${accuracy}%</span>
+      </div>
+      <div class="quality-row">
+        <span class="quality-lbl">Points checked</span>
+        <span class="quality-val">${correct} / ${total}</span>
+      </div>
+      <div style="margin:8px 0 4px;font-size:11px;color:var(--text-mid);font-weight:600">Per unit accuracy:</div>`;
+
+    for (const [code, stats] of Object.entries(perUnit)) {
+      const unitObj = geoUnits.find(u => u.code === code);
+      const acc = (stats.correct / stats.total * 100).toFixed(0);
+      const c   = +acc >= 80 ? 'var(--green)' : +acc >= 50 ? '#c8a855' : '#d04040';
+      html += `<div class="quality-row">
+        <span class="quality-lbl">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${unitObj?.color ?? '#888'};margin-right:4px;vertical-align:middle"></span>
+          ${code}
+        </span>
+        <span class="quality-val" style="color:${c}">${acc}% (${stats.correct}/${stats.total})</span>
+      </div>`;
+    }
+
+    if (mismatches.length) {
+      html += `<div style="margin:8px 0 4px;font-size:11px;color:var(--text-mid);font-weight:600">Mismatches (first 10):</div>`;
+      mismatches.slice(0, 10).forEach(m => {
+        html += `<div class="quality-row" style="font-size:10px">
+          <span style="color:var(--text-dim)">${m.bh} @${m.depth}m</span>
+          <span><span style="color:#d04040">${m.observed}</span> → <span style="color:var(--green)">${m.predicted}</span></span>
+        </div>`;
+      });
+    } else if (total > 0) {
+      html += `<div class="quality-row"><span style="color:var(--green);font-size:11px">No mismatches ✓</span></div>`;
+    }
+
+    el.innerHTML = html;
+  }
+
   exportHTML(grid, classifiedBH, geoUnits) {
     if (!grid) return;
     const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty } = grid;
