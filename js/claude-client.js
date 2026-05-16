@@ -401,6 +401,126 @@ function _demoParams(unit) {
   return { gamma_kNm3: 19, cu_kPa: null, phi_deg: 30, cprime_kPa: 0, E_MPa: 20, Cc: null, e0: null, N_spt: null, notes: 'Generic parameters — update from test data' };
 }
 
+// ── Semantic knowledge model: AI analysis of classified dataset ───────────────
+export async function generateSemanticModel(geoUnits, classifiedBH, siteContext, apiKey, demoMode) {
+  if (demoMode || !apiKey) return _demoSemanticModel(geoUnits);
+
+  const unitSummary = geoUnits.filter(u => u.code !== 'UNKN')
+    .map(u => `${u.code} (${u.name}${u.description ? ': ' + u.description : ''})`).join('\n');
+
+  // Summarise per-unit statistics
+  const statsByCode = {};
+  geoUnits.forEach(u => { statsByCode[u.code] = { depths: [], thicks: [] }; });
+  for (const bh of classifiedBH) {
+    for (const l of bh.layers) {
+      if (statsByCode[l.unitCode]) {
+        statsByCode[l.unitCode].depths.push((l.top + l.base) / 2);
+        statsByCode[l.unitCode].thicks.push(l.base - l.top);
+      }
+    }
+  }
+  const mean = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+  const statsSummary = Object.entries(statsByCode).map(([code, s]) => {
+    const md = mean(s.depths), mt = mean(s.thicks);
+    return `${code}: mean depth ${md?.toFixed(1) ?? '?'}m bgl, mean thickness ${mt?.toFixed(1) ?? '?'}m (n=${s.depths.length} layers)`;
+  }).join('\n');
+
+  // Observed transition pairs
+  const transObs = {};
+  for (const bh of classifiedBH) {
+    const layers = [...bh.layers].sort((a, b) => a.top - b.top);
+    for (let i = 0; i < layers.length - 1; i++) {
+      const key = `${layers[i].unitCode}→${layers[i+1].unitCode}`;
+      transObs[key] = (transObs[key] ?? 0) + 1;
+    }
+  }
+  const topTransitions = Object.entries(transObs).sort((a,b) => b[1]-a[1]).slice(0, 10)
+    .map(([k, v]) => `${k}: ${v}×`).join(', ');
+
+  const messages = [{
+    role: 'user',
+    content: `You are a senior engineering geologist. Analyse this UK ground investigation dataset and produce a semantic knowledge model to guide 3D geological interpolation.
+
+GEOLOGICAL UNITS:
+${unitSummary}
+
+BOREHOLE STATISTICS (${classifiedBH.length} boreholes):
+${statsSummary}
+
+OBSERVED LAYER TRANSITIONS (above→below):
+${topTransitions || 'none yet'}
+
+SITE CONTEXT:
+${siteContext || '(not provided)'}
+
+Produce a semantic geological knowledge model. Use your geological expertise to fill in gaps beyond what the data alone shows. Respond with JSON ONLY:
+{
+  "unit_depth_profiles": {
+    "UNIT_CODE": {
+      "typical_top_depth_m": number,
+      "typical_base_depth_m": number,
+      "typical_thickness_m": number,
+      "max_realistic_depth_m": number,
+      "depth_confidence": 0.0-1.0,
+      "geological_notes": "one sentence"
+    }
+  },
+  "transition_priors": {
+    "FROM→TO": 0.0-1.0
+  },
+  "lateral_continuity": {
+    "UNIT_CODE": "high|medium|low"
+  },
+  "characteristic_keywords": {
+    "UNIT_CODE": ["keyword1","keyword2","keyword3"]
+  },
+  "depth_exclusions": [
+    {"unit_code": "CODE", "exclude_above_m": number, "exclude_below_m": number, "confidence": 0.0-1.0}
+  ],
+  "synthetic_anchors": [
+    {
+      "label": "inferred point label",
+      "x_frac": 0.0-1.0,
+      "y_frac": 0.0-1.0,
+      "layers": [{"top": 0, "base": 2, "unit_code": "MG", "certainty": 0.5}],
+      "rationale": "why inferred"
+    }
+  ],
+  "model_narrative": "2-3 sentence geological summary"
+}`
+  }];
+
+  try {
+    return await callClaude(messages, apiKey);
+  } catch (err) {
+    throw new Error(`Semantic model generation failed: ${err.message}`);
+  }
+}
+
+function _demoSemanticModel(geoUnits) {
+  const codes = geoUnits.filter(u => u.code !== 'UNKN').map(u => u.code);
+  const profiles = {};
+  codes.forEach((code, i) => {
+    profiles[code] = {
+      typical_top_depth_m: i * 2.5,
+      typical_base_depth_m: (i + 1) * 2.5 + 1,
+      typical_thickness_m: 2.5 + i * 0.5,
+      max_realistic_depth_m: (i + 2) * 5,
+      depth_confidence: 0.65,
+      geological_notes: `Typical UK ${code} unit characteristics.`,
+    };
+  });
+  return {
+    unit_depth_profiles: profiles,
+    transition_priors: {},
+    lateral_continuity: Object.fromEntries(codes.map(c => [c, 'medium'])),
+    characteristic_keywords: {},
+    depth_exclusions: [],
+    synthetic_anchors: [],
+    model_narrative: 'Demo semantic model — provide an API key for site-specific geological intelligence.',
+  };
+}
+
 // ── Default units (fallback) ───────────────────────────────────────────────────
 function defaultUnits() {
   return [

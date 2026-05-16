@@ -1,5 +1,6 @@
 import { log } from './app.js';
-import { buildStratRankMap, stratigraphicConsistencyPenalty } from './semantic-engine.js';
+import { buildStratRankMap, stratigraphicConsistencyPenalty,
+         descriptionJaccard, meanDescriptionSimilarity, buildTransitionMatrix } from './semantic-engine.js';
 
 const MIN_BH_DIST = 0.1;
 
@@ -154,7 +155,8 @@ function getCandidates(boreholes, x, y, z, sinAz = 0, cosAz = 1, anisoRatio = 1)
     const dPerp  = ddx * cosAz - ddy * sinAz;
     const dist2d = Math.hypot(dAlong, dPerp / anisoRatio);
     out.push({ dist: Math.max(dist2d, MIN_BH_DIST), x: bhX, y: bhY,
-               unitCode: layer.unitCode, layerCert: layer.certainty ?? 0.8 });
+               unitCode: layer.unitCode, layerCert: layer.certainty ?? 0.8,
+               description: layer.description ?? '' });
   }
   return out;
 }
@@ -186,7 +188,11 @@ function idwVote(neighbours, power, unitIndex, unknownId, typicalSpacing) {
   const dDecay = Math.exp(-neighbours[0].dist / typicalSpacing);
   const mCert  = neighbours.reduce((s, n) => s + n.layerCert, 0) / neighbours.length;
   const cert   = (bw / totalW) * 0.55 + dDecay * 0.30 + mCert * 0.15;
-  return makeResult(bc, sc, bw / totalW, totalW, sw, cert, unitIndex, unknownId);
+  // Semantic cohesion bonus for winning unit
+  const winnerDescs = neighbours.filter(n => n.unitCode === bc).map(n => n.description);
+  const semScore = meanDescriptionSimilarity(winnerDescs);
+  const semAdj = 0.8 + 0.4 * semScore;
+  return makeResult(bc, sc, bw / totalW, totalW, sw, Math.min(1, cert * semAdj), unitIndex, unknownId);
 }
 
 // ── Ordinary Kriging (spherical variogram, indicator approach) ────────────────
@@ -415,6 +421,9 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
   const anisoSinAz = Math.sin(anisoAz);
   const anisoCosAz = Math.cos(anisoAz);
 
+  const semanticModel  = options.semanticModel ?? null;
+  const semanticWeight = Math.max(0, Math.min(1, options.semanticWeight ?? 0.3));
+
   // Pre-compute deviation trajectories (minimum curvature)
   for (const bh of boreholes) {
     bh._trajectory = (bh.deviation?.length >= 2) ? computeTrajectory(bh) : null;
@@ -439,6 +448,42 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
   const marginX = Math.max((maxX - minX) * 0.15, cellSizeParam * 2);
   const marginY = Math.max((maxY - minY) * 0.15, cellSizeParam * 2);
   const ox = minX - marginX, oy = minY - marginY, oz = botZ;
+
+  // Add synthetic anchor boreholes from semantic model
+  const allBoreholes = [...boreholes];
+  if (semanticModel?.synthetic_anchors?.length) {
+    const bboxW = maxX - minX || 100, bboxH = maxY - minY || 100;
+    for (const anchor of semanticModel.synthetic_anchors) {
+      const ax = minX + (anchor.x_frac ?? 0.5) * bboxW;
+      const ay = minY + (anchor.y_frac ?? 0.5) * bboxH;
+      if (!isFinite(ax) || !isFinite(ay)) continue;
+      allBoreholes.push({
+        id: `SYN-${anchor.label ?? 'AI'}`,
+        x: ax, y: ay,
+        groundLevel: maxGL,
+        depth: 20,
+        synthetic: true,
+        _trajectory: null,
+        layers: (anchor.layers ?? []).map(l => ({
+          top: l.top ?? 0, base: l.base ?? 1,
+          unitCode: l.unit_code,
+          certainty: (l.certainty ?? 0.5) * (1 - semanticWeight * 0.5),
+          description: '',
+        })),
+      });
+    }
+    if (semanticModel.synthetic_anchors.length) {
+      log(`Semantic model: added ${semanticModel.synthetic_anchors.length} synthetic anchor point(s)`, 'info');
+    }
+  }
+
+  // Depth exclusion priors from semantic model (penalise unlikely depth assignments)
+  const depthExclusions = semanticModel?.depth_exclusions ?? [];
+
+  // Transition matrix (from real boreholes only)
+  const transMatrix = buildTransitionMatrix(boreholes, geoUnits);
+  const unitCodeToIdx = {};
+  geoUnits.forEach((u, i) => { unitCodeToIdx[u.code] = i; });
 
   // ── 2. Grid dimensions ─────────────────────────────────────────────────────
   const MAX_VOXELS = 500_000;
@@ -479,16 +524,16 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
   let nnPredict = null;
   if (method === 'nn') {
     log('Training neural network on borehole data…', 'info');
-    nnPredict = trainNN(boreholes, geoUnits,
+    nnPredict = trainNN(allBoreholes, geoUnits,
       { minX, maxX, minY, maxY, botZ, topZ });
     if (!nnPredict) log('NN training yielded no samples — falling back to IDW', 'warn');
   }
 
-  // ── 3. Classify every voxel ────────────────────────────────────────────────
-  for (let iz = 0; iz < nz; iz++) {
+  // ── 3. Classify every voxel (top-down so transition matrix can look upward) ─
+  for (let iz = nz - 1; iz >= 0; iz--) {
     const z = oz + iz * cellH + cellH * 0.5;
     if (onProgress && iz % 3 === 0) {
-      onProgress(iz / nz);
+      onProgress((nz - 1 - iz) / nz);
       await new Promise(r => setTimeout(r, 0));
     }
     for (let iy = 0; iy < ny; iy++) {

@@ -1,5 +1,6 @@
 // Semantic engine: computes per-voxel certainty adjustments based on
 // spatial data density and cross-borehole consistency.
+// Also provides geological description similarity and transition matrix functions.
 
 // ── Compute data density score for a location ─────────────────────────────────
 // Returns 0–1: how much borehole data constrains a given (x,y) position.
@@ -38,6 +39,47 @@ export function computeCertainty(idwConfidence, density, consistency) {
     density       * 0.25 +
     consistency   * 0.25
   );
+}
+
+// ── Geological description similarity (Jaccard on keyword tokens) ─────────────
+export function descriptionJaccard(a, b) {
+  // geological stop words to filter
+  const STOP = new Set(['the','and','with','of','in','to','a','an','at','by','for','is','it','some','trace','occasional','frequent','becoming','grading']);
+  const tok = s => new Set(s.toLowerCase().split(/\W+/).filter(w => w.length > 2 && !STOP.has(w)));
+  const A = tok(a ?? ''), B = tok(b ?? '');
+  if (!A.size || !B.size) return 0;
+  let inter = 0;
+  for (const w of A) if (B.has(w)) inter++;
+  return inter / new Set([...A, ...B]).size;
+}
+
+// ── Mean pairwise similarity for a set of descriptions ────────────────────────
+export function meanDescriptionSimilarity(descs) {
+  const v = descs.filter(Boolean);
+  if (v.length < 2) return 0.5;
+  let sum = 0, cnt = 0;
+  for (let i = 0; i < v.length; i++)
+    for (let j = i + 1; j < v.length; j++) { sum += descriptionJaccard(v[i], v[j]); cnt++; }
+  return cnt > 0 ? sum / cnt : 0.5;
+}
+
+// ── Unit transition probability matrix from observed BH sequences ──────────────
+export function buildTransitionMatrix(classifiedBH, geoUnits) {
+  // Matrix[i][j] = P(unit j directly below unit i), with Laplace smoothing
+  const n = geoUnits.length;
+  const idx = {}; geoUnits.forEach((u, i) => { idx[u.code] = i; });
+  const counts = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (const bh of classifiedBH) {
+    const layers = [...bh.layers].sort((a, b) => a.top - b.top);
+    for (let i = 0; i < layers.length - 1; i++) {
+      const ai = idx[layers[i].unitCode], bi = idx[layers[i + 1].unitCode];
+      if (ai !== undefined && bi !== undefined) counts[ai][bi]++;
+    }
+  }
+  return counts.map(row => {
+    const sum = row.reduce((a, b) => a + b, 0) + n;
+    return row.map(v => (v + 1) / sum); // Laplace-smoothed
+  });
 }
 
 // ── Build stratigraphic rank map from inferred order ──────────────────────────
