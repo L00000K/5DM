@@ -2,6 +2,131 @@
 // Samples the voxel grid along the slicer's section line and draws a
 // lithology panel with elevation grid, BH ticks and unit legend.
 
+// ── Geological lithological pattern system ────────────────────────────────────
+// Each pattern is a 16×16 offscreen canvas tile; drawn using fillPattern (repeat).
+// Pattern type is inferred from unit code/name keyword matching.
+
+const _patternCache = new Map(); // key: patternType → CanvasPattern
+
+function _inferLithType(unit) {
+  const s = ((unit.code ?? '') + ' ' + (unit.name ?? '')).toLowerCase();
+  if (/gravel|grv|gvl|cobble|bould/.test(s))  return 'gravel';
+  if (/sand|snd|sa(?!\w)/.test(s))             return 'sand';
+  if (/silt|slt/.test(s))                      return 'silt';
+  if (/clay|cl(?!\w)|alluvial|alc/.test(s))    return 'clay';
+  if (/peat|org|pt(?!\w)/.test(s))             return 'peat';
+  if (/chalk|cha|chl/.test(s))                 return 'chalk';
+  if (/limestone|lst|ls(?!\w)/.test(s))        return 'limestone';
+  if (/made.?ground|mg(?!\w)|fill|topsoil|ts(?!\w)/.test(s)) return 'fill';
+  if (/bedrock|rock|granite|gneiss|mudstone|sandstone|mudst/.test(s)) return 'rock';
+  return 'default';
+}
+
+function _buildPattern(ctx, type, color) {
+  const key = `${type}:${color}`;
+  if (_patternCache.has(key)) return _patternCache.get(key);
+
+  const sz = 16;
+  const off = document.createElement('canvas');
+  off.width = sz; off.height = sz;
+  const c = off.getContext('2d');
+
+  // Base fill
+  c.fillStyle = color;
+  c.fillRect(0, 0, sz, sz);
+  c.strokeStyle = 'rgba(0,0,0,0.18)';
+  c.fillStyle   = 'rgba(0,0,0,0.15)';
+  c.lineWidth   = 0.6;
+
+  switch (type) {
+    case 'clay':
+      // Horizontal wavy lines (hachure)
+      for (let y = 3; y < sz; y += 4) {
+        c.beginPath();
+        for (let x = 0; x < sz; x++) {
+          const yy = y + Math.sin(x * 0.8) * 0.7;
+          if (x === 0) c.moveTo(x, yy); else c.lineTo(x, yy);
+        }
+        c.stroke();
+      }
+      break;
+    case 'sand':
+      // Stipple dots
+      for (let dy = 0; dy < sz; dy += 4) {
+        for (let dx = (dy % 8 === 0 ? 1 : 3); dx < sz; dx += 6) {
+          c.beginPath(); c.arc(dx, dy + 2, 0.9, 0, Math.PI * 2); c.fill();
+        }
+      }
+      break;
+    case 'gravel':
+      // Larger irregular blobs / ellipses
+      const blobs = [[3,4,2.5,1.5],[9,2,2,1.2],[12,8,1.8,2.2],[5,11,2.2,1.5],[11,13,1.8,1.2]];
+      blobs.forEach(([x,y,rx,ry]) => {
+        c.beginPath(); c.ellipse(x, y, rx, ry, 0.4, 0, Math.PI * 2);
+        c.stroke();
+      });
+      break;
+    case 'silt':
+      // Fine dots + faint wavy line
+      for (let dy = 0; dy < sz; dy += 3) {
+        for (let dx = (dy % 6 === 0 ? 0 : 2); dx < sz; dx += 5) {
+          c.beginPath(); c.arc(dx, dy + 1.5, 0.5, 0, Math.PI * 2); c.fill();
+        }
+      }
+      break;
+    case 'peat':
+      // Horizontal dashes + diagonal cross
+      for (let y = 2; y < sz; y += 5) {
+        c.beginPath(); c.moveTo(1, y); c.lineTo(6, y);
+        c.moveTo(9, y); c.lineTo(14, y); c.stroke();
+      }
+      c.beginPath();
+      c.moveTo(0, sz); c.lineTo(sz, 0);
+      c.moveTo(0, sz/2); c.lineTo(sz/2, 0);
+      c.globalAlpha = 0.4; c.stroke(); c.globalAlpha = 1;
+      break;
+    case 'chalk':
+      // V-hachures (classic chalk pattern)
+      for (let y = 0; y < sz; y += 5) {
+        c.beginPath();
+        c.moveTo(0, y); c.lineTo(sz/2, y + 3); c.lineTo(sz, y);
+        c.stroke();
+      }
+      break;
+    case 'limestone':
+      // Brick-like blocks
+      for (let row = 0; row < 3; row++) {
+        const yOff = row % 2 === 0 ? 0 : sz / 4;
+        for (let col = 0; col < 3; col++) {
+          c.strokeRect(col * sz/2 - yOff, row * sz/3, sz/2 - 1, sz/3 - 1);
+        }
+      }
+      break;
+    case 'fill':
+      // Diagonal hatching (made ground)
+      for (let d = -sz; d < sz * 2; d += 5) {
+        c.beginPath();
+        c.moveTo(d, 0); c.lineTo(d + sz, sz); c.stroke();
+      }
+      break;
+    case 'rock':
+      // Cross-hatch (strong diagonal both ways)
+      c.lineWidth = 0.5;
+      for (let d = -sz; d < sz * 2; d += 6) {
+        c.beginPath(); c.moveTo(d, 0); c.lineTo(d + sz, sz); c.stroke();
+        c.beginPath(); c.moveTo(d, 0); c.lineTo(d - sz, sz); c.stroke();
+      }
+      break;
+    default:
+      // No overlay
+      break;
+  }
+
+  const pattern = ctx.createPattern(off, 'repeat');
+  _patternCache.set(key, pattern);
+  return pattern;
+}
+
 export class FenceSection {
   constructor() {
     this._panel    = document.getElementById('fence-panel');
@@ -49,8 +174,9 @@ export class FenceSection {
     const args = this._lastArgs;
     if (!args || !this._canvas || !this._ctx) return;
 
-    const showUnc  = document.getElementById('fence-show-uncertainty')?.checked ?? false;
-    const showCov  = document.getElementById('fence-show-coverage')?.checked ?? false;
+    const showUnc      = document.getElementById('fence-show-uncertainty')?.checked ?? false;
+    const showCov      = document.getElementById('fence-show-coverage')?.checked ?? false;
+    const showPatterns = document.getElementById('fence-show-patterns')?.checked ?? false;
 
     const { grid, geoUnits, normal, centerD, thickness, boreholes } = args;
     const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty, blendRatios } = grid;
@@ -119,6 +245,19 @@ export class FenceSection {
         ctx.globalAlpha = Math.max(0.4, cert);
         ctx.fillStyle   = unit.color;
         ctx.fillRect(colX, yPx - hPx, Math.ceil(colPx + 0.5), Math.ceil(hPx + 0.5));
+
+        // Geological lithological pattern overlay
+        if (showPatterns && hPx > 2) {
+          const lithType = _inferLithType(unit);
+          if (lithType !== 'default') {
+            const pat = _buildPattern(ctx, lithType, unit.color);
+            if (pat) {
+              ctx.globalAlpha = 0.55;
+              ctx.fillStyle = pat;
+              ctx.fillRect(colX, yPx - hPx, Math.ceil(colPx + 0.5), Math.ceil(hPx + 0.5));
+            }
+          }
+        }
 
         // Fuzzy boundary: if high blend ratio, overlay with a semi-transparent
         // hatching zone at the top of the cell to indicate uncertain contact

@@ -2109,7 +2109,7 @@ function initFenceSection() {
   });
 
   // Redraw when overlay toggles change
-  ['fence-show-uncertainty', 'fence-show-coverage'].forEach(id => {
+  ['fence-show-uncertainty', 'fence-show-coverage', 'fence-show-patterns'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', () => {
       if (AppState.fenceSection?.visible) AppState.fenceSection._redraw();
     });
