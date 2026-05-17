@@ -478,6 +478,13 @@ Produce a semantic geological knowledge model. Use your geological expertise to 
   "depth_exclusions": [
     {"unit_code": "CODE", "exclude_above_m": number, "exclude_below_m": number, "confidence": 0.0-1.0}
   ],
+  "conceptual_descriptions": [
+    {
+      "statement": "1-sentence geometric/morphological concept (orientation, shape, continuity, depth trend)",
+      "unit_codes": ["CODE"],
+      "confidence": 0.0-1.0
+    }
+  ],
   "synthetic_anchors": [
     {
       "label": "inferred point label",
@@ -488,7 +495,10 @@ Produce a semantic geological knowledge model. Use your geological expertise to 
     }
   ],
   "model_narrative": "2-3 sentence geological summary"
-}`
+}
+
+Rules:
+- conceptual_descriptions: 2-5 objects, each a geometry/morphology concept that will be encoded as a 32-dim neural field embedding to shape 3D model geometry. Focus on: orientation (E-W channel), shape (concave-up trough, flat terrace), depth trends (deepens north), structural controls (fault-stepped rockhead). Unit_codes = which units this applies to (empty = all). Confidence 0.5-0.95.`
   }];
 
   try {
@@ -517,6 +527,10 @@ function _demoSemanticModel(geoUnits) {
     lateral_continuity: Object.fromEntries(codes.map(c => [c, 'medium'])),
     characteristic_keywords: {},
     depth_exclusions: [],
+    conceptual_descriptions: [
+      { statement: 'Stratigraphy is broadly horizontal and laterally continuous across the site.', unit_codes: [], confidence: 0.7 },
+      { statement: 'Shallow superficial deposits show lateral thinning away from river channel axes.', unit_codes: codes.slice(0, 1), confidence: 0.65 },
+    ],
     synthetic_anchors: [],
     model_narrative: 'Demo semantic model — provide an API key for site-specific geological intelligence.',
   };
@@ -816,7 +830,41 @@ export async function encodeGeologicalConcept(description, apiKey, demoMode) {
     return _demoConceptEmbedding(description);
   }
 
-  const axisLines = CONCEPT_AXES.map((a, i) => `[${i}] ${a}`).join('\n');
+  const AXIS_HINTS = [
+    'flat horizontal beds (+) vs structureless/massive (−)',
+    'inclined/dipping beds present (+)',
+    'dip magnitude: 0=flat, +1=near-vertical',
+    'body elongated E-W (+) vs compressed E-W (−)',
+    'body elongated N-S (+) vs compressed N-S (−)',
+    'concave-up trough / channel geometry (+)',
+    'convex-up dome / anticline (+)',
+    'contact is a fault surface (+)',
+    'erosional/unconformable base (+) vs gradational (−)',
+    'laterally continuous (+) vs discontinuous/lenticular (−)',
+    'wedges/thins eastward (+)',
+    'wedges/thins westward (+)',
+    'wedges/thins northward (+)',
+    'wedges/thins southward (+)',
+    'surface deepens / dips toward east (+)',
+    'surface deepens / dips toward west (+)',
+    'surface deepens / dips toward north (+)',
+    'surface deepens / dips toward south (+)',
+    'stepped/piecewise boundary (+)',
+    'irregular karstic/dissolution base (+)',
+    'multi-storey nested channels (+)',
+    'coarsening-upward sequence (+)',
+    'fining-upward sequence (+)',
+    'coarse gravel lag at base (+)',
+    'dissolution/karst voids present (+)',
+    'structurally complex / deformed (+)',
+    'data confidence / certainty of this concept (0=low, +1=high)',
+    'horizontally elongated in any direction (+)',
+    'strong vertical anisotropy / layer-parallel fabric (+)',
+    'deep incision relative to body width (+)',
+    'geometry controlled by overburden load (+)',
+    'complexity increases in one direction (+)',
+  ];
+  const axisLines = CONCEPT_AXES.map((a, i) => `[${i}] ${a}: ${AXIS_HINTS[i]}`).join('\n');
 
   const resp = await fetch(API_URL, {
     method: 'POST',
@@ -827,16 +875,17 @@ export async function encodeGeologicalConcept(description, apiKey, demoMode) {
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 300,
-      system: 'You are a structural geology and sedimentology expert. Return ONLY a JSON array of numbers — no explanation, no markdown.',
+      max_tokens: 350,
+      system: 'You are an expert structural geologist and sedimentologist encoding geological concepts as geometric embeddings. Return ONLY a JSON array of 32 numbers — no explanation, no markdown, no prose.',
       messages: [{
         role: 'user',
-        content: `Rate the following geological concept on each of the 32 morphological axes.
-Use values from −1.0 (strongly absent / opposite sense) through 0.0 (neutral / not applicable) to +1.0 (strongly present / dominant).
+        content: `Rate the following geological concept on each of the 32 morphological geometry axes.
+Use values: −1.0 = strongly absent or opposite sense, 0.0 = neutral/not applicable, +1.0 = strongly present/dominant.
+Be generous with non-zero values when the concept implies a clear geometric tendency.
 
 Concept: "${description}"
 
-Axes (in this exact order):
+Axes (index: name: geometric meaning):
 ${axisLines}
 
 Respond with ONLY a JSON array of exactly 32 numbers, e.g.: [0.8, -0.2, 0.5, ...]`,

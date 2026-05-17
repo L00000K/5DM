@@ -2344,6 +2344,32 @@ function initSemanticModel() {
       if (result.synthetic_anchors?.length) {
         log(`Semantic model: ${result.synthetic_anchors.length} synthetic anchor(s) ready.`, 'ok');
       }
+
+      // Auto-encode conceptual descriptions from semantic model into ConceptStore
+      const conceptDescs = result.conceptual_descriptions ?? [];
+      if (conceptDescs.length > 0 && AppState.conceptStore) {
+        let encoded = 0;
+        for (const cd of conceptDescs) {
+          const stmt = cd.statement ?? cd;
+          if (!stmt?.trim()) continue;
+          try {
+            const emb = await encodeGeologicalConcept(stmt, AppState.apiKey, AppState.demoMode);
+            AppState.conceptStore.add({
+              description:  stmt,
+              embedding:    emb,
+              confidence:   cd.confidence ?? 0.7,
+              domain:       { type: 'global' },
+              unitAffinity: Array.isArray(cd.unit_codes) ? cd.unit_codes : [],
+            });
+            encoded++;
+          } catch (e) { log(`Concept auto-encode: ${e.message}`, 'warn'); }
+        }
+        if (encoded > 0) {
+          _renderConceptList();
+          _saveConceptStore();
+          log(`Auto-encoded ${encoded} semantic model concept(s) → ConceptStore`, 'ok');
+        }
+      }
       log('Semantic model ready — rebuild the 3D model to apply.', 'ok');
     } catch (err) {
       log(`Semantic model error: ${err.message}`, 'error');
