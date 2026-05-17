@@ -32,9 +32,9 @@ export class PlanView {
     if (this._panel) ro.observe(this._panel);
   }
 
-  draw(grid, geoUnits, boreholes) {
+  draw(grid, geoUnits, boreholes, conceptStore = null) {
     if (!grid) return;
-    this._lastArgs = { grid, geoUnits, boreholes };
+    this._lastArgs = { grid, geoUnits, boreholes, conceptStore };
 
     const { origin: O, nz, cellHeight: ch } = grid;
     const minElev = O.y;
@@ -67,7 +67,7 @@ export class PlanView {
   _redraw() {
     const args = this._lastArgs;
     if (!args || !this._canvas || !this._ctx) return;
-    const { grid, geoUnits, boreholes } = args;
+    const { grid, geoUnits, boreholes, conceptStore } = args;
     const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty } = grid;
 
     const mode = this._modeSelect?.value ?? 'unit';
@@ -211,18 +211,81 @@ export class PlanView {
             paramMin = 0; paramMax = 100;
             paramLabel = `P(${probUnitCode}) %`;
           }
+        } else if (mode === 'concept' && conceptStore) {
+          // Concept influence heatmap — rendered after main cells below
+          color = null; // skip normal fill; handled in post-pass
         } else {
           color = '#888';
         }
 
-        ctx.fillStyle = color;
-        ctx.fillRect(
-          PAD + ix * cellPxW,
-          PAD + (ny - 1 - iy) * cellPxH,
-          Math.ceil(cellPxW + 0.5),
-          Math.ceil(cellPxH + 0.5)
-        );
+        if (color) {
+          ctx.fillStyle = color;
+          ctx.fillRect(
+            PAD + ix * cellPxW,
+            PAD + (ny - 1 - iy) * cellPxH,
+            Math.ceil(cellPxW + 0.5),
+            Math.ceil(cellPxH + 0.5)
+          );
+        }
       }
+    }
+
+    // Concept influence heatmap — sampled at each grid cell's world position
+    if (mode === 'concept' && conceptStore && !conceptStore.isEmpty) {
+      // Single-pass: cache weights and find max simultaneously
+      const wCache = new Float32Array(nx * ny);
+      let maxW = 0;
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          const wx = O.x + (ix + 0.5) * cs;
+          const wy = O.z + (iy + 0.5) * cs;
+          const w = conceptStore.computeAt(wx, wy, elev).totalWeight;
+          wCache[ix + iy * nx] = w;
+          if (w > maxW) maxW = w;
+        }
+      }
+      if (maxW < 0.01) maxW = 1;
+
+      // Render from cache
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          const t   = Math.min(1, wCache[ix + iy * nx] / maxW);
+          // Color: low influence = light grey, high = deep blue-purple
+          const r = Math.round(240 - t * 180);
+          const g = Math.round(242 - t * 160);
+          const b = Math.round(245 - t * 50 + t * 100); // more blue
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+          ctx.fillRect(
+            PAD + ix * cellPxW,
+            PAD + (ny - 1 - iy) * cellPxH,
+            Math.ceil(cellPxW + 0.5),
+            Math.ceil(cellPxH + 0.5)
+          );
+        }
+      }
+
+      // Draw bbox domains of spatially-constrained concepts
+      conceptStore.concepts.forEach((c, ci) => {
+        if (c.domain?.type !== 'bbox') return;
+        const { minX, maxX, minY, maxY } = c.domain;
+        const px1 = PAD + ((minX - O.x) / cs) * cellPxW;
+        const px2 = PAD + ((maxX - O.x) / cs) * cellPxW;
+        const py1 = PAD + (ny - (maxY - O.z) / cs) * cellPxH;
+        const py2 = PAD + (ny - (minY - O.z) / cs) * cellPxH;
+        const hue = (ci * 137) % 360;
+        ctx.strokeStyle = `hsla(${hue},80%,45%,0.85)`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 3]);
+        ctx.strokeRect(px1, py1, px2 - px1, py2 - py1);
+        ctx.setLineDash([]);
+        ctx.fillStyle = `hsla(${hue},80%,45%,0.9)`;
+        ctx.font = 'bold 9px Inter, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(c.description.slice(0, 24), px1 + 3, py1 - 3);
+      });
+
+      paramLabel = 'Concept Influence';
+      paramMin = 0; paramMax = 100;
     }
 
     // Certainty threshold contour overlay
@@ -278,7 +341,7 @@ export class PlanView {
 
     const MODE_LABELS = { unit: 'Geology', cert: 'Certainty', cu: 'Undrained Strength (Cu)',
       N_spt: 'SPT N', settlement: 'Settlement Risk (Cc)', bearing: 'Bearing Capacity Risk (Cu)',
-      probability: `P(${probUnitCode})` };
+      probability: `P(${probUnitCode})`, concept: 'Concept Influence (semantic warp)' };
     const modeLabel = MODE_LABELS[mode] ?? mode;
     ctx.fillStyle = '#8898a8';
     ctx.font = 'bold 11px Inter, sans-serif';

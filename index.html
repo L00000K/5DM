@@ -442,6 +442,12 @@
               <option value="site">Site bbox only</option>
             </select>
           </div>
+          <div class="concept-ctrl-row" id="concept-unit-affinity-row" title="Leave blank to apply to all units">
+            <label>Units (optional)</label>
+            <select id="concept-unit-affinity" multiple style="height:52px;font-size:10px;flex:1">
+              <!-- populated dynamically from geoUnits -->
+            </select>
+          </div>
         </div>
 
         <div class="btn-row">
@@ -454,6 +460,27 @@
           <span class="concept-axes-legend">← −1 &nbsp; 32 axes &nbsp; +1 →</span>
         </div>
         <div id="concept-list" class="concept-list"></div>
+
+        <!-- Global concept influence summary -->
+        <div id="concept-global-tensor" class="concept-global-tensor" style="display:none"></div>
+
+        <!-- Export / Import concept store -->
+        <div class="btn-row" style="margin-top:6px;gap:4px">
+          <button class="btn btn-ghost" style="font-size:11px;flex:1" onclick="_exportConceptStore()" title="Download concepts as JSON">⬇ Export JSON</button>
+          <label class="btn btn-ghost" style="font-size:11px;flex:1;cursor:pointer;text-align:center" title="Import concepts from JSON file">
+            ⬆ Import JSON
+            <input type="file" accept=".json" style="display:none" onchange="_importConceptStore(this)">
+          </label>
+        </div>
+
+        <!-- Concept Library — quick pre-defined templates -->
+        <div class="collapsible-hdr" id="concept-lib-toggle" style="margin-top:10px">
+          <span>Concept Library <span class="badge-opt">quick templates</span></span>
+          <span class="collapse-arrow">›</span>
+        </div>
+        <div id="concept-lib" class="collapsible-body" hidden>
+          <div class="concept-lib-grid" id="concept-lib-grid"></div>
+        </div>
 
         <!-- Traceability panel — shown on voxel hover -->
         <div id="traceability-panel" class="traceability-panel hidden">
@@ -658,6 +685,7 @@
               <option value="N_spt">SPT N</option>
               <option value="settlement">Settlement Risk</option>
               <option value="bearing">Bearing Capacity</option>
+              <option value="concept">Concept Influence</option>
             </select>
             <span id="plan-view-prob-unit-wrap" style="display:none;align-items:center;gap:4px">
               <select id="plan-view-prob-unit" class="isopach-select"></select>

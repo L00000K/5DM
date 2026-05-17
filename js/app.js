@@ -1583,7 +1583,7 @@ function initPlanView() {
 
   document.getElementById('btn-plan-view')?.addEventListener('click', () => {
     if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
-    AppState.planView.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
+    AppState.planView.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH, AppState.conceptStore);
   });
 
   // Show/hide unit probability selector when mode changes
@@ -1591,13 +1591,13 @@ function initPlanView() {
     const wrap = document.getElementById('plan-view-prob-unit-wrap');
     if (wrap) wrap.style.display = e.target.value === 'probability' ? 'flex' : 'none';
     if (AppState.voxelGrid && AppState.planView?.visible) {
-      AppState.planView.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
+      AppState.planView.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH, AppState.conceptStore);
     }
   });
 
   document.getElementById('plan-view-prob-unit')?.addEventListener('change', () => {
     if (AppState.voxelGrid && AppState.planView?.visible) {
-      AppState.planView.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
+      AppState.planView.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH, AppState.conceptStore);
     }
   });
 }
@@ -2679,6 +2679,15 @@ export function updateInfoPanel() {
 
 // ── Update unit legend ─────────────────────────────────────────────────────────
 export function updateLegend() {
+  // Populate unit affinity multiselect in concept panel
+  const affinitySel = document.getElementById('concept-unit-affinity');
+  if (affinitySel && AppState.geoUnits.length) {
+    const prev = new Set(Array.from(affinitySel.selectedOptions).map(o => o.value));
+    affinitySel.innerHTML = AppState.geoUnits.map(u =>
+      `<option value="${u.code}"${prev.has(u.code) ? ' selected' : ''}>${u.code} — ${u.name}</option>`
+    ).join('');
+  }
+
   const container = document.getElementById('unit-legend');
   container.innerHTML = '';
 
@@ -3626,9 +3635,138 @@ init();
 // on CONCEPT_AXES. The embeddings are stored in AppState.conceptStore and warp the
 // neural implicit field's coordinate space, making output geometry reflect conceptual input.
 
+const CONCEPT_LIBRARY = [
+  { label: 'Palaeochannel E-W', axes: { east_west_elongation: 0.9, channel_morphology: 1.0, erosional_contact: 0.9, gravel_basal_lag: 0.8, incision_depth_ratio: 0.8 } },
+  { label: 'Palaeochannel N-S', axes: { north_south_elongation: 0.9, channel_morphology: 1.0, erosional_contact: 0.9, gravel_basal_lag: 0.8, incision_depth_ratio: 0.8 } },
+  { label: 'River Terrace',     axes: { horizontal_layering: 0.7, lateral_continuity: 0.8, gravel_basal_lag: 0.7, fining_upward: 0.4, erosional_contact: 0.6 } },
+  { label: 'Fault E-W (stepped)', axes: { fault_controlled: 1.0, stepped_boundary: 0.9, structural_complexity: 0.7 } },
+  { label: 'Fault N-S (stepped)', axes: { fault_controlled: 1.0, stepped_boundary: 0.9, structural_complexity: 0.7, deepens_east: 0.5 } },
+  { label: 'Deepening NE',      axes: { deepens_north: 0.6, deepens_east: 0.6, inclined_bedding: 0.5, dip_magnitude: 0.5 } },
+  { label: 'Karst / Dissolution', axes: { dissolution_features: 1.0, irregular_base: 0.9, structural_complexity: 0.5 } },
+  { label: 'Bedded / Tabular',  axes: { horizontal_layering: 0.9, lateral_continuity: 0.9, vertical_anisotropy: 0.7 } },
+  { label: 'Dome / Anticline',  axes: { dome_anticline: 0.9, lateral_continuity: 0.6 } },
+  { label: 'Sand Lens / Pod',   axes: { channel_morphology: 0.5, lateral_thinning_north: 0.6, lateral_thinning_south: 0.6, lateral_continuity: -0.5 } },
+];
+
+function _libraryEmbedding(axes) {
+  const emb = new Float32Array(32);
+  emb[26] = 0.7; // data_confidence default
+  for (const [name, val] of Object.entries(axes)) {
+    const i = CONCEPT_AXES.indexOf(name);
+    if (i >= 0) emb[i] = val;
+  }
+  return emb;
+}
+
+function _initConceptLibrary() {
+  // Toggle header
+  const toggle = document.getElementById('concept-lib-toggle');
+  const body   = document.getElementById('concept-lib');
+  if (toggle && body) {
+    toggle.addEventListener('click', () => {
+      const hidden = body.hasAttribute('hidden');
+      if (hidden) body.removeAttribute('hidden'); else body.setAttribute('hidden', '');
+      const arrow = toggle.querySelector('.collapse-arrow');
+      if (arrow) arrow.textContent = hidden ? '⌄' : '›';
+    });
+  }
+
+  const grid = document.getElementById('concept-lib-grid');
+  if (!grid) return;
+
+  grid.innerHTML = CONCEPT_LIBRARY.map((tmpl, idx) =>
+    `<button class="concept-lib-chip" data-lib-idx="${idx}" title="${Object.entries(tmpl.axes).map(([k,v]) => k+': '+v.toFixed(1)).join(', ')}">${tmpl.label}</button>`
+  ).join('');
+
+  grid.addEventListener('click', e => {
+    const btn = e.target.closest('[data-lib-idx]');
+    if (!btn) return;
+    const tmpl = CONCEPT_LIBRARY[parseInt(btn.dataset.libIdx)];
+    if (!tmpl) return;
+    const emb  = _libraryEmbedding(tmpl.axes);
+    AppState.conceptStore.add({ description: tmpl.label, embedding: emb, confidence: 0.75, domain: { type: 'global' } });
+    _renderConceptList();
+    _updateConceptInfluenceBar();
+    _saveConceptStore();
+    log(`Library concept added: "${tmpl.label}"`, 'ok');
+  });
+}
+
+function _updateConceptInfluenceBar() {
+  const el = document.getElementById('concept-global-tensor');
+  if (!el || !AppState.conceptStore) return;
+  const t = AppState.conceptStore.globalTensor();
+  el.textContent = `Global warp: E-W ×${t.Ax.toFixed(1)} · N-S ×${t.Ay.toFixed(1)} · Z ×${t.Az.toFixed(1)}`;
+  el.style.display = AppState.conceptStore.isEmpty ? 'none' : 'block';
+}
+
+function _saveConceptStore() {
+  try {
+    sessionStorage.setItem('geomodel:concepts', AppState.conceptStore.serialize());
+  } catch { /* quota or private-mode — silently ignore */ }
+}
+
+// ── Concept store export/import ──────────────────────────────────────────────
+window._exportConceptStore = function() {
+  if (!AppState.conceptStore || AppState.conceptStore.isEmpty) {
+    log('No concepts to export', 'warn'); return;
+  }
+  const json = AppState.conceptStore.serialize();
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'geomodel-concepts.json'; a.click();
+  URL.revokeObjectURL(url);
+  log(`Exported ${AppState.conceptStore.concepts.length} concepts`, 'ok');
+};
+
+window._importConceptStore = function(inputEl) {
+  const file = inputEl?.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const imported = ConceptStore.deserialize(e.target.result);
+      if (!AppState.conceptStore) AppState.conceptStore = new ConceptStore();
+      // Merge imported concepts into the current store
+      for (const c of imported.concepts) {
+        AppState.conceptStore.add({
+          description:  c.description,
+          embedding:    c.embedding,
+          confidence:   c.confidence,
+          domain:       c.domain,
+          unitAffinity: c.unitAffinity,
+        });
+      }
+      _renderConceptList();
+      _saveConceptStore();
+      log(`Imported ${imported.concepts.length} concepts from ${file.name}`, 'ok');
+    } catch (err) { log(`Import failed: ${err.message}`, 'error'); }
+    inputEl.value = ''; // reset file input
+  };
+  reader.readAsText(file);
+};
+
+// Update concept confidence inline (called from sparkline row button)
+window._updateConceptConf = function(id, val) {
+  const c = AppState.conceptStore?.concepts.find(c => c.id === id);
+  if (!c) return;
+  c.confidence = parseFloat(val);
+  _renderConceptList();
+  _saveConceptStore();
+  _updateConceptInfluenceBar();
+};
+
 function initConceptPanel() {
   if (!AppState.conceptStore) AppState.conceptStore = new ConceptStore();
-  _loadDemoConceptsIfEmpty();
+
+  // Restore persisted concepts from sessionStorage (overrides demo defaults if present)
+  const saved = sessionStorage.getItem('geomodel:concepts');
+  if (saved) {
+    AppState.conceptStore = ConceptStore.deserialize(saved);
+  } else {
+    _loadDemoConceptsIfEmpty();
+  }
 
   const textarea   = document.getElementById('concept-description');
   const confidence = document.getElementById('concept-confidence');
@@ -3637,6 +3775,9 @@ function initConceptPanel() {
   const encodeBtn  = document.getElementById('btn-encode-concept');
   const clearBtn   = document.getElementById('btn-clear-concepts');
   const listEl     = document.getElementById('concept-list');
+
+  // Render concept library chips
+  _initConceptLibrary();
 
   confidence?.addEventListener('input', () => {
     if (confLabel) confLabel.textContent = parseFloat(confidence.value).toFixed(2);
@@ -3652,9 +3793,17 @@ function initConceptPanel() {
       const emb  = await encodeGeologicalConcept(text, AppState.apiKey, AppState.demoMode);
       const conf = parseFloat(confidence?.value ?? 0.7);
       const domain = _buildDomain(domainSel?.value ?? 'global');
-      AppState.conceptStore.add({ description: text, embedding: emb, confidence: conf, domain });
+      // Collect selected unit affinity codes (multi-select)
+      const unitAffinitySel = document.getElementById('concept-unit-affinity');
+      const unitAffinity = unitAffinitySel
+        ? Array.from(unitAffinitySel.selectedOptions).map(o => o.value)
+        : [];
+      AppState.conceptStore.add({ description: text, embedding: emb, confidence: conf, domain, unitAffinity });
       _renderConceptList();
+      _saveConceptStore();
       if (textarea) textarea.value = '';
+      // Clear selection after encoding
+      if (unitAffinitySel) Array.from(unitAffinitySel.options).forEach(o => o.selected = false);
       log(`Concept encoded: "${text.slice(0, 60)}" — ${AppState.conceptStore.concepts.length} total`, 'ok');
     } catch (err) {
       log(`Concept encode error: ${err.message}`, 'error');
@@ -3667,6 +3816,7 @@ function initConceptPanel() {
   clearBtn?.addEventListener('click', () => {
     AppState.conceptStore.clear();
     _renderConceptList();
+    _saveConceptStore();
     log('Conceptual model cleared', 'info');
   });
 
@@ -3695,6 +3845,7 @@ export function _renderConceptList() {
   const concepts = AppState.conceptStore.concepts;
   if (!concepts.length) {
     listEl.innerHTML = '<div class="concept-empty">No concepts encoded yet.</div>';
+    _updateConceptInfluenceBar();
     return;
   }
   listEl.innerHTML = concepts.map(c => {
@@ -3705,21 +3856,32 @@ export function _renderConceptList() {
         <div class="concept-bar" style="width:${pct}%;background:${col}"></div>
       </div>`;
     }).join('');
-    const dom = c.domain?.type === 'bbox' ? ' [site bbox]' : ' [global]';
+    const dom     = c.domain?.type === 'bbox' ? '⬛ bbox' : '🌐 global';
+    const affText = c.unitAffinity?.length ? ` · ${c.unitAffinity.join(',')}` : '';
+    const confPct = (c.confidence * 100).toFixed(0);
     return `<div class="concept-entry" data-id="${c.id}">
       <div class="concept-header">
-        <span class="concept-desc" title="${c.description}">${c.description.slice(0, 60)}${c.description.length > 60 ? '…' : ''}</span>
-        <span class="concept-conf">conf ${(c.confidence * 100).toFixed(0)}%${dom}</span>
-        <button class="concept-remove" onclick="_removeConcept('${c.id}')">×</button>
+        <span class="concept-desc" title="${c.description}">${c.description.slice(0, 55)}${c.description.length > 55 ? '…' : ''}</span>
+        <button class="concept-remove" title="Remove concept" onclick="_removeConcept('${c.id}')">×</button>
+      </div>
+      <div class="concept-meta">
+        <span class="concept-dom-tag">${dom}${affText}</span>
+        <label class="concept-conf-row">
+          conf <input type="range" class="concept-conf-slider" min="0" max="100" value="${confPct}"
+            oninput="this.nextElementSibling.textContent=this.value+'%'; _updateConceptConf('${c.id}', this.value/100)"
+          ><span class="concept-conf-val">${confPct}%</span>
+        </label>
       </div>
       <div class="concept-axes">${bars}</div>
     </div>`;
   }).join('');
+  _updateConceptInfluenceBar();
 }
 
 window._removeConcept = function(id) {
   AppState.conceptStore?.remove(id);
   _renderConceptList();
+  _saveConceptStore();
   log(`Concept removed`, 'info');
 };
 
@@ -3752,10 +3914,10 @@ function _demoConcepts() {
 
 // ── Traceability: compute attribution for a world position ────────────────────
 // Called from scene.js on voxel hover. Returns object for tooltip rendering.
-export function getVoxelAttribution(worldX, worldY, worldZ) {
+export function getVoxelAttribution(worldX, worldY, worldZ, unitCode = null) {
   const concepts = AppState.conceptStore
-    ? AppState.conceptStore.computeAt(worldX, worldY, worldZ)
-    : { weights: [], tensor: { Ax: 1, Ay: 1, Az: 1 }, totalWeight: 0 };
+    ? AppState.conceptStore.computeAt(worldX, worldY, worldZ, unitCode)
+    : { weights: [], tensor: { Ax: 1, Ay: 1, Az: 1 }, totalWeight: 0, activeAxes: [] };
 
   // Nearest boreholes at this depth (IDW attribution)
   const depth = (AppState.voxelGrid ? AppState.voxelGrid.origin?.y ?? 0 : 0) - worldZ;
@@ -3767,6 +3929,7 @@ export function getVoxelAttribution(worldX, worldY, worldZ) {
     bhWeights,
     tensor:            { Ax: tensor.Ax.toFixed(2), Ay: tensor.Ay.toFixed(2), Az: tensor.Az.toFixed(2) },
     semanticDominance: concepts.totalWeight > 0 ? Math.min(1, concepts.totalWeight) : 0,
+    activeAxes:        concepts.activeAxes ?? [],
   };
 }
 
@@ -3800,7 +3963,7 @@ function _computeAttribution(worldX, worldY, worldZ) {
 
 function _renderAttribution(attr, unitCode) {
   if (!attr) return '';
-  const { conceptWeights, bhWeights, tensor, semanticDominance } = attr;
+  const { conceptWeights, bhWeights, tensor, semanticDominance, activeAxes } = attr;
 
   const semPct = (semanticDominance * 100).toFixed(0);
   const datPct = Math.max(0, 100 - semPct).toFixed(0);
@@ -3808,7 +3971,10 @@ function _renderAttribution(attr, unitCode) {
   const conceptRows = conceptWeights.length
     ? conceptWeights.map(c =>
         `<div class="trace-row">
-          <span class="trace-label" title="${c.description}">${c.description.slice(0, 40)}${c.description.length > 40 ? '…' : ''}</span>
+          <div class="trace-bar-wrap">
+            <div class="trace-bar-fill" style="width:${(c.weight * 100).toFixed(0)}%"></div>
+          </div>
+          <span class="trace-label" title="${c.description}">${c.description.slice(0, 35)}${c.description.length > 35 ? '…' : ''}</span>
           <span class="trace-weight">${(c.weight * 100).toFixed(0)}%</span>
         </div>`).join('')
     : '<div class="trace-row"><span class="trace-label" style="color:var(--text-dim)">No active concepts</span></div>';
@@ -3816,10 +3982,28 @@ function _renderAttribution(attr, unitCode) {
   const bhRows = bhWeights.length
     ? bhWeights.map(b =>
         `<div class="trace-row">
+          <div class="trace-bar-wrap">
+            <div class="trace-bar-fill" style="width:${(b.weight * 100).toFixed(0)}%;background:var(--text-mid)"></div>
+          </div>
           <span class="trace-label">${b.id}</span>
           <span class="trace-weight">${(b.weight * 100).toFixed(0)}%</span>
         </div>`).join('')
     : '<div class="trace-row"><span class="trace-label" style="color:var(--text-dim)">No boreholes nearby</span></div>';
+
+  const axesRows = activeAxes?.length
+    ? activeAxes.map(a => {
+        const pct  = (Math.abs(a.value) * 100).toFixed(0);
+        const col  = a.value >= 0 ? 'var(--accent)' : 'var(--red)';
+        const sign = a.value >= 0 ? '+' : '';
+        return `<div class="trace-row">
+          <div class="trace-bar-wrap">
+            <div class="trace-bar-fill" style="width:${pct}%;background:${col}"></div>
+          </div>
+          <span class="trace-label" style="font-family:var(--font-mono);font-size:10px">${a.name}</span>
+          <span class="trace-weight" style="color:${col}">${sign}${a.value.toFixed(2)}</span>
+        </div>`;
+      }).join('')
+    : '<div class="trace-row"><span class="trace-label" style="color:var(--text-dim)">No significant axes</span></div>';
 
   return `
     <div class="trace-section">
@@ -3834,7 +4018,11 @@ function _renderAttribution(attr, unitCode) {
       ${bhRows}
     </div>
     <div class="trace-section">
-      <div class="trace-section-hdr">Coordinate Warp (concept anisotropy)</div>
+      <div class="trace-section-hdr">Active Geometry Axes</div>
+      ${axesRows}
+    </div>
+    <div class="trace-section">
+      <div class="trace-section-hdr">Coordinate Warp</div>
       <div class="trace-warp">E-W ×${tensor.Ax} · N-S ×${tensor.Ay} · Z ×${tensor.Az}</div>
     </div>`;
 }

@@ -82,14 +82,20 @@ Return this JSON structure only:
       "points": [{"dist_m": <d>, "depth_m": <z>}]
     }
   ],
-  "semantic_keywords": ["<geological keyword>"]
+  "semantic_keywords": ["<geological keyword>"],
+  "conceptual_statements": [
+    "brief 1-sentence geological concept describing morphology or geometry",
+    "e.g. The palaeochannel trends E-W with an erosional concave-up base",
+    "e.g. Rockhead deepens steeply to the north across a fault"
+  ]
 }
 
 Rules:
 - Place virtual_boreholes at evenly spaced distances capturing the described stratigraphy (min 3, max 20).
 - contacts.points must have at least 2 points spanning the section.
 - semantic_keywords: pick 3-8 terms from: dipping thinning thickening pinching lateral inclined wedging deepening shallowing eroded unconformity lens channel fold faulted truncated.
-- Only use unit_codes from the list above.`;
+- Only use unit_codes from the list above.
+- conceptual_statements: 2-5 statements, each describing a geometric or morphological aspect of the geology. Focus on geometry: orientation, shape (channel/lens/wedge/dome/fault), continuity, depth trends. These will be encoded as concept embeddings to shape the 3D neural field geometry. NOT descriptions of individual layers — geometric/conceptual observations only.`;
 
   return { system, user };
 }
@@ -113,6 +119,28 @@ function _demoSection(text, geoUnits, fenceLen) {
       // keep base of lower unit null
     });
   }
+  const fault   = /fault|step|displace/i.test(text);
+  const channel = /channel|palaeochannel|fluvial/i.test(text);
+  const karst   = /karst|dissolution|void/i.test(text);
+  const conceptual_statements = [];
+  if (channel) {
+    conceptual_statements.push('A palaeochannel feature is present with an erosional concave-up base.');
+    conceptual_statements.push('Channel fill exhibits lateral thinning towards the margins.');
+  } else if (fault) {
+    conceptual_statements.push('A fault-controlled stepped boundary offsets the stratigraphy.');
+    conceptual_statements.push('Rockhead deepens abruptly across the fault trend.');
+  } else if (karst) {
+    conceptual_statements.push('Dissolution features produce an irregular base to the soluble unit.');
+    conceptual_statements.push('Structural complexity increases toward dissolution zones.');
+  } else if (dip) {
+    conceptual_statements.push('Stratigraphy dips and deepens progressively along the section.');
+    conceptual_statements.push('Inclined bedding with lateral continuity along the section fence.');
+  } else if (lens) {
+    conceptual_statements.push('A lenticular sand body is present with lateral thinning to both margins.');
+  } else {
+    conceptual_statements.push('Stratigraphy is broadly horizontal and laterally continuous across the section.');
+    conceptual_statements.push('Flat-lying beds with consistent thickness and no significant dip.');
+  }
   return {
     virtual_boreholes: vbs,
     contacts: [{
@@ -120,6 +148,7 @@ function _demoSection(text, geoUnits, fenceLen) {
       points: [{ dist_m: 0, depth_m: 1.5 }, { dist_m: fenceLen, depth_m: dip ? 1.5 + 5 * 0.3 : 1.5 }],
     }],
     semantic_keywords: [dip ? 'dipping' : 'lateral', lens ? 'lens' : 'bedded', 'inclined'],
+    conceptual_statements,
   };
 }
 

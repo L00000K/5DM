@@ -103,19 +103,26 @@ export class ConceptStore {
 
   /**
    * Compute the semantic concept context at world position (wx, wy, wz).
+   * @param {number}  wx        - world X (easting)
+   * @param {number}  wy        - world Y (northing)
+   * @param {number}  [wz=0]   - world Z (elevation)
+   * @param {string}  [unitCode] - geological unit code at this point; concepts whose
+   *                              unitAffinity excludes this unit contribute zero weight.
    * Returns:
-   *   vec        Float32Array(32)  — weighted composite embedding
+   *   vec        Float32Array(32)  — weighted composite embedding (L2-normalised if >0)
    *   weights    [{id, description, weight}]  — per-concept normalised weights (sorted desc)
    *   tensor     {Ax, Ay, Az}  — anisotropy scales for coordinate warping
-   *   totalWeight number        — sum before normalisation (0 = no concepts active)
+   *   totalWeight number        — raw sum before normalisation (0 = no concepts active)
    */
-  computeAt(wx, wy, wz = 0) {
+  computeAt(wx, wy, wz = 0, unitCode = null) {
     const DIM = 32;
     const vec     = new Float32Array(DIM);
     const weights = [];
     let totalW    = 0;
 
     for (const c of this._concepts) {
+      // Unit affinity filter: skip concept if it doesn't apply to this unit
+      if (unitCode && c.unitAffinity?.length > 0 && !c.unitAffinity.includes(unitCode)) continue;
       const w = this._relevance(c, wx, wy);
       if (w < 0.005) continue;
       weights.push({ id: c.id, description: c.description, weight: w });
@@ -129,7 +136,14 @@ export class ConceptStore {
       for (const w of weights) w.weight = w.weight / totalW;
     }
 
-    return { vec, weights, tensor: this._embeddingToTensor(vec), totalWeight: totalW };
+    // Compute active axes for traceability (top axes by |value|)
+    const activeAxes = Array.from(vec)
+      .map((v, i) => ({ name: CONCEPT_AXES[i], value: v, idx: i }))
+      .filter(a => Math.abs(a.value) > 0.1)
+      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+      .slice(0, 8);
+
+    return { vec, weights, tensor: this._embeddingToTensor(vec), totalWeight: totalW, activeAxes };
   }
 
   /**
@@ -146,10 +160,11 @@ export class ConceptStore {
     const chan = vec[AX_CHAN]  ?? 0;   // channel_morphology — adds vertical compression
 
     // exp scale: 0→1.0 (neutral), +1→e^1.4≈4.1 (elongated), −1→e^−1.4≈0.25 (compressed)
-    const Ax = Math.exp(+ew   * 1.4);
-    const Ay = Math.exp(+ns   * 1.4);
+    // Clamped to [0.1, 10] to prevent numerical instability
+    const Ax = Math.max(0.1, Math.min(10, Math.exp(+ew   * 1.4)));
+    const Ay = Math.max(0.1, Math.min(10, Math.exp(+ns   * 1.4)));
     // Channel morphology sharpens vertical boundaries (compresses z → fast variation → sharp)
-    const Az = Math.exp(-vert * 1.0 - Math.max(0, chan) * 0.5);
+    const Az = Math.max(0.1, Math.min(10, Math.exp(-vert * 1.0 - Math.max(0, chan) * 0.5)));
 
     return { Ax, Ay, Az };
   }

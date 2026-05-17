@@ -100,22 +100,39 @@ class AdamOpt {
   setLr(lr) { this.lr = lr; }
 }
 
-// ── 4-Layer MLP with skip connection H0 → H2 ────────────────────────────────
+// ── 4-Layer MLP with FiLM conditioning and skip connection H0f → H2 ─────────
+// FiLM = Feature-wise Linear Modulation: the concept context vector (last 32
+// elements of the input) generates per-layer scale γ and shift β that modulate
+// each hidden layer's pre-activation features before the non-linearity.
 class GeoImplicitNet {
-  constructor(nIn, nHidden, nOut) {
+  constructor(nIn, nHidden, nOut, fourierDim = 39) {
     this.nIn = nIn; this.nHidden = nHidden; this.nOut = nOut;
-    const k0 = Math.sqrt(2 / nIn), k1 = Math.sqrt(2 / nHidden);
+    this.fourierDim = fourierDim;
+    const CTX_DIM = 32;
+    const k0 = Math.sqrt(2 / nIn), k1 = Math.sqrt(2 / nHidden), kg = Math.sqrt(2 / CTX_DIM);
+    // Main weight matrices W0..W3
     this.W = [
       this._rand(nHidden, nIn,     k0),
       this._rand(nHidden, nHidden, k1),
       this._rand(nHidden, nHidden, k1),
       this._rand(nOut,    nHidden, k1),
     ];
+    // FiLM scale projections Wg0, Wg1  (nHidden × CTX_DIM) — small random init
+    this.Wg = [
+      this._rand(nHidden, CTX_DIM, kg * 0.1),
+      this._rand(nHidden, CTX_DIM, kg * 0.1),
+    ];
+    // FiLM shift projections Wb0, Wb1  (nHidden × CTX_DIM) — zero init
+    this.Wb = [
+      new Float32Array(nHidden * CTX_DIM),
+      new Float32Array(nHidden * CTX_DIM),
+    ];
     this.b = [
       new Float32Array(nHidden), new Float32Array(nHidden),
       new Float32Array(nHidden), new Float32Array(nOut),
     ];
-    this._params = [...this.W, ...this.b];
+    // _params order: [W0,W1,W2,W3, Wg0,Wg1, Wb0,Wb1, b0,b1,b2,b3]
+    this._params = [...this.W, ...this.Wg, ...this.Wb, ...this.b];
   }
 
   _rand(rows, cols, scale) {
@@ -129,6 +146,17 @@ class GeoImplicitNet {
     for (let r = 0; r < rows; r++) {
       let s = b[r];
       for (let c = 0; c < cols; c++) s += W[r * cols + c] * x[c];
+      out[r] = s;
+    }
+    return out;
+  }
+
+  // FiLM projection: returns nHidden-dim vector from CTX_DIM-dim ctx
+  _filmProj(Wg, ctx, nHidden, CTX_DIM) {
+    const out = new Float32Array(nHidden);
+    for (let r = 0; r < nHidden; r++) {
+      let s = 0;
+      for (let c = 0; c < CTX_DIM; c++) s += Wg[r * CTX_DIM + c] * ctx[c];
       out[r] = s;
     }
     return out;
@@ -150,36 +178,68 @@ class GeoImplicitNet {
     return ex;
   }
 
-  forward(x) {
-    const { nHidden, nIn, nOut, W, b } = this;
-    const H0_pre = this._linear(W[0], b[0], x, nHidden, nIn);
+  forward(inp) {
+    const { nHidden, nIn, nOut, W, Wg, Wb, b, fourierDim } = this;
+    const CTX_DIM = 32;
+    // ctx = last 32 elements (concept context)
+    const ctx = inp.subarray(fourierDim);
+
+    // Layer 0
+    const H0_pre = this._linear(W[0], b[0], inp, nHidden, nIn);
     const H0     = this._relu(H0_pre);
-    const H1_pre = this._linear(W[1], b[1], H0, nHidden, nHidden);
+    // FiLM layer 0: γ0 = 1 + Wg0@ctx, β0 = Wb0@ctx
+    const gamma0_raw = this._filmProj(Wg[0], ctx, nHidden, CTX_DIM);
+    const beta0      = this._filmProj(Wb[0], ctx, nHidden, CTX_DIM);
+    const gamma0     = new Float32Array(nHidden);
+    const H0f        = new Float32Array(nHidden);
+    for (let i = 0; i < nHidden; i++) {
+      gamma0[i] = 1 + gamma0_raw[i];
+      H0f[i]    = gamma0[i] * H0[i] + beta0[i];
+    }
+
+    // Layer 1 (takes modulated H0f)
+    const H1_pre = this._linear(W[1], b[1], H0f, nHidden, nHidden);
     const H1     = this._relu(H1_pre);
-    const H2_raw = this._linear(W[2], b[2], H1, nHidden, nHidden);
+    // FiLM layer 1: γ1 = 1 + Wg1@ctx, β1 = Wb1@ctx
+    const gamma1_raw = this._filmProj(Wg[1], ctx, nHidden, CTX_DIM);
+    const beta1      = this._filmProj(Wb[1], ctx, nHidden, CTX_DIM);
+    const gamma1     = new Float32Array(nHidden);
+    const H1f        = new Float32Array(nHidden);
+    for (let i = 0; i < nHidden; i++) {
+      gamma1[i] = 1 + gamma1_raw[i];
+      H1f[i]    = gamma1[i] * H1[i] + beta1[i];
+    }
+
+    // Layer 2 (takes modulated H1f, skip from H0f)
+    const H2_raw = this._linear(W[2], b[2], H1f, nHidden, nHidden);
     const H2_pre = new Float32Array(nHidden);
-    for (let i = 0; i < nHidden; i++) H2_pre[i] = H2_raw[i] + 0.1 * H0[i]; // skip
+    for (let i = 0; i < nHidden; i++) H2_pre[i] = H2_raw[i] + 0.1 * H0f[i]; // skip uses H0f
     const H2     = this._relu(H2_pre);
+
+    // Output layer
     const logits = this._linear(W[3], b[3], H2, nOut, nHidden);
     const probs  = this._softmax(logits);
-    return { H0_pre, H0, H1_pre, H1, H2_pre, H2, logits, probs };
+
+    return { H0_pre, H0, gamma0, beta0, H0f, H1_pre, H1, gamma1, beta1, H1f, H2_pre, H2, logits, probs };
   }
 
-  predict(x) { return this.forward(x).probs; }
+  predict(inp) { return this.forward(inp).probs; }
 
-  // Returns grads in same order as _params = [W0,W1,W2,W3, b0,b1,b2,b3]
-  backward(x, act, targetIdx, l2 = 0.001) {
-    const { nHidden, nIn, nOut, W } = this;
-    const { H0_pre, H0, H1_pre, H1, H2_pre, H2, probs } = act;
+  // Returns grads in same order as _params = [dW0,dW1,dW2,dW3, dWg0,dWg1, dWb0,dWb1, db0,db1,db2,db3]
+  backward(inp, act, targetIdx, l2 = 0.001) {
+    const { nHidden, nIn, nOut, W, Wg, Wb, fourierDim } = this;
+    const CTX_DIM = 32;
+    const ctx = inp.subarray(fourierDim);
+    const { H0_pre, H0, gamma0, beta0, H0f, H1_pre, H1, gamma1, beta1, H1f, H2_pre, H2, probs } = act;
 
     const dLogits = new Float32Array(nOut);
     for (let i = 0; i < nOut; i++) dLogits[i] = probs[i] - (i === targetIdx ? 1 : 0);
 
-    const outerGrad = (dOut, inp, rows, cols, Wmat) => {
+    const outerGrad = (dOut, inp_vec, rows, cols, Wmat) => {
       const dW = new Float32Array(rows * cols), db = new Float32Array(rows);
       for (let r = 0; r < rows; r++) {
         db[r] = dOut[r];
-        for (let c = 0; c < cols; c++) dW[r * cols + c] = dOut[r] * inp[c] + l2 * Wmat[r * cols + c];
+        for (let c = 0; c < cols; c++) dW[r * cols + c] = dOut[r] * inp_vec[c] + l2 * Wmat[r * cols + c];
       }
       return { dW, db };
     };
@@ -194,32 +254,66 @@ class GeoImplicitNet {
       for (let i = 0; i < pre.length; i++) d[i] = pre[i] > 0 ? dOut[i] : 0;
       return d;
     };
+    // Outer product gradient for FiLM projection (nHidden × CTX_DIM)
+    const filmOuterGrad = (dRaw, ctx_vec, Wmat) => {
+      const dW = new Float32Array(nHidden * CTX_DIM);
+      for (let r = 0; r < nHidden; r++)
+        for (let c = 0; c < CTX_DIM; c++)
+          dW[r * CTX_DIM + c] = dRaw[r] * ctx_vec[c] + l2 * Wmat[r * CTX_DIM + c];
+      return dW;
+    };
 
-    // Layer 3
+    // ── Layer 3 ──────────────────────────────────────────────────────────────
     const { dW: dW3, db: db3 } = outerGrad(dLogits, H2, nOut, nHidden, W[3]);
-    const dH2      = matVecT(W[3], dLogits, nOut, nHidden);
-    const dH2_pre  = reluBack(dH2, H2_pre);
+    const dH2     = matVecT(W[3], dLogits, nOut, nHidden);
+    const dH2_pre = reluBack(dH2, H2_pre);
 
-    // Layer 2 + skip gradient back to H0
-    const { dW: dW2, db: db2 } = outerGrad(dH2_pre, H1, nHidden, nHidden, W[2]);
-    const dH1       = matVecT(W[2], dH2_pre, nHidden, nHidden);
-    const dH0_skip  = new Float32Array(nHidden);
-    for (let i = 0; i < nHidden; i++) dH0_skip[i] = 0.1 * dH2_pre[i];
+    // ── Layer 2 (input was H1f; skip from H0f) ────────────────────────────
+    const { dW: dW2, db: db2 } = outerGrad(dH2_pre, H1f, nHidden, nHidden, W[2]);
+    const dH1f       = matVecT(W[2], dH2_pre, nHidden, nHidden);
+    // Skip gradient flows back to H0f
+    const dH0f_skip  = new Float32Array(nHidden);
+    for (let i = 0; i < nHidden; i++) dH0f_skip[i] = 0.1 * dH2_pre[i];
 
-    // Layer 1
+    // ── FiLM layer 1 (H1f = γ1 ⊙ H1 + β1) ───────────────────────────────
+    // dH1  = dH1f ⊙ γ1
+    const dH1       = new Float32Array(nHidden);
+    const dGamma1   = new Float32Array(nHidden); // d(γ1_raw) = dH1f ⊙ H1
+    const dBeta1    = dH1f;                      // d(β1) = dH1f
+    for (let i = 0; i < nHidden; i++) {
+      dH1[i]     = dH1f[i] * gamma1[i];
+      dGamma1[i] = dH1f[i] * H1[i];             // grad into Wg1@ctx
+    }
+    const dWg1 = filmOuterGrad(dGamma1, ctx, Wg[1]);
+    const dWb1 = filmOuterGrad(dBeta1,  ctx, Wb[1]);
+
+    // ── Layer 1 (input was H0f) ───────────────────────────────────────────
     const dH1_pre    = reluBack(dH1, H1_pre);
-    const { dW: dW1, db: db1 } = outerGrad(dH1_pre, H0, nHidden, nHidden, W[1]);
-    const dH0_layer1 = matVecT(W[1], dH1_pre, nHidden, nHidden);
+    const { dW: dW1, db: db1 } = outerGrad(dH1_pre, H0f, nHidden, nHidden, W[1]);
+    // Gradient into H0f from layer 1
+    const dH0f_layer1 = matVecT(W[1], dH1_pre, nHidden, nHidden);
 
-    // Combine H0 gradients (layer1 path + skip path)
-    const dH0_sum = new Float32Array(nHidden);
-    for (let i = 0; i < nHidden; i++) dH0_sum[i] = dH0_layer1[i] + dH0_skip[i];
-    const dH0_pre = reluBack(dH0_sum, H0_pre);
+    // Combine H0f gradients (layer1 path + skip)
+    const dH0f = new Float32Array(nHidden);
+    for (let i = 0; i < nHidden; i++) dH0f[i] = dH0f_layer1[i] + dH0f_skip[i];
 
-    // Layer 0
-    const { dW: dW0, db: db0 } = outerGrad(dH0_pre, x, nHidden, nIn, W[0]);
+    // ── FiLM layer 0 (H0f = γ0 ⊙ H0 + β0) ───────────────────────────────
+    const dH0       = new Float32Array(nHidden);
+    const dGamma0   = new Float32Array(nHidden);
+    const dBeta0    = dH0f;
+    for (let i = 0; i < nHidden; i++) {
+      dH0[i]     = dH0f[i] * gamma0[i];
+      dGamma0[i] = dH0f[i] * H0[i];
+    }
+    const dWg0 = filmOuterGrad(dGamma0, ctx, Wg[0]);
+    const dWb0 = filmOuterGrad(dBeta0,  ctx, Wb[0]);
 
-    return [dW0, dW1, dW2, dW3, db0, db1, db2, db3];
+    // ── Layer 0 ───────────────────────────────────────────────────────────
+    const dH0_pre = reluBack(dH0, H0_pre);
+    const { dW: dW0, db: db0 } = outerGrad(dH0_pre, inp, nHidden, nIn, W[0]);
+
+    // Return in same order as _params: [W0,W1,W2,W3, Wg0,Wg1, Wb0,Wb1, b0,b1,b2,b3]
+    return [dW0, dW1, dW2, dW3, dWg0, dWg1, dWb0, dWb1, db0, db1, db2, db3];
   }
 }
 
@@ -298,8 +392,9 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
       for (let s = 0; s < samplesPerLayer; s++) {
         const t   = (s + 0.5) / samplesPerLayer;
         const wz  = zBase + t * (zTop - zBase);
-        // Compute local concept context at this point
-        const ctx    = conceptStore ? conceptStore.computeAt(bh.x, bh.y, wz) : null;
+        // Compute local concept context at this point; pass unitCode so concepts with
+        // unit affinity restrictions apply only to the relevant geological units.
+        const ctx    = conceptStore ? conceptStore.computeAt(bh.x, bh.y, wz, layer.unitCode) : null;
         const ctxVec = ctx?.vec ?? zeroCtx;
         const tensor = ctx?.tensor ?? gTensor;
         const warped = { x: bh.x / tensor.Ax, y: bh.y / tensor.Ay, z: wz / tensor.Az };
@@ -314,8 +409,8 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
 
   if (samples.length === 0) return null;
 
-  const net = new GeoImplicitNet(nIn, 64, nUnits);
-  const opt = new AdamOpt([...net.W, ...net.b], lr);
+  const net = new GeoImplicitNet(nIn, 64, nUnits, fourierEnc.outDim);
+  const opt = new AdamOpt(net._params, lr);
 
   for (let ep = 0; ep < epochs; ep++) {
     opt.setLr(lrMin + 0.5 * (lr - lrMin) * (1 + Math.cos(Math.PI * ep / epochs)));
@@ -337,7 +432,7 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
   }
 
   if (onProgress) onProgress(1, 0);
-  return { net, fourierEnc, conceptStore, warpedBounds, bounds, nUnits, unitCodes, CONCEPT_DIM };
+  return { net, fourierEnc, conceptStore, warpedBounds, bounds, nUnits, unitCodes, CONCEPT_DIM, fourierDim: fourierEnc.outDim };
 }
 
 // ── Infer voxel grid from trained model ─────────────────────────────────────

@@ -2133,9 +2133,28 @@ kbd {
 .concept-conf  { font-size: 10px; color: var(--text-dim); white-space: nowrap; }
 .concept-remove {
   background: none; border: none; color: var(--text-dim); cursor: pointer;
-  font-size: 14px; line-height: 1; padding: 0 2px;
+  font-size: 14px; line-height: 1; padding: 0 2px; flex-shrink: 0;
 }
 .concept-remove:hover { color: var(--red); }
+
+/* Concept metadata row (domain tag + confidence slider) */
+.concept-meta {
+  display: flex; align-items: center; gap: 6px; margin: 2px 0 4px;
+}
+.concept-dom-tag {
+  font-size: 9px; font-family: var(--font-mono); color: var(--text-dim);
+  background: var(--bg-surface); border-radius: 3px; padding: 1px 4px;
+  white-space: nowrap; flex-shrink: 0;
+}
+.concept-conf-row {
+  display: flex; align-items: center; gap: 4px; flex: 1;
+  font-size: 10px; color: var(--text-dim);
+}
+.concept-conf-slider {
+  flex: 1; height: 3px; accent-color: var(--accent); cursor: pointer;
+  -webkit-appearance: none; border-radius: 2px;
+}
+.concept-conf-val { font-family: var(--font-mono); min-width: 26px; color: var(--accent); }
 
 /* 32-axis sparkline — one thin bar per axis */
 .concept-axes {
@@ -2151,6 +2170,27 @@ kbd {
 }
 .concept-bar-wrap:hover .concept-bar { opacity: 0.7; }
 
+/* Global concept influence bar */
+.concept-global-tensor {
+  font-size: 11px; font-family: var(--font-mono); color: var(--accent);
+  background: var(--accent-glow); border-radius: var(--radius-sm);
+  padding: 4px 8px; margin-top: 6px;
+}
+
+/* Concept library */
+.concept-lib-grid {
+  display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 0;
+}
+.concept-lib-chip {
+  font-size: 10px; padding: 3px 8px; border-radius: 12px;
+  border: 1px solid var(--accent-dim); background: var(--bg-surface);
+  color: var(--accent); cursor: pointer; white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+.concept-lib-chip:hover {
+  background: var(--accent); color: var(--text-inv);
+}
+
 /* Traceability panel */
 .traceability-panel {
   margin-top: 12px; border: 1px solid var(--accent-dim); border-radius: var(--radius);
@@ -2161,7 +2201,9 @@ kbd {
 .trace-title { font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 6px; }
 .trace-section { margin-bottom: 6px; }
 .trace-section-hdr { font-size: 10px; font-weight: 600; color: var(--text-mid); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
-.trace-row { display: flex; justify-content: space-between; align-items: center; padding: 2px 0; }
-.trace-label { color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.trace-weight { color: var(--accent); font-family: var(--font-mono); font-size: 10px; min-width: 32px; text-align: right; }
-.trace-warp   { color: var(--text-mid); font-family: var(--font-mono); font-size: 10px; }
+.trace-row { display: grid; grid-template-columns: 40px 1fr 32px; align-items: center; gap: 4px; padding: 2px 0; }
+.trace-bar-wrap { height: 4px; background: var(--bg-surface); border-radius: 2px; overflow: hidden; }
+.trace-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.2s; }
+.trace-label { color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.trace-weight { color: var(--accent); font-family: var(--font-mono); font-size: 10px; text-align: right; }
+.trace-warp   { color: var(--text-mid); font-family: var(--font-mono); font-size: 10px; grid-column: 1/-1; }
