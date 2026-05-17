@@ -346,6 +346,11 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
     l2              = 0.001,
     samplesPerLayer = 6,
     onProgress      = null,
+    // stratOrder: array of unit codes from top (youngest) to bottom (oldest).
+    // When supplied, synthetic "strat-order" samples are injected that teach
+    // the network which units should appear above vs. below at depth boundaries,
+    // enforcing stratigraphic consistency even in data-sparse regions.
+    stratOrder      = null,
   } = options;
 
   // Compute world bounds from borehole data
@@ -430,6 +435,107 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
   }
 
   if (samples.length === 0) return null;
+
+  // ── Stratigraphic-order virtual samples ─────────────────────────────────────
+  // If the user has defined a stratigraphic column, inject synthetic samples at
+  // unit transitions. For each adjacent pair (unit_a above unit_b) in stratOrder,
+  // we place training samples at a range of Z positions centred on the mean
+  // observed contact elevation between those two units in real boreholes.
+  // This biases the implicit field toward honouring the expected column ordering
+  // in areas where no borehole data is present.
+  if (stratOrder && stratOrder.length >= 2) {
+    // Build stratOrderIdx: { code → rank (0 = topmost) }
+    const stratRank = {};
+    stratOrder.forEach((code, i) => { stratRank[code] = i; });
+
+    // Find contacts between adjacent units in the observed data
+    const contactElevs = {}; // key: `${codeAbove}|${codeBelow}` → [elevations]
+    for (const bh of boreholes) {
+      const layers = (bh.layers ?? []).filter(l => l.unitCode && stratRank[l.unitCode] !== undefined);
+      layers.sort((a, b) => a.top - b.top); // sort by depth (top = shallowest)
+      for (let i = 0; i < layers.length - 1; i++) {
+        const la = layers[i], lb = layers[i + 1];
+        if (stratRank[la.unitCode] < stratRank[lb.unitCode]) {
+          // la above lb — consistent with stratOrder
+          const key  = `${la.unitCode}|${lb.unitCode}`;
+          const elev = bh.groundLevel - la.base; // contact elevation
+          if (!contactElevs[key]) contactElevs[key] = [];
+          contactElevs[key].push(elev);
+        }
+      }
+    }
+
+    // For each contact, generate synthetic samples at and around the contact
+    const stratJitter = (bounds.maxZ - bounds.minZ) * 0.06; // ±6% of vertical range
+    const N_STRAT = 3; // samples per side of contact
+    for (const [key, elevs] of Object.entries(contactElevs)) {
+      const [codeA, codeB] = key.split('|');
+      const tiA = unitIdx[codeA], tiB = unitIdx[codeB];
+      if (tiA === undefined || tiB === undefined) continue;
+      const meanElev = elevs.reduce((s, e) => s + e, 0) / elevs.length;
+
+      // Sample X,Y positions uniformly across the site
+      const xs = boreholes.map(b => b.x);
+      const ys = boreholes.map(b => b.y);
+      const cxList = [
+        (bounds.minX + bounds.maxX) / 2,
+        bounds.minX * 0.7 + bounds.maxX * 0.3,
+        bounds.minX * 0.3 + bounds.maxX * 0.7,
+      ];
+      const cyList = [
+        (bounds.minY + bounds.maxY) / 2,
+        bounds.minY * 0.7 + bounds.maxY * 0.3,
+        bounds.minY * 0.3 + bounds.maxY * 0.7,
+      ];
+
+      for (const sx of cxList) {
+        for (const sy of cyList) {
+          // Samples ABOVE contact → unit A
+          for (let s = 1; s <= N_STRAT; s++) {
+            const wz  = meanElev + (s / N_STRAT) * stratJitter;
+            if (wz < bounds.minZ || wz > bounds.maxZ) continue;
+            const ctx    = conceptStore ? conceptStore.computeAt(sx, sy, wz, codeA) : null;
+            const ctxVec = ctx?.vec ?? zeroCtx;
+            const tensor = ctx?.tensor ?? gTensor;
+            const warped = { x: sx / tensor.Ax, y: sy / tensor.Ay, z: wz / tensor.Az };
+            let warpedZ = warped.z;
+            const trend = ctx?.trend;
+            if (trend && (Math.abs(trend.dz_dxN) > 0.005 || Math.abs(trend.dz_dyN) > 0.005)) {
+              const xN = 2 * (warped.x - warpedBounds.minX) / Math.max(1e-6, warpedBounds.maxX - warpedBounds.minX) - 1;
+              const yN = 2 * (warped.y - warpedBounds.minY) / Math.max(1e-6, warpedBounds.maxY - warpedBounds.minY) - 1;
+              warpedZ += trend.dz_dxN * xN + trend.dz_dyN * yN;
+            }
+            const pos = fourierEnc.encode(warped.x, warped.y, warpedZ, warpedBounds);
+            const inp = new Float32Array(nIn);
+            inp.set(pos); inp.set(ctxVec, fourierEnc.outDim);
+            // Strat samples get reduced weight (0.25) — they guide but don't override BH data
+            samples.push({ inp, target: tiA, weight: 0.25 });
+          }
+          // Samples BELOW contact → unit B
+          for (let s = 1; s <= N_STRAT; s++) {
+            const wz  = meanElev - (s / N_STRAT) * stratJitter;
+            if (wz < bounds.minZ || wz > bounds.maxZ) continue;
+            const ctx    = conceptStore ? conceptStore.computeAt(sx, sy, wz, codeB) : null;
+            const ctxVec = ctx?.vec ?? zeroCtx;
+            const tensor = ctx?.tensor ?? gTensor;
+            const warped = { x: sx / tensor.Ax, y: sy / tensor.Ay, z: wz / tensor.Az };
+            let warpedZ = warped.z;
+            const trend = ctx?.trend;
+            if (trend && (Math.abs(trend.dz_dxN) > 0.005 || Math.abs(trend.dz_dyN) > 0.005)) {
+              const xN = 2 * (warped.x - warpedBounds.minX) / Math.max(1e-6, warpedBounds.maxX - warpedBounds.minX) - 1;
+              const yN = 2 * (warped.y - warpedBounds.minY) / Math.max(1e-6, warpedBounds.maxY - warpedBounds.minY) - 1;
+              warpedZ += trend.dz_dxN * xN + trend.dz_dyN * yN;
+            }
+            const pos = fourierEnc.encode(warped.x, warped.y, warpedZ, warpedBounds);
+            const inp = new Float32Array(nIn);
+            inp.set(pos); inp.set(ctxVec, fourierEnc.outDim);
+            samples.push({ inp, target: tiB, weight: 0.25 });
+          }
+        }
+      }
+    }
+    if (onProgress) onProgress(0, 0, { stratContactsFound: Object.keys(contactElevs).length });
+  }
 
   // ── Concept-guided virtual samples ──────────────────────────────────────────
   // When a concept defines strong anisotropy (e.g., palaeochannel E-W), synthesise

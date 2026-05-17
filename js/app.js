@@ -1912,7 +1912,9 @@ function initIsopachMap() {
 
   document.getElementById('btn-isopach')?.addEventListener('click', () => {
     if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
-    AppState.isopachMap.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
+    AppState.isopachMap.draw(
+      AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH, AppState.conceptStore
+    );
   });
 }
 

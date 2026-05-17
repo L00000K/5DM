@@ -45,9 +45,9 @@ export class IsopachMap {
     if (this._panel) ro.observe(this._panel);
   }
 
-  draw(grid, geoUnits, boreholes) {
+  draw(grid, geoUnits, boreholes, conceptStore = null) {
     if (!grid) return;
-    this._lastArgs = { grid, geoUnits, boreholes };
+    this._lastArgs = { grid, geoUnits, boreholes, conceptStore };
 
     if (this._select) {
       this._select.innerHTML = geoUnits
@@ -195,48 +195,106 @@ export class IsopachMap {
       ctx.fillText(bh.id, px, py - 5);
     });
 
-    // ── Contour lines (5 levels) ─────────────────────────────────────────────
+    // ── Concept influence overlay ─────────────────────────────────────────────
+    // If a conceptStore is provided in args, overlay translucent amber cells
+    // where semantic context weight is high — shows where the conceptual model
+    // is actively shaping the interpolation vs raw borehole data.
+    const conceptStore = args.conceptStore ?? null;
+    if (conceptStore && !conceptStore.isEmpty) {
+      for (let iy = 0; iy < ny; iy++) {
+        const worldY = O.z + (iy + 0.5) * cs;
+        for (let ix = 0; ix < nx; ix++) {
+          const worldX = O.x + (ix + 0.5) * cs;
+          // computeAt is cheap for global concepts; use midpoint elevation
+          const ctxC = conceptStore.computeAt(worldX, O.y + (nz * 0.5) * ch, worldY);
+          const w    = Math.min(1, ctxC.totalWeight);
+          if (w < 0.05) continue;
+          const px = PAD + ix * cellPxW;
+          const py = PAD + (ny - 1 - iy) * cellPxH;
+          ctx.fillStyle = `rgba(255,160,30,${(w * 0.25).toFixed(3)})`;
+          ctx.fillRect(px, py, Math.ceil(cellPxW + 0.5), Math.ceil(cellPxH + 0.5));
+        }
+      }
+      // Legend note
+      ctx.fillStyle = 'rgba(200,120,20,0.85)';
+      ctx.font = '8px Inter, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('▣ concept influence', PAD + drawW - 2, PAD + 10);
+    }
+
+    // ── Marching-squares contour lines (7 levels) ──────────────────────────────
+    // Each contour level is traced as a connected polyline using the standard
+    // marching-squares lookup table (16 cases). This produces smooth, closed
+    // isolines rather than the previous disconnected tick-marks.
     if (vMin < vMax) {
-      const nContours = 5;
-      ctx.lineWidth = 0.8;
-      ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+      const nContours = 7;
       ctx.font = '7px monospace';
-      ctx.fillStyle = 'rgba(255,255,255,0.8)';
+
+      // Interpolate the crossing point between v0 and v1 for isovalue cL
+      const lerp = (v0, v1, cL) => (cL - v0) / (v1 - v0);
+
       for (let ci = 1; ci < nContours; ci++) {
         const cLevel = vMin + (vMax - vMin) * ci / nContours;
-        // Simple cell-edge contouring: draw short line segments where level crosses cell edges
+        const isMajor = ci % 2 === 0;
+        ctx.strokeStyle = isMajor ? 'rgba(255,255,255,0.70)' : 'rgba(255,255,255,0.38)';
+        ctx.lineWidth   = isMajor ? 1.2 : 0.6;
         ctx.beginPath();
+
         for (let iy = 0; iy < ny - 1; iy++) {
           for (let ix = 0; ix < nx - 1; ix++) {
-            const v00 = vals[ix     + iy * nx];
-            const v10 = vals[(ix+1) + iy * nx];
-            const v01 = vals[ix     + (iy+1) * nx];
-            const v11 = vals[(ix+1) + (iy+1) * nx];
-            if (v00 == null || v10 == null || v01 == null || v11 == null) continue;
+            const v00 = vals[ ix      +  iy      * nx];
+            const v10 = vals[(ix + 1) +  iy      * nx];
+            const v01 = vals[ ix      + (iy + 1) * nx];
+            const v11 = vals[(ix + 1) + (iy + 1) * nx];
+            if (isNaN(v00) || isNaN(v10) || isNaN(v01) || isNaN(v11)) continue;
 
-            const px0 = PAD + ix * cellPxW;
-            const py0 = PAD + (ny - 1 - iy) * cellPxH;
+            // Cell origin in canvas coords (bottom-left is iy=0, y flipped)
+            const cx0 = PAD +  ix      * cellPxW;
+            const cx1 = PAD + (ix + 1) * cellPxW;
+            const cy0 = PAD + (ny - 1 -  iy     ) * cellPxH;
+            const cy1 = PAD + (ny - 1 - (iy + 1)) * cellPxH;
 
-            // Check bottom edge (v00 → v10)
-            if ((v00 - cLevel) * (v10 - cLevel) < 0) {
-              const t = (cLevel - v00) / (v10 - v00);
-              ctx.moveTo(px0 + t * cellPxW, py0);
-              ctx.lineTo(px0 + t * cellPxW, py0 - cellPxH * 0.3);
-            }
-            // Check left edge (v00 → v01)
-            if ((v00 - cLevel) * (v01 - cLevel) < 0) {
-              const t = (cLevel - v00) / (v01 - v00);
-              ctx.moveTo(px0, py0 - t * cellPxH);
-              ctx.lineTo(px0 + cellPxW * 0.3, py0 - t * cellPxH);
+            // Marching squares 4-bit index (above/below cLevel)
+            const b00 = v00 >= cLevel ? 1 : 0;
+            const b10 = v10 >= cLevel ? 2 : 0;
+            const b01 = v01 >= cLevel ? 8 : 0;
+            const b11 = v11 >= cLevel ? 4 : 0;
+            const mc  = b00 | b10 | b11 | b01;
+
+            // Edge midpoints (linearly interpolated)
+            const eB = (t => [cx0 + t * cellPxW, cy0])(lerp(v00, v10, cLevel)); // bottom
+            const eT = (t => [cx0 + t * cellPxW, cy1])(lerp(v01, v11, cLevel)); // top
+            const eL = (t => [cx0, cy0 - t * cellPxH])(lerp(v00, v01, cLevel)); // left
+            const eR = (t => [cx1, cy0 - t * cellPxH])(lerp(v10, v11, cLevel)); // right
+
+            // Draw segments from marching-squares table (15-mc handles inverted cases)
+            const segs = _mcSegs(mc, eB, eT, eL, eR);
+            for (const [p0, p1] of segs) {
+              ctx.moveTo(p0[0], p0[1]);
+              ctx.lineTo(p1[0], p1[1]);
             }
           }
         }
         ctx.stroke();
-        // Label at leftmost crossing in top row
-        const labelVal = mode === 'settle' ? `${cLevel.toFixed(0)}`
-                       : mode === 'cert'   ? `${(cLevel*100).toFixed(0)}%`
-                       : `${cLevel.toFixed(1)}`;
-        ctx.fillText(labelVal, PAD + 2, PAD + (ny - 1 - Math.floor(ny * ci / nContours)) * cellPxH + 8);
+
+        // Label: place at a point near the left edge where the contour crosses
+        if (isMajor) {
+          const labelVal = mode === 'settle' ? `${cLevel.toFixed(0)}`
+                         : mode === 'cert'   ? `${(cLevel * 100).toFixed(0)}%`
+                         : `${cLevel.toFixed(1)}`;
+          // Find a crossing near the left of the grid
+          for (let iy = 1; iy < ny - 1; iy++) {
+            const v0 = vals[0 + iy * nx], v1 = vals[0 + (iy + 1) * nx];
+            if (!isNaN(v0) && !isNaN(v1) && (v0 - cLevel) * (v1 - cLevel) < 0) {
+              const t  = lerp(v0, v1, cLevel);
+              const ly = PAD + (ny - 1 - iy) * cellPxH - t * cellPxH;
+              ctx.fillStyle = 'rgba(255,255,255,0.85)';
+              ctx.textAlign = 'left';
+              ctx.fillText(labelVal, PAD + 2, ly - 2);
+              break;
+            }
+          }
+        }
       }
     }
 
@@ -323,6 +381,25 @@ function _settlementAtCol(grid, unitById, cx, cy, foundElev, appliedKPa) {
     sigmaV += gam * ch;
   }
   return hasData ? total : NaN;
+}
+
+// ── Marching-squares segment table ───────────────────────────────────────────
+// Returns an array of [p0, p1] pairs (each point is [cx, cy]) for the given
+// 4-bit marching-squares case (mc 0–15). Edges:
+//   eB = bottom, eT = top, eL = left, eR = right  (canvas coordinates)
+function _mcSegs(mc, eB, eT, eL, eR) {
+  switch (mc) {
+    case  0: case 15: return [];
+    case  1: case 14: return [[eB, eL]];
+    case  2: case 13: return [[eB, eR]];
+    case  3: case 12: return [[eL, eR]];
+    case  4: case 11: return [[eT, eR]];
+    case  5:          return [[eB, eL], [eT, eR]];
+    case  6: case  9: return [[eB, eT]];
+    case  7: case  8: return [[eT, eL]];
+    case 10:          return [[eB, eR], [eT, eL]];
+    default:          return [];
+  }
 }
 
 // ── Colour ramps ──────────────────────────────────────────────────────────────
