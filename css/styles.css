@@ -1812,6 +1812,65 @@ input[type="range"] {
   border-radius: var(--radius-sm);
 }
 
+/* ── Stratigraphic order list ── */
+.strat-order-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.strat-order-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 4px;
+  border-radius: 4px;
+  cursor: grab;
+  font-size: 10px;
+  border: 1px solid transparent;
+  transition: background 0.1s, border-color 0.1s;
+  user-select: none;
+}
+.strat-order-item:hover { background: var(--bg-hover); }
+.strat-order-item.dragging { opacity: 0.45; }
+.strat-order-item.drag-over {
+  border-color: var(--accent);
+  background: rgba(79,140,255,0.08);
+}
+.strat-drag-handle {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: grab;
+  flex-shrink: 0;
+}
+.strat-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  border: 1px solid rgba(0,0,0,0.12);
+}
+.strat-code {
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-dark);
+  min-width: 30px;
+  flex-shrink: 0;
+}
+.strat-name {
+  color: var(--text-mid);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.strat-thick {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  font-size: 9px;
+  flex-shrink: 0;
+}
+
 /* ── Properties tab ── */
 #tab-properties { padding: 0; overflow: hidden; min-height: 0; }
 .props-table-wrap {

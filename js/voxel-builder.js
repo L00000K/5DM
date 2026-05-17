@@ -451,6 +451,42 @@ export class VoxelBuilder {
     return true;
   }
 
+  // Color voxels by Shannon entropy of the unit probability distribution.
+  // Entropy = -Σ p_i * log2(p_i); approximated using top-2 probs (certainty + blendRatios).
+  // Blue (low entropy = certain) → cyan → green → yellow → red (high entropy = uncertain).
+  colorByEntropy(nUnits = 4) {
+    if (!this.grid) return false;
+    const { certainty, blendRatios } = this.grid;
+    if (!certainty || !blendRatios) return false;
+
+    const LOG2 = Math.log(2);
+    const xEnt = (p) => p > 0 && p < 1 ? -p * Math.log(p) / LOG2 : 0;
+    const maxEntropy = Math.log2(Math.max(2, nUnits));
+
+    const col = new THREE.Color();
+    for (const [code, mesh] of Object.entries(this.meshes)) {
+      const flatIdx = this._unitFlatIdx?.[code];
+      if (!flatIdx) continue;
+      const colorAttr = mesh.geometry.getAttribute('voxelColor');
+      for (let i = 0; i < flatIdx.length; i++) {
+        const idx  = flatIdx[i];
+        const p1   = Math.max(0.001, Math.min(0.999, certainty[idx]));
+        const p2   = Math.max(0, Math.min(1 - p1, blendRatios[idx] ?? 0));
+        const rest = Math.max(0, 1 - p1 - p2);
+        // Approximate entropy: split remaining probability equally among remaining units
+        const pRem = nUnits > 2 ? rest / (nUnits - 2) : 0;
+        let H = xEnt(p1) + xEnt(p2);
+        for (let k = 2; k < nUnits; k++) H += xEnt(pRem);
+        const t = Math.min(1, H / maxEntropy);
+        // Blue (t=0) → cyan → green → yellow → red (t=1)
+        col.setHSL((1 - t) * 0.667, 0.85, 0.38 + 0.12 * (1 - t));
+        colorAttr.setXYZ(i, col.r, col.g, col.b);
+      }
+      colorAttr.needsUpdate = true;
+    }
+    return true;
+  }
+
   // Restore original unit colours after parameter coloring.
   resetUnitColors() {
     for (const [code, mesh] of Object.entries(this.meshes)) {

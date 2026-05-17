@@ -315,6 +315,10 @@ class SceneManager {
     return this._builder?.colorByCoverage() ?? false;
   }
 
+  colorByEntropy(nUnits) {
+    return this._builder?.colorByEntropy(nUnits) ?? false;
+  }
+
   colorByDominantConcept(conceptStore) {
     return this._builder?.colorByDominantConcept(conceptStore) ?? false;
   }

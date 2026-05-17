@@ -934,6 +934,7 @@
             <option value="gamma">γ — unit weight (kN/m³)</option>
             <option value="N_spt">SPT N — blow count</option>
             <option value="boundary">Boundary uncertainty (blend ratio)</option>
+            <option value="entropy">Classification entropy (information uncertainty)</option>
             <option value="concept_influence">Concept semantic influence</option>
             <option value="coverage_density">Borehole coverage density</option>
             <option value="dominant_concept">Dominant concept</option>
@@ -1269,8 +1270,14 @@
 
       <div class="panel-section">
         <h3>Stratigraphy</h3>
-        <canvas id="strat-canvas" class="strat-canvas" hidden></canvas>
-        <p class="hint" id="strat-hint">Build model to see stratigraphic column</p>
+        <div class="strat-order-controls" style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+          <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:4px;cursor:pointer">
+            <input type="checkbox" id="strat-manual-lock"> Lock order
+          </label>
+          <span class="hint" style="font-size:9px;margin:0" title="Drag rows to set geological event order from youngest (top) to oldest (bottom). Lock to prevent auto-detection overriding your order on rebuild.">Drag to reorder ↕</span>
+        </div>
+        <ol id="strat-order-list" class="strat-order-list"></ol>
+        <p class="hint" id="strat-hint">Add units and build model to see stratigraphy</p>
       </div>
 
       <div class="panel-section">

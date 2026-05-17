@@ -686,12 +686,20 @@ function initBuildModel() {
     try {
       showBuildProgress(true);
       await new Promise(r => setTimeout(r, 0));
-      const { order: _stratOrder } = AppState.classifiedBH.length
-        ? inferStratOrderFromData(AppState.classifiedBH, AppState.geoUnits)
-        : { order: [] };
-      AppState.stratOrder = _stratOrder;
-      if (_stratOrder.length) {
-        log(`Stratigraphic order: ${_stratOrder.join(' → ')}`, 'info');
+      const stratLocked = document.getElementById('strat-manual-lock')?.checked;
+      let _stratOrder;
+      if (stratLocked && AppState.stratOrder?.length) {
+        _stratOrder = AppState.stratOrder;
+        log(`Stratigraphic order (manual): ${_stratOrder.join(' → ')}`, 'info');
+      } else {
+        const inferred = AppState.classifiedBH.length
+          ? inferStratOrderFromData(AppState.classifiedBH, AppState.geoUnits)
+          : { order: [] };
+        _stratOrder = inferred.order;
+        AppState.stratOrder = _stratOrder;
+        if (_stratOrder.length) {
+          log(`Stratigraphic order (inferred): ${_stratOrder.join(' → ')}`, 'info');
+        }
       }
       const siteHistory = document.getElementById('input-site-history')?.value ?? '';
       const unitDescs   = Array.from(document.querySelectorAll('#desc-list .desc-item'))
@@ -1840,85 +1848,126 @@ function initAnnotations() {
   window.addEventListener('geomodel:toggle-annotate', toggle);
 }
 
-// ── Stratigraphic column ──────────────────────────────────────────────────────
+// ── Stratigraphic column — drag-to-reorder ────────────────────────────────────
 function updateStratColumn() {
-  const canvas = document.getElementById('strat-canvas');
-  const hint   = document.getElementById('strat-hint');
-  if (!canvas) return;
+  const list = document.getElementById('strat-order-list');
+  const hint = document.getElementById('strat-hint');
+  if (!list) return;
   const geoUnits = AppState.geoUnits;
-  const grid     = AppState.voxelGrid;
   if (!geoUnits.length) {
-    canvas.hidden = true;
+    list.innerHTML = '';
     if (hint) hint.hidden = false;
     return;
   }
   if (hint) hint.hidden = true;
-  canvas.hidden = false;
 
-  // Compute mean thickness per unit from grid (or equal height if no grid)
-  const thickByUnit = {};
+  // Compute mean thickness per unit from grid (if available)
+  const thickByCode = {};
+  const grid = AppState.voxelGrid;
   if (grid) {
     const { nx, ny, nz, cellHeight: ch, unitIds } = grid;
     const counts = {};
     geoUnits.forEach(u => { counts[u.id] = 0; });
-    for (let iz = 0; iz < nz; iz++) {
-      for (let iy = 0; iy < ny; iy++) {
+    for (let iz = 0; iz < nz; iz++)
+      for (let iy = 0; iy < ny; iy++)
         for (let ix = 0; ix < nx; ix++) {
           const uid = unitIds[ix + iy * nx + iz * nx * ny];
           if (uid && counts[uid] !== undefined) counts[uid]++;
         }
-      }
-    }
-    // Convert column-voxel counts to mean thickness per unit
     geoUnits.forEach(u => {
-      thickByUnit[u.id] = counts[u.id] > 0 ? (counts[u.id] / (nx * ny)) * ch : 0.5;
+      thickByCode[u.code] = counts[u.id] > 0 ? (counts[u.id] / (nx * ny)) * ch : 0;
     });
-  } else {
-    geoUnits.forEach(u => { thickByUnit[u.id] = 1; });
   }
 
-  const totalThick = Object.values(thickByUnit).reduce((a, b) => a + b, 0);
-  const W = canvas.parentElement?.clientWidth ?? 200;
-  const H = Math.max(geoUnits.length * 16, 80);
-  canvas.width  = W;
-  canvas.height = H;
+  // Build ordered list: if user has a locked manual order use it; otherwise use
+  // the auto-inferred stratOrder (if any), or the raw geoUnits order.
+  const locked = document.getElementById('strat-manual-lock')?.checked;
+  if (!locked) {
+    // Rebuild from inferred / default order
+    const order = AppState.stratOrder?.length
+      ? AppState.stratOrder
+      : geoUnits.map(u => u.code);
+    // Units not mentioned in stratOrder come at the end
+    const mentioned = new Set(order);
+    const extra = geoUnits.filter(u => !mentioned.has(u.code)).map(u => u.code);
+    AppState._stratDisplayOrder = [...order, ...extra];
+  }
+  const displayOrder = AppState._stratDisplayOrder ?? geoUnits.map(u => u.code);
+  const unitByCode = {};
+  geoUnits.forEach(u => { unitByCode[u.code] = u; });
 
-  const ctx     = canvas.getContext('2d');
-  const BARW    = 28;
-  const LBLX    = BARW + 8;
-  const PAD     = 4;
-  ctx.clearRect(0, 0, W, H);
+  list.innerHTML = '';
+  displayOrder.forEach((code, rank) => {
+    const unit = unitByCode[code];
+    if (!unit) return;
+    const thick = thickByCode[code];
+    const thickStr = thick != null && thick > 0 ? `${thick.toFixed(1)}m` : '';
+    const li = document.createElement('li');
+    li.className = 'strat-order-item';
+    li.draggable = true;
+    li.dataset.code = code;
+    li.innerHTML = `
+      <span class="strat-drag-handle" title="Drag to reorder">⠿</span>
+      <span class="strat-swatch" style="background:${unit.color}"></span>
+      <span class="strat-code">${unit.code}</span>
+      <span class="strat-name">${unit.name.slice(0, 20)}</span>
+      ${thickStr ? `<span class="strat-thick">${thickStr}</span>` : ''}
+    `;
+    list.appendChild(li);
+  });
 
-  let y = PAD;
-  geoUnits.forEach(unit => {
-    const thick = thickByUnit[unit.id] ?? 1;
-    const frac  = totalThick > 0 ? thick / totalThick : 1 / geoUnits.length;
-    const barH  = Math.max(14, frac * (H - PAD * 2));
+  // ── Drag-and-drop reorder logic ────────────────────────────────────────────
+  let dragSrc = null;
+  list.querySelectorAll('.strat-order-item').forEach(item => {
+    item.addEventListener('dragstart', e => {
+      dragSrc = item;
+      e.dataTransfer.effectAllowed = 'move';
+      item.classList.add('dragging');
+    });
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      list.querySelectorAll('.strat-order-item').forEach(i => i.classList.remove('drag-over'));
+    });
+    item.addEventListener('dragover', e => {
+      e.preventDefault();
+      if (item !== dragSrc) {
+        list.querySelectorAll('.strat-order-item').forEach(i => i.classList.remove('drag-over'));
+        item.classList.add('drag-over');
+      }
+    });
+    item.addEventListener('drop', e => {
+      e.preventDefault();
+      if (dragSrc && dragSrc !== item) {
+        const allItems = [...list.querySelectorAll('.strat-order-item')];
+        const srcIdx  = allItems.indexOf(dragSrc);
+        const dstIdx  = allItems.indexOf(item);
+        if (srcIdx < dstIdx) {
+          item.after(dragSrc);
+        } else {
+          item.before(dragSrc);
+        }
+        // Update AppState
+        const newOrder = [...list.querySelectorAll('.strat-order-item')]
+          .map(el => el.dataset.code);
+        AppState._stratDisplayOrder = newOrder;
+        // Lock automatically on manual reorder so rebuild doesn't override
+        const lockEl = document.getElementById('strat-manual-lock');
+        if (lockEl) lockEl.checked = true;
+        AppState.stratOrder = newOrder;
+        log(`Stratigraphic order updated manually: ${newOrder.join(' → ')}`, 'info');
+      }
+      list.querySelectorAll('.strat-order-item').forEach(i => i.classList.remove('drag-over'));
+    });
+  });
+}
 
-    ctx.fillStyle = unit.color;
-    ctx.fillRect(PAD, y, BARW, barH);
-    ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 0.5;
-    ctx.strokeRect(PAD, y, BARW, barH);
-
-    ctx.fillStyle = '#1c2a38';
-    ctx.font = 'bold 10px Inter, sans-serif';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(unit.code, LBLX + PAD, y + barH * 0.5);
-
-    ctx.fillStyle = '#8898a8';
-    ctx.font = '9px Inter, sans-serif';
-    const nameX = LBLX + PAD + 30;
-    if (nameX < W - 4) ctx.fillText(unit.name.slice(0, 18), nameX, y + barH * 0.5);
-
-    if (grid) {
-      ctx.fillStyle = '#c8cdd6';
-      ctx.font = '8px Inter, sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(`${thick.toFixed(1)}m`, W - 4, y + barH * 0.5);
+function _initStratLockToggle() {
+  document.getElementById('strat-manual-lock')?.addEventListener('change', e => {
+    if (!e.target.checked) {
+      // Re-infer order from data on next updateStratColumn call
+      AppState._stratDisplayOrder = null;
+      updateStratColumn();
     }
-
-    y += barH;
   });
 }
 
@@ -2441,6 +2490,21 @@ function initParameterView() {
       document.getElementById('param-scale-label').textContent = 'Boundary uncertainty — blue=certain, red=near contact';
       document.getElementById('param-colorscale').style.display = 'block';
       log('Parameter view: boundary uncertainty (blend ratio)', 'ok');
+      return;
+    }
+
+    if (paramName === 'entropy') {
+      const nUnits = AppState.geoUnits.length || 4;
+      const ok = AppState.scene.colorByEntropy(nUnits);
+      if (!ok) { log('Entropy data not available — build the model first.', 'warn'); return; }
+      document.getElementById('param-scale-min').textContent = '0.0 bits';
+      document.getElementById('param-scale-mid').textContent = `${(Math.log2(nUnits)/2).toFixed(1)} bits`;
+      document.getElementById('param-scale-max').textContent = `${Math.log2(nUnits).toFixed(1)} bits`;
+      document.getElementById('param-scale-label').textContent = 'Classification entropy — blue=certain, red=highly uncertain';
+      const cs = document.getElementById('param-colorscale');
+      cs.querySelector('div').style.background = 'linear-gradient(to right,#2244cc,#00aacc,#22cc66,#ddcc00,#dd2222)';
+      cs.style.display = 'block';
+      log(`Parameter view: classification entropy (max ${Math.log2(nUnits).toFixed(2)} bits for ${nUnits} units)`, 'ok');
       return;
     }
 
@@ -3311,6 +3375,7 @@ async function init() {
   initViewModeButtons();
   initVBHButton();
   initIsopachMap();
+  _initStratLockToggle();
   initFenceSection();
   initScreenshot();
   initBackgroundToggle();
