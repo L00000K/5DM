@@ -34,7 +34,7 @@ import { computeMohrCircle, renderMohrCircle } from './mohr-circle.js';
 import { parseSectionFromText, sectionToVirtualBoreholes,
          sketchToVirtualBoreholes, fenceLength } from './section-interpreter.js';
 import { SectionSketch } from './section-sketch.js';
-import { FourierEncoder } from './geo-implicit.js';
+import { FourierEncoder, measureConceptGeometry } from './geo-implicit.js';
 import { ConceptStore, CONCEPT_AXES } from './concept-store.js';
 import { encodeGeologicalConcept } from './claude-client.js';
 
@@ -1026,7 +1026,7 @@ function initBuildModel() {
 
       if (AppState.topoPoints) AppState.scene.showTopography(AppState.topoPoints);
 
-      // Auto-run concept coherence check after neural implicit build
+      // Auto-run concept coherence + geometry verification after neural implicit build
       if (AppState.interpMethod === 'neural-implicit' && AppState.conceptStore && !AppState.conceptStore.isEmpty) {
         const coherence = computeConceptCoherence();
         if (coherence.length) {
@@ -1036,9 +1036,15 @@ function initBuildModel() {
             ? `Concept coherence: ${good.length}/${coherence.length} concepts well-represented. ${poor.length} concept(s) below 50% — check the Concepts tab for details.`
             : `Concept coherence: all ${coherence.length} concept(s) well-represented in the 3D model.`;
           log(msg, poor.length ? 'warn' : 'ok');
-          // Auto-populate coherence output panel
           const el = document.getElementById('concept-coherence-output');
-          if (el) { window._showConceptCoherence(); }
+          if (el) { window._showConceptCoherence?.(); }
+        }
+
+        // Geometry verification: measure E-W vs N-S elongation ratios per unit
+        // and compare against concept predictions. Shows user that the concept shaped the geometry.
+        const geoCheck = measureConceptGeometry(AppState.voxelGrid, AppState.geoUnits, AppState.conceptStore);
+        if (geoCheck.length) {
+          _showConceptGeometryReport(geoCheck);
         }
       }
 
@@ -7062,11 +7068,30 @@ function _renderAttribution(attr, unitCode) {
       </div><span class="trace-weight">${covPct}%</span>`
     : '';
 
+  // Plain-language geometry narrative from active axes + warp
+  const narrativeParts = [];
+  const ax  = parseFloat(tensor.Ax), ay = parseFloat(tensor.Ay), az = parseFloat(tensor.Az);
+  if (ax > 1.5) narrativeParts.push(`Bodies elongated E-W (×${ax})`);
+  else if (ay > 1.5) narrativeParts.push(`Bodies elongated N-S (×${ay})`);
+  if (az < 0.7) narrativeParts.push(`Sharp vertical contacts`);
+  else if (az > 1.5) narrativeParts.push(`Gradational vertical contacts`);
+  if (activeAxes?.some(a => a.name === 'channel_morphology' && a.value > 0.4)) narrativeParts.push('Channel geometry active');
+  if (activeAxes?.some(a => a.name === 'stepped_boundary' && a.value > 0.4)) narrativeParts.push('Stepped contact active');
+  if (activeAxes?.some(a => a.name === 'erosional_contact' && a.value > 0.4)) narrativeParts.push('Erosional base predicted');
+  const trendLines = [];
+  if (trend && Math.abs(trend.dz_dxN) > 0.01) trendLines.push(`dips ${trend.dz_dxN > 0 ? 'E' : 'W'}`);
+  if (trend && Math.abs(trend.dz_dyN) > 0.01) trendLines.push(`dips ${trend.dz_dyN > 0 ? 'N' : 'S'}`);
+  if (trendLines.length) narrativeParts.push(`Surface ${trendLines.join(' + ')}`);
+  const narrative = narrativeParts.length
+    ? `<div class="trace-narrative">${narrativeParts.join(' · ')}</div>`
+    : '';
+
   return `
     <div class="trace-section">
       <div class="trace-section-hdr">Semantic influence: ${semPct}% · Data: ${datPct}%
         ${covPct != null ? `· Coverage: ${covBar}` : ''}
       </div>
+      ${narrative}
     </div>
     <div class="trace-section">
       <div class="trace-section-hdr">Concepts</div>
@@ -7085,4 +7110,42 @@ function _renderAttribution(attr, unitCode) {
       <div class="trace-warp">E-W ×${tensor.Ax} · N-S ×${tensor.Ay} · Z ×${tensor.Az}</div>
       ${trend && (Math.abs(trend.dz_dxN) > 0.01 || Math.abs(trend.dz_dyN) > 0.01) ? `<div class="trace-warp" style="margin-top:2px;color:var(--text-mid)">Depth trend: E ${trend.dz_dxN >= 0 ? '↘' : '↗'} ${Math.abs(trend.dz_dxN).toFixed(3)} · N ${trend.dz_dyN >= 0 ? '↘' : '↗'} ${Math.abs(trend.dz_dyN).toFixed(3)}</div>` : ''}
     </div>`;
+}
+
+// ── Concept geometry verification report ─────────────────────────────────────
+// Called after neural-implicit build when concepts are active.
+// Shows measured E-W/N-S elongation per unit vs concept predictions.
+function _showConceptGeometryReport(geoCheck) {
+  const el = document.getElementById('concept-coherence-output');
+  if (!el) { geoCheck.forEach(r => log(`${r.unitCode}: E-W ${r.ewRatio}× / N-S ${r.nsRatio}× (concept predicted E-W ×${r.predictedEW} N-S ×${r.predictedNS}) — match: ${r.conceptMatch >= 0.9 ? '✓' : r.conceptMatch >= 0.5 ? '~' : '✗'}`, r.conceptMatch >= 0.5 ? 'ok' : 'warn')); return; }
+
+  let html = '<div style="font-size:10px;color:var(--text-mid);margin-bottom:6px;font-weight:600">Concept → Geometry Verification</div>';
+  for (const r of geoCheck) {
+    const match = r.conceptMatch >= 0.9 ? '✓' : r.conceptMatch >= 0.5 ? '~' : '✗';
+    const matchColor = r.conceptMatch >= 0.9 ? 'var(--accent)' : r.conceptMatch >= 0.5 ? 'var(--warn)' : 'var(--red)';
+    const ewPct = Math.min(100, r.ewRatio * 30).toFixed(0);
+    const nsPct = Math.min(100, r.nsRatio * 30).toFixed(0);
+    html += `<div style="margin-bottom:6px;padding:5px;background:var(--bg-surface);border-radius:4px;border:1px solid var(--border)">
+      <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
+        <span style="width:8px;height:8px;border-radius:2px;background:${r.unitColor};flex-shrink:0"></span>
+        <span style="font-size:10px;font-weight:600;flex:1">${escHtml(r.unitCode)}</span>
+        <span style="font-size:12px;color:${matchColor}" title="Concept-geometry match">${match}</span>
+      </div>
+      <div style="font-size:9px;color:var(--text-dim);margin-bottom:3px">${r.count.toLocaleString()} voxels · ${r.extentX.toFixed(0)}m E-W × ${r.extentY.toFixed(0)}m N-S × ${r.extentZ.toFixed(1)}m depth</div>
+      <div style="display:flex;gap:6px;font-size:9px;font-family:var(--font-mono)">
+        <div style="flex:1">
+          <div style="color:var(--text-mid);margin-bottom:1px">E-W elongation</div>
+          <div style="height:5px;background:var(--bg-deep);border-radius:2px;overflow:hidden;margin-bottom:1px"><div style="width:${ewPct}%;height:100%;background:var(--accent)"></div></div>
+          <div style="color:var(--accent)">actual ×${r.ewRatio} · concept ×${r.predictedEW}</div>
+        </div>
+        <div style="flex:1">
+          <div style="color:var(--text-mid);margin-bottom:1px">N-S elongation</div>
+          <div style="height:5px;background:var(--bg-deep);border-radius:2px;overflow:hidden;margin-bottom:1px"><div style="width:${nsPct}%;height:100%;background:hsl(200,70%,50%)"></div></div>
+          <div style="color:hsl(200,70%,50%)">actual ×${r.nsRatio} · concept ×${r.predictedNS}</div>
+        </div>
+      </div>
+    </div>`;
+  }
+  el.style.display = 'block';
+  el.innerHTML = html;
 }

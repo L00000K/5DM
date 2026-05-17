@@ -2318,6 +2318,10 @@ kbd {
 .trace-label { color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .trace-weight { color: var(--accent); font-family: var(--font-mono); font-size: 10px; text-align: right; }
 .trace-warp   { color: var(--text-mid); font-family: var(--font-mono); font-size: 10px; grid-column: 1/-1; }
+.trace-narrative {
+  font-size: 9px; color: var(--accent); font-style: italic;
+  margin-top: 2px; line-height: 1.4;
+}
 
 /* Coverage density inline bar in traceability header */
 .trace-cov-bar-wrap {

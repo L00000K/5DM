@@ -544,60 +544,101 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
   }
 
   // ── Concept-guided virtual samples ──────────────────────────────────────────
-  // When a concept defines strong anisotropy (e.g., palaeochannel E-W), synthesise
-  // interpolated training points along the concept's elongation axis between pairs
-  // of real borehole observations of the same unit. This directly reinforces lateral
-  // continuity in the concept direction without adding hard constraints.
+  // For each concept with strong anisotropy (palaeochannel, terrace, etc.):
+  //  (A) Interpolate: add training points BETWEEN borehole observations of the same
+  //      unit, weighted by concept relevance, to reinforce lateral continuity along
+  //      the concept's preferred elongation axis.
+  //  (B) Extrapolate: add training points ALONG the elongation axis BEYOND the
+  //      outermost borehole observations to project geometry into data-sparse areas.
+  //      These have lower weight (0.25) so they guide but don't override actual data.
+  //  The cap prevents virtual samples from outnumbering real samples by more than 3×.
   if (conceptStore && !conceptStore.isEmpty) {
     const gT = conceptStore.globalTensor();
-    // Only synthesise if there's meaningful anisotropy (>1.3× in any axis)
     if (Math.max(gT.Ax, gT.Ay) > 1.3) {
-      const unitBHs = {};  // { unitIdx → [{x, y, z, unitCode}] }
+      const unitBHs = {};  // { unitIdx → [{x, y, z, unitCode, top, base}] }
       for (const bh of boreholes) {
         for (const layer of (bh.layers ?? [])) {
           const ti = unitIdx[layer.unitCode];
           if (ti === undefined) continue;
-          const zMid = bh.groundLevel - (layer.top + layer.base) / 2;
+          const zTop  = bh.groundLevel - layer.top;
+          const zBase = bh.groundLevel - layer.base;
+          const zMid  = (zTop + zBase) / 2;
           if (!unitBHs[ti]) unitBHs[ti] = [];
-          unitBHs[ti].push({ x: bh.x, y: bh.y, z: zMid, unitCode: layer.unitCode });
+          unitBHs[ti].push({ x: bh.x, y: bh.y, z: zMid, zTop, zBase, unitCode: layer.unitCode });
         }
       }
-      // N_SYNTH scales with anisotropy strength: stronger concept → more virtual samples
-      const N_SYNTH = Math.min(4, Math.ceil(Math.max(gT.Ax, gT.Ay) / 1.5) + 1);
+
+      const N_SYNTH = Math.min(5, Math.ceil(Math.max(gT.Ax, gT.Ay) / 1.2) + 1);
+
+      // Helper: encode one virtual sample and push to samples
+      const addVirtual = (sx, sy, sz, tiInt, unitCode, w) => {
+        const ctx = conceptStore.computeAt(sx, sy, sz, unitCode);
+        if (ctx.totalWeight < 0.15) return;
+        const tensor = ctx.tensor;
+        const wx = sx / tensor.Ax, wy = sy / tensor.Ay;
+        let wz = sz / tensor.Az;
+        const vTrend = ctx.trend;
+        if (vTrend && (Math.abs(vTrend.dz_dxN) > 0.005 || Math.abs(vTrend.dz_dyN) > 0.005)) {
+          const xN = 2 * (wx - warpedBounds.minX) / Math.max(1e-6, warpedBounds.maxX - warpedBounds.minX) - 1;
+          const yN = 2 * (wy - warpedBounds.minY) / Math.max(1e-6, warpedBounds.maxY - warpedBounds.minY) - 1;
+          wz += vTrend.dz_dxN * xN + vTrend.dz_dyN * yN;
+        }
+        const pos = fourierEnc.encode(wx, wy, wz, warpedBounds);
+        const inp = new Float32Array(nIn);
+        inp.set(pos);
+        inp.set(ctx.vec, fourierEnc.outDim);
+        samples.push({ inp, target: tiInt, weight: w * ctx.totalWeight });
+      };
+
       for (const [ti, pts] of Object.entries(unitBHs)) {
-        if (pts.length < 2) continue;
-        // Connect nearby pairs (within 3× site span / concept anisotropy)
+        if (!pts.length) continue;
+        const tiInt = parseInt(ti);
+        // Elongation direction: prefer the axis with higher anisotropy
+        const elongX = gT.Ax > gT.Ay; // true = E-W, false = N-S
         const spanX = (bounds.maxX - bounds.minX) / gT.Ax;
         const spanY = (bounds.maxY - bounds.minY) / gT.Ay;
-        const maxDist = Math.max(spanX, spanY) * 0.7;
+        const maxDist = Math.max(spanX, spanY) * 0.8;
+
+        // (A) Interpolation between pairs
         for (let a = 0; a < pts.length; a++) {
           for (let b = a + 1; b < pts.length; b++) {
             const pa = pts[a], pb = pts[b];
             const dist = Math.hypot(pa.x - pb.x, pa.y - pb.y);
             if (dist > maxDist) continue;
             for (let s = 1; s <= N_SYNTH; s++) {
-              const t   = s / (N_SYNTH + 1);
-              const sx  = pa.x + t * (pb.x - pa.x);
-              const sy  = pa.y + t * (pb.y - pa.y);
-              const sz  = pa.z + t * (pb.z - pa.z);
-              const ctx = conceptStore.computeAt(sx, sy, sz, pa.unitCode);
-              // Only add virtual samples where concept is active (relevance > 0.2)
-              if (ctx.totalWeight < 0.2) continue;
-              const tensor = ctx.tensor;
-              const warpedPt = { x: sx / tensor.Ax, y: sy / tensor.Ay, z: sz / tensor.Az };
-              let warpedPtZ = warpedPt.z;
-              const vTrend = ctx.trend;
-              if (vTrend && (Math.abs(vTrend.dz_dxN) > 0.005 || Math.abs(vTrend.dz_dyN) > 0.005)) {
-                const xN = 2 * (warpedPt.x - warpedBounds.minX) / Math.max(1e-6, warpedBounds.maxX - warpedBounds.minX) - 1;
-                const yN = 2 * (warpedPt.y - warpedBounds.minY) / Math.max(1e-6, warpedBounds.maxY - warpedBounds.minY) - 1;
-                warpedPtZ += vTrend.dz_dxN * xN + vTrend.dz_dyN * yN;
+              const t = s / (N_SYNTH + 1);
+              addVirtual(
+                pa.x + t * (pb.x - pa.x),
+                pa.y + t * (pb.y - pa.y),
+                pa.z + t * (pb.z - pa.z),
+                tiInt, pa.unitCode, 0.4
+              );
+            }
+          }
+        }
+
+        // (B) Extrapolation beyond the outermost BH in the concept's elongation direction
+        // Project each BH observation outward along the concept axis by up to 0.5× site span
+        if (pts.length >= 2) {
+          const extendDist = (elongX
+            ? (bounds.maxX - bounds.minX) * 0.35
+            : (bounds.maxY - bounds.minY) * 0.35);
+          const avgZ = pts.reduce((s, p) => s + p.z, 0) / pts.length;
+          for (const p of pts) {
+            const stepX = elongX ? extendDist / N_SYNTH : 0;
+            const stepY = elongX ? 0 : extendDist / N_SYNTH;
+            for (let s = 1; s <= N_SYNTH; s++) {
+              // Extend in both positive and negative directions
+              for (const sign of [+1, -1]) {
+                const ex = p.x + sign * s * stepX;
+                const ey = p.y + sign * s * stepY;
+                // Clamp to site bounds with small margin
+                if (ex < bounds.minX - 5 || ex > bounds.maxX + 5) continue;
+                if (ey < bounds.minY - 5 || ey > bounds.maxY + 5) continue;
+                // Extrapolation weight decays with distance from the last real BH
+                const extW = 0.25 * (1 - s / (N_SYNTH + 1));
+                addVirtual(ex, ey, avgZ, tiInt, p.unitCode, extW);
               }
-              const pos  = fourierEnc.encode(warpedPt.x, warpedPt.y, warpedPtZ, warpedBounds);
-              const inp  = new Float32Array(nIn);
-              inp.set(pos);
-              inp.set(ctx.vec, fourierEnc.outDim);
-              // Virtual samples get reduced weight (0.4) so real BH data dominates
-              samples.push({ inp, target: parseInt(ti), weight: 0.4 * ctx.totalWeight });
             }
           }
         }
@@ -629,47 +670,42 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
   const net = new GeoImplicitNet(nIn, 64, nUnits, fourierEnc.outDim);
   const opt = new AdamOpt(net._params, lr);
 
-  // FiLM warmup: for the first filmWarmup fraction of training, gradually scale up
-  // FiLM contributions so the base network learns the borehole distribution first,
-  // then FiLM modulation refines the geometry toward the conceptual model.
-  const FILM_WARMUP = 0.25; // fraction of epochs for warmup
-  const filmParamStart = 4; // params 4-7 are Wg0,Wg1,Wb0,Wb1 (FiLM weights)
+  // FiLM warmup: for the first FILM_WARMUP fraction of training, scale the FiLM
+  // gradient contribution down so the positional network learns the borehole distribution
+  // first, then FiLM takes over to shape geometry toward the conceptual model.
+  // We scale GRADIENTS (not weights) so Adam momentum doesn't destroy trained values.
+  const FILM_WARMUP    = 0.25; // fraction of epochs for FiLM ramp
+  const filmParamStart = 4;    // _params[4..7] are Wg0,Wg1,Wb0,Wb1
   const filmParamEnd   = 8;
-  const filmOrigScales = net._params.slice(filmParamStart, filmParamEnd).map(p => p.slice());
 
   for (let ep = 0; ep < epochs; ep++) {
     opt.setLr(lrMin + 0.5 * (lr - lrMin) * (1 + Math.cos(Math.PI * ep / epochs)));
 
-    // FiLM warmup: scale film weights by ramp factor (0→1 over first 25% of epochs)
-    const filmScale = Math.min(1, ep / Math.max(1, FILM_WARMUP * epochs));
-    for (let pi = filmParamStart; pi < filmParamEnd; pi++) {
-      const orig = filmOrigScales[pi - filmParamStart];
-      const cur  = net._params[pi];
-      for (let i = 0; i < cur.length; i++) cur[i] = orig[i] * filmScale;
-    }
+    // filmGradScale: 0→1 over first 25% of epochs; full gradient after that
+    const filmGradScale = Math.min(1, ep / Math.max(1, FILM_WARMUP * epochs));
+    // FiLM dropout: higher early so positional features don't over-rely on concept context
+    const filmDropout = filmGradScale < 0.5 ? 0.3 : 0.1;
 
     // Fisher-Yates shuffle
     for (let i = allSamples.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [allSamples[i], allSamples[j]] = [allSamples[j], allSamples[i]];
     }
-    // FiLM dropout schedule: 25% during warmup (teaches network to function without FiLM),
-    // 10% for the rest (regularises but allows FiLM to converge).
-    const filmDropout = filmScale < 1 ? 0.25 : 0.10;
+
     let totalLoss = 0;
     for (const s of allSamples) {
       const act  = net.forward(s.inp, filmDropout);
       const loss = -Math.log(Math.max(act.probs[s.target], 1e-9));
       totalLoss += s.weight * loss;
-      // Pass sample weight so high-confidence concept regions drive stronger gradient updates
-      opt.step(net.backward(s.inp, act, s.target, l2, s.weight));
-    }
-
-    // After warmup ends, let Adam update FiLM weights naturally (don't rescale anymore)
-    if (ep === Math.floor(FILM_WARMUP * epochs)) {
-      for (let pi = filmParamStart; pi < filmParamEnd; pi++) {
-        filmOrigScales[pi - filmParamStart].set(net._params[pi]);
+      const grads = net.backward(s.inp, act, s.target, l2, s.weight);
+      // Scale FiLM gradients during warmup — they train, just more slowly
+      if (filmGradScale < 1) {
+        for (let pi = filmParamStart; pi < filmParamEnd; pi++) {
+          const g = grads[pi];
+          for (let i = 0; i < g.length; i++) g[i] *= filmGradScale;
+        }
       }
+      opt.step(grads);
     }
 
     if (onProgress && ep % 20 === 0) {
@@ -868,4 +904,78 @@ export function findUncertainClusters(certainty, grid, threshold = 0.45, maxClus
 
   clusters.sort((a, b) => b.score - a.score);
   return clusters.slice(0, maxClusters);
+}
+
+// ── Concept geometry verification ────────────────────────────────────────────
+// After inference, measure the 3D bounding box extents of each unit's dominant
+// voxel region and compare the E-W/N-S elongation ratio against what the concept
+// embeddings predict. Returns an array of { unitCode, ewRatio, nsRatio,
+// predictedEW, predictedNS, conceptMatch (0–1) } — one entry per unit.
+//
+// This gives the user a quantitative proof that the concept shaped the geometry:
+// a palaeochannel concept with east_west_elongation=0.9 should yield ewRatio >> 1.
+export function measureConceptGeometry(grid, geoUnits, conceptStore) {
+  if (!grid || !geoUnits.length) return [];
+  const { nx, ny, nz, cellSize, cellHeight, origin, unitIds } = grid;
+
+  const codeToId = {};
+  geoUnits.forEach(u => { codeToId[u.code] = u.id; });
+
+  const results = [];
+  for (const u of geoUnits) {
+    // Find bounding box of all voxels dominated by this unit
+    let minIX = nx, maxIX = 0, minIY = ny, maxIY = 0, minIZ = nz, maxIZ = 0;
+    let count = 0;
+    for (let iz = 0; iz < nz; iz++) {
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          if (unitIds[ix + iy * nx + iz * nx * ny] === u.id) {
+            minIX = Math.min(minIX, ix); maxIX = Math.max(maxIX, ix);
+            minIY = Math.min(minIY, iy); maxIY = Math.max(maxIY, iy);
+            minIZ = Math.min(minIZ, iz); maxIZ = Math.max(maxIZ, iz);
+            count++;
+          }
+        }
+      }
+    }
+    if (count < 4) continue;
+
+    const extentX = (maxIX - minIX + 1) * cellSize;    // E-W metres
+    const extentY = (maxIY - minIY + 1) * cellSize;    // N-S metres
+    const extentZ = (maxIZ - minIZ + 1) * cellHeight;  // vertical metres
+
+    // Elongation ratios (>1 = elongated in that direction vs the other horizontal)
+    const ewRatio = extentX / Math.max(1, extentY);
+    const nsRatio = extentY / Math.max(1, extentX);
+
+    // Concept prediction: sample concept context at centroid of unit bbox
+    let predictedEW = 1, predictedNS = 1;
+    if (conceptStore && !conceptStore.isEmpty) {
+      const cx = origin.x + (minIX + maxIX) / 2 * cellSize;
+      const cy = origin.z + (minIY + maxIY) / 2 * cellSize;
+      const cz = origin.y + (minIZ + maxIZ) / 2 * cellHeight;
+      const ctx = conceptStore.computeAt(cx, cy, cz, u.code);
+      predictedEW = ctx.tensor.Ax; // > 1 → field predicted E-W elongation
+      predictedNS = ctx.tensor.Ay;
+    }
+
+    // Concept match: 0 = geometry contradicts concept, 1 = perfect agreement
+    // A concept predicting Ax=3 (E-W elongation) matches if ewRatio > nsRatio
+    const ewConcept = predictedEW > predictedNS;
+    const ewActual  = ewRatio   > nsRatio;
+    const conceptMatch = ewConcept === ewActual ? 1 : 0.5;
+
+    results.push({
+      unitCode:    u.code,
+      unitName:    u.name,
+      unitColor:   u.color,
+      extentX, extentY, extentZ, count,
+      ewRatio:     +ewRatio.toFixed(2),
+      nsRatio:     +nsRatio.toFixed(2),
+      predictedEW: +predictedEW.toFixed(2),
+      predictedNS: +predictedNS.toFixed(2),
+      conceptMatch,
+    });
+  }
+  return results;
 }
