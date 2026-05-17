@@ -1045,6 +1045,34 @@
       </div>
 
       <div class="panel-section">
+        <h3>Mohr-Coulomb Analysis</h3>
+        <p class="hint" style="font-size:9px;margin-bottom:6px">Stress state and failure envelope from unit parameters.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px">
+          <label style="font-size:10px;color:var(--text-mid)">Unit
+            <select id="mohr-unit" class="isopach-select" style="width:100%;margin-top:2px;font-size:10px">
+              <option value="">— select —</option>
+            </select>
+          </label>
+          <label style="font-size:10px;color:var(--text-mid)">Depth (m)
+            <input id="mohr-depth" type="number" class="props-input" style="width:100%;margin-top:2px" value="5" min="0" step="0.5">
+          </label>
+          <label style="font-size:10px;color:var(--text-mid)">GWT depth (m)
+            <input id="mohr-gwt" type="number" class="props-input" style="width:100%;margin-top:2px" value="2" min="0" step="0.5">
+          </label>
+          <label style="font-size:10px;color:var(--text-mid)">Δσ (kPa)
+            <input id="mohr-dsigma" type="number" class="props-input" style="width:100%;margin-top:2px" value="50" min="0" step="10">
+          </label>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:6px">
+          <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:4px">
+            <input id="mohr-undrained" type="checkbox"> Undrained (Cu)
+          </label>
+        </div>
+        <button id="btn-mohr" class="btn-secondary btn-sm" style="width:100%;margin-bottom:6px">◎ Draw Mohr Circle</button>
+        <div id="mohr-result"></div>
+      </div>
+
+      <div class="panel-section">
         <h3>Stratigraphy</h3>
         <canvas id="strat-canvas" class="strat-canvas" hidden></canvas>
         <p class="hint" id="strat-hint">Build model to see stratigraphic column</p>

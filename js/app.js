@@ -17,7 +17,8 @@ import { ModelReport } from './report.js';
 import { PlanView } from './plan-view.js';
 import { renderPropertiesTable, applyBS5930Colors } from './properties.js';
 import { saveSession, loadSession, hasSavedSession } from './session.js';
-import { calculateSettlement, renderSettlementResults } from './settlement.js';
+import { calculateSettlement, renderSettlementResults,
+         consolidationTimeCurve, renderConsolidationCurve } from './settlement.js';
 import { calculateBearingCapacity, renderBearingResults } from './bearing.js';
 import { calculatePileCapacity, renderPileResults } from './pile.js';
 import { parseLabCSV } from './lab-import.js';
@@ -28,6 +29,7 @@ import { parseCPT } from './data-parser.js';
 import { computeOrientations, orientationStats, renderStereonet, renderRoseDiagram } from './stereonet.js';
 import { bishopAnalysis, renderSlopeSection } from './slope-stability.js';
 import { assessLiquefaction, renderLiquefactionProfile, summarizeCPTLiquefaction } from './liquefaction.js';
+import { computeMohrCircle, renderMohrCircle } from './mohr-circle.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -990,9 +992,21 @@ function initSettlement() {
     if (isNaN(foundElev) || isNaN(loadKPa)) { log('Enter valid foundation level and load.', 'warn'); return; }
     const result = calculateSettlement(grid, AppState.geoUnits, foundElev, loadKPa);
     renderSettlementResults(result, res);
-    if (result) {
+
+    // Append consolidation time curve if cv data available
+    const curve = consolidationTimeCurve(result);
+    if (curve) {
+      const t50s = curve.t50 < 1 ? `${(curve.t50*12).toFixed(0)} months` : `${curve.t50.toFixed(1)} yrs`;
+      const t90s = curve.t90 ? (curve.t90 < 1 ? `${(curve.t90*12).toFixed(0)} months` : `${curve.t90.toFixed(1)} yrs`) : '—';
+      const div = document.createElement('div');
+      div.style.cssText = 'margin-top:8px;border-top:1px solid var(--border);padding-top:6px';
+      div.innerHTML = `<p style="font-size:10px;color:var(--text-mid);margin:0 0 4px">Consolidation rate (cv=${curve.cvEff.toFixed(2)} m²/yr · Hdr=${curve.Hdr.toFixed(1)}m) — t₅₀=${t50s} · t₉₀=${t90s}</p>
+        ${renderConsolidationCurve(curve, res.clientWidth || 260, 130)}`;
+      res.appendChild(div);
+      log(`Consolidation: t₅₀≈${t50s} · t₉₀≈${t90s} · cv=${curve.cvEff.toFixed(2)} m²/yr`, 'ok');
+    } else if (result) {
       const hasCalc = result.layers.some(l => l.settlement !== null);
-      log(`Settlement: ${hasCalc ? result.total.toFixed(1) + ' mm total' : 'set Cc and e0 in Props tab'}.`, hasCalc ? 'ok' : 'warn');
+      log(`Settlement: ${hasCalc ? result.total.toFixed(1) + ' mm total (set cv for time curve)' : 'set Cc and e0 in Props tab'}.`, hasCalc ? 'ok' : 'warn');
     }
   });
 }
@@ -3041,6 +3055,7 @@ async function init() {
   initSlopeStability();
   initGeoFeatures();
   initLiquefaction();
+  initMohrCircle();
 
   // Sample tile buttons (left panel)
   document.querySelectorAll('.sample-tile').forEach(btn => {
@@ -3299,6 +3314,61 @@ function initLiquefaction() {
         btn.disabled = false; btn.textContent = '⚡ Run Liquefaction Assessment';
       }
     }, 10);
+  });
+}
+
+function initMohrCircle() {
+  const btn     = document.getElementById('btn-mohr');
+  const result  = document.getElementById('mohr-result');
+  const unitSel = document.getElementById('mohr-unit');
+  if (!btn || !result || !unitSel) return;
+
+  // Populate unit selector whenever units are available
+  const _populateUnits = () => {
+    if (!AppState.geoUnits.length) return;
+    unitSel.innerHTML = '<option value="">— select unit —</option>' +
+      AppState.geoUnits
+        .filter(u => u.code !== 'UNKN')
+        .map(u => `<option value="${u.id}">${u.code} — ${u.name}</option>`)
+        .join('');
+  };
+  window.addEventListener('geomodel:model-built', _populateUnits);
+  window.addEventListener('geomodel:data-ready',  _populateUnits);
+
+  btn.addEventListener('click', () => {
+    const uid      = parseInt(unitSel.value);
+    const unit     = AppState.geoUnits.find(u => u.id === uid);
+    if (!unit) { log('Select a geological unit first.', 'warn'); return; }
+
+    const depth     = parseFloat(document.getElementById('mohr-depth')?.value)  || 5;
+    const gwt       = parseFloat(document.getElementById('mohr-gwt')?.value)    || 2;
+    const dSigma    = parseFloat(document.getElementById('mohr-dsigma')?.value) || 0;
+    const undrained = document.getElementById('mohr-undrained')?.checked ?? false;
+
+    try {
+      const mc  = computeMohrCircle(unit, depth, gwt, dSigma, undrained);
+      const svg = renderMohrCircle(mc, result.clientWidth || 280, 210);
+      const fsCol = mc.Fs < 1.0 ? '#e84040' : mc.Fs < 1.5 ? '#e8924a' : '#4ae87a';
+      result.innerHTML = svg +
+        `<p style="margin:4px 0 0;font-size:9px;font-family:monospace;color:var(--text-mid)">
+          σ₁'=${mc.sigma1.toFixed(0)} · σ₃'=${mc.sigma3.toFixed(0)} · u=${mc.u.toFixed(0)} kPa
+          <span style="color:${fsCol};float:right">FS=${isFinite(mc.Fs)?mc.Fs.toFixed(2):'∞'}</span>
+        </p>`;
+      log(`Mohr circle: ${unit.code} at ${depth}m — FS = ${isFinite(mc.Fs)?mc.Fs.toFixed(2):'∞'} (${mc.mode})`,
+          mc.Fs < 1.0 ? 'error' : mc.Fs < 1.5 ? 'warn' : 'ok');
+    } catch (err) {
+      result.innerHTML = `<p class="hint" style="color:#e84040">Error: ${err.message}</p>`;
+    }
+  });
+
+  // Live redraw when inputs change
+  ['mohr-depth', 'mohr-gwt', 'mohr-dsigma'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', () => {
+      if (unitSel.value) btn.click();
+    });
+  });
+  document.getElementById('mohr-undrained')?.addEventListener('change', () => {
+    if (unitSel.value) btn.click();
   });
 }
 

@@ -11,6 +11,7 @@ const DEFAULT_PARAMS = {
   nu:     null,   // Poisson's ratio
   Cc:     null,   // compression index
   e0:     null,   // initial void ratio (for settlement)
+  cv:     null,   // coefficient of consolidation (m²/yr)
   N_spt:  null,   // characteristic SPT N value
 };
 
@@ -40,6 +41,7 @@ export function renderPropertiesTable(geoUnits, onUpdate) {
     { key: 'E',      label: 'E (MPa)',     placeholder: '—'   },
     { key: 'Cc',     label: 'Cc',          placeholder: '—'   },
     { key: 'e0',     label: 'e₀',          placeholder: '0.8' },
+    { key: 'cv',     label: 'cv (m²/yr)', placeholder: '1'   },
     { key: 'N_spt',  label: 'N (SPT)',     placeholder: '—'   },
   ];
 
