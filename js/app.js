@@ -666,6 +666,8 @@ function initReset() {
     setEnabled('btn-depth-vol-compute', false);
     setEnabled('btn-show-concept-influence', false);
     setEnabled('btn-show-dominant-concept', false);
+    const _pvp = document.getElementById('prob-vol-panel');
+    if (_pvp) _pvp.style.display = 'none';
     updateStratColumn();
     if (AppState.scene) AppState.scene.clear();
     showWelcome();
@@ -5222,6 +5224,7 @@ async function init() {
   initMohrCircle();
   initSectionInterpreter();
   initConceptPanel();
+  initProbVolPanel();
 
   // Sample tile buttons (left panel)
   document.querySelectorAll('.sample-tile').forEach(btn => {
@@ -6930,7 +6933,15 @@ export function getVoxelAttribution(worldX, worldY, worldZ, unitCode = null) {
   return {
     conceptWeights:    concepts.weights.slice(0, 4),
     bhWeights,
-    tensor:            { Ax: tensor.Ax.toFixed(2), Ay: tensor.Ay.toFixed(2), Az: tensor.Az.toFixed(2) },
+    tensor: {
+      Ax:    +tensor.Ax.toFixed(2),
+      Ay:    +tensor.Ay.toFixed(2),
+      Az:    +tensor.Az.toFixed(2),
+      Amaj:  +(tensor.Amaj ?? Math.max(tensor.Ax, tensor.Ay)).toFixed(2),
+      Amin:  +(tensor.Amin ?? Math.min(tensor.Ax, tensor.Ay)).toFixed(2),
+      theta: +(tensor.theta ?? 0).toFixed(3),
+      thetaDeg: +((tensor.theta ?? 0) * 180 / Math.PI).toFixed(1),
+    },
     semanticDominance: concepts.totalWeight > 0 ? Math.min(1, concepts.totalWeight) : 0,
     activeAxes:        concepts.activeAxes ?? [],
     trend:             { dz_dxN: trend.dz_dxN, dz_dyN: trend.dz_dyN },
@@ -7090,9 +7101,15 @@ function _renderAttribution(attr, unitCode) {
 
   // Plain-language geometry narrative from active axes + warp
   const narrativeParts = [];
-  const ax  = parseFloat(tensor.Ax), ay = parseFloat(tensor.Ay), az = parseFloat(tensor.Az);
-  if (ax > 1.5) narrativeParts.push(`Bodies elongated E-W (×${ax})`);
-  else if (ay > 1.5) narrativeParts.push(`Bodies elongated N-S (×${ay})`);
+  const ax   = +tensor.Ax, ay = +tensor.Ay, az = +tensor.Az;
+  const amaj = tensor.Amaj ?? Math.max(ax, ay);
+  const tDeg = tensor.thetaDeg ?? 0;
+  if (amaj > 1.5) {
+    // Describe elongation direction from theta in compass terms
+    const dirs = ['E-W', 'NE-SW', 'N-S', 'NW-SE'];
+    const dirIdx = Math.round(((tDeg % 180) + 180) / 45) % 4;
+    narrativeParts.push(`Bodies elongated ${dirs[dirIdx]} (×${amaj.toFixed(1)})`);
+  }
   if (az < 0.7) narrativeParts.push(`Sharp vertical contacts`);
   else if (az > 1.5) narrativeParts.push(`Gradational vertical contacts`);
   if (activeAxes?.some(a => a.name === 'channel_morphology' && a.value > 0.4)) narrativeParts.push('Channel geometry active');
@@ -7127,7 +7144,7 @@ function _renderAttribution(attr, unitCode) {
     </div>
     <div class="trace-section">
       <div class="trace-section-hdr">Coordinate Warp</div>
-      <div class="trace-warp">E-W ×${tensor.Ax} · N-S ×${tensor.Ay} · Z ×${tensor.Az}</div>
+      <div class="trace-warp">Major ×${(tensor.Amaj ?? Math.max(tensor.Ax, tensor.Ay)).toFixed(2)} at ${(tensor.thetaDeg ?? 0).toFixed(0)}° · Minor ×${(tensor.Amin ?? Math.min(tensor.Ax, tensor.Ay)).toFixed(2)} · Z ×${tensor.Az}</div>
       ${trend && (Math.abs(trend.dz_dxN) > 0.01 || Math.abs(trend.dz_dyN) > 0.01) ? `<div class="trace-warp" style="margin-top:2px;color:var(--text-mid)">Depth trend: E ${trend.dz_dxN >= 0 ? '↘' : '↗'} ${Math.abs(trend.dz_dxN).toFixed(3)} · N ${trend.dz_dyN >= 0 ? '↘' : '↗'} ${Math.abs(trend.dz_dyN).toFixed(3)}</div>` : ''}
     </div>`;
 }
@@ -7260,5 +7277,94 @@ function _renderConceptRefinements(suggestions, container) {
         btn.textContent = '✓ Applied';
       } catch (e) { log(`Apply refinement failed: ${e.message}`, 'error'); btn.textContent = '✗'; }
     });
+  });
+}
+
+// ── Probability Volume Panel ──────────────────────────────────────────────────
+// Wires the indicator-kriging probability volume viewer in the Analysis tab.
+// Shows per-unit P(unit) across the voxel grid as a heat-map colour overlay,
+// with a threshold slider to isolate high-confidence zones.
+function initProbVolPanel() {
+  const panel       = document.getElementById('prob-vol-panel');
+  const unitSel     = document.getElementById('prob-vol-unit-sel');
+  const showBtn     = document.getElementById('btn-prob-vol-show');
+  const clearBtn    = document.getElementById('btn-prob-vol-clear');
+  const threshSlide = document.getElementById('prob-vol-threshold');
+  const threshVal   = document.getElementById('prob-vol-threshold-val');
+  const statsEl     = document.getElementById('prob-vol-stats');
+  if (!panel || !unitSel || !showBtn) return;
+
+  let _activeUnit = null;
+
+  function _populate() {
+    const grid = AppState.voxelGrid;
+    const hasProb = grid?.probVolumes?.size > 0;
+    panel.style.display = hasProb ? '' : 'none';
+    if (!hasProb) return;
+
+    unitSel.innerHTML = '';
+    for (const code of grid.probVolumes.keys()) {
+      const unit = AppState.geoUnits.find(u => u.code === code);
+      const opt  = document.createElement('option');
+      opt.value       = code;
+      opt.textContent = unit ? `${unit.name} (${code})` : code;
+      unitSel.appendChild(opt);
+    }
+    _activeUnit = [...grid.probVolumes.keys()][0] ?? null;
+    if (_activeUnit) unitSel.value = _activeUnit;
+    showBtn.disabled = false;
+    statsEl.textContent = '';
+  }
+
+  function _applyOverlay(code, threshold) {
+    const grid = AppState.voxelGrid;
+    if (!grid?.probVolumes || !AppState.scene) return;
+    const probVol = grid.probVolumes.get(code);
+    if (!probVol) return;
+
+    // Create display grid: probability if >= threshold, NaN otherwise (→ grey)
+    const total    = probVol.length;
+    const display  = new Float32Array(total);
+    let nAbove = 0;
+    for (let i = 0; i < total; i++) {
+      if (probVol[i] >= threshold) { display[i] = probVol[i]; nAbove++; }
+      else display[i] = NaN;
+    }
+    AppState.scene.colorByParameter(null, AppState.geoUnits, display);
+    const pct = total > 0 ? ((nAbove / total) * 100).toFixed(1) : 0;
+    const unit = AppState.geoUnits.find(u => u.code === code);
+    const label = unit ? unit.name : code;
+    statsEl.textContent =
+      `P(${label}) ≥ ${threshold.toFixed(2)}: ${nAbove.toLocaleString()} voxels (${pct}%)`;
+  }
+
+  document.addEventListener('geomodel:model-built', _populate);
+
+  showBtn.addEventListener('click', () => {
+    const code      = unitSel.value;
+    const threshold = parseFloat(threshSlide.value);
+    if (!code) return;
+    _activeUnit = code;
+    _applyOverlay(code, threshold);
+    log(`Probability overlay: P(${code}) ≥ ${threshold.toFixed(2)}`, 'ok');
+  });
+
+  unitSel.addEventListener('change', () => {
+    if (_activeUnit) _applyOverlay(unitSel.value, parseFloat(threshSlide.value));
+  });
+
+  threshSlide.addEventListener('input', () => {
+    const v = parseFloat(threshSlide.value);
+    threshVal.textContent = v.toFixed(2);
+    if (_activeUnit && AppState.voxelGrid?.probVolumes) {
+      _applyOverlay(_activeUnit, v);
+    }
+  });
+
+  clearBtn.addEventListener('click', () => {
+    _activeUnit = null;
+    AppState.scene?.resetUnitColors();
+    statsEl.textContent = '';
+    log('Probability overlay cleared — restored unit colours.', 'info');
   });
 }
