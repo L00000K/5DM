@@ -837,6 +837,22 @@ function initBuildModel() {
 
       if (AppState.topoPoints) AppState.scene.showTopography(AppState.topoPoints);
 
+      // Auto-run concept coherence check after neural implicit build
+      if (AppState.interpMethod === 'neural-implicit' && AppState.conceptStore && !AppState.conceptStore.isEmpty) {
+        const coherence = computeConceptCoherence();
+        if (coherence.length) {
+          const poor = coherence.filter(r => r.score < 0.5);
+          const good = coherence.filter(r => r.score >= 0.65);
+          const msg = poor.length
+            ? `Concept coherence: ${good.length}/${coherence.length} concepts well-represented. ${poor.length} concept(s) below 50% — check the Concepts tab for details.`
+            : `Concept coherence: all ${coherence.length} concept(s) well-represented in the 3D model.`;
+          log(msg, poor.length ? 'warn' : 'ok');
+          // Auto-populate coherence output panel
+          const el = document.getElementById('concept-coherence-output');
+          if (el) { window._showConceptCoherence(); }
+        }
+      }
+
       // Auto-save session after successful model build
       saveSession(AppState);
     } catch (err) {
@@ -4515,6 +4531,77 @@ function _nearestBHWeights(wx, wy, wz, depth, k) {
     weight: (1 / (c.dist * c.dist + 0.01)) / wSum,
   }));
 }
+
+// ── Concept sensitivity analysis ──────────────────────────────────────────────
+// For each concept, compute the fraction of voxels whose dominant unit would
+// change if that concept were removed (concept contribution = how many voxels
+// it significantly influences, based on the conceptInfluence array).
+// Returns [{conceptId, description, influencedVoxels, pctOfTotal}]
+export function computeConceptSensitivity() {
+  const grid  = AppState.voxelGrid;
+  const store = AppState.conceptStore;
+  if (!grid?.conceptInfluence || !store || store.isEmpty) return [];
+
+  const total = grid.nx * grid.ny * grid.nz;
+  const { conceptInfluence } = grid;
+
+  return store.concepts.map(c => {
+    // Estimate: count voxels where this concept's relevance is >25% of total weight
+    let influenced = 0;
+    let totalW     = 0;
+    const centerX = c.domain?.type === 'bbox'
+      ? (c.domain.minX + c.domain.maxX) / 2 : (grid.origin.x + grid.nx * grid.cellSize / 2);
+    const centerY = c.domain?.type === 'bbox'
+      ? (c.domain.minY + c.domain.maxY) / 2 : (grid.origin.z + grid.ny * grid.cellSize / 2);
+
+    for (let iz = 0; iz < grid.nz; iz++) {
+      for (let iy = 0; iy < grid.ny; iy++) {
+        const worldY = grid.origin.z + (iy + 0.5) * grid.cellSize;
+        for (let ix = 0; ix < grid.nx; ix++) {
+          const worldX = grid.origin.x + (ix + 0.5) * grid.cellSize;
+          const idx    = ix + iy * grid.nx + iz * grid.nx * grid.ny;
+          const inf    = conceptInfluence[idx] ?? 0;
+          if (inf < 0.05) continue;
+          // Check spatial relevance of this specific concept at this position
+          const dx = c.domain?.type === 'bbox' ? Math.max(0, Math.abs(worldX - centerX) - (c.domain.maxX - c.domain.minX) / 2) : 0;
+          const dy = c.domain?.type === 'bbox' ? Math.max(0, Math.abs(worldY - centerY) - (c.domain.maxY - c.domain.minY) / 2) : 0;
+          const sigma = c.domain?.sigma ?? 50;
+          const relevance = c.confidence * Math.exp(-(dx * dx + dy * dy) / (2 * sigma * sigma));
+          if (relevance > 0.1) { influenced++; totalW += relevance; }
+        }
+      }
+    }
+    return {
+      conceptId:       c.id,
+      description:     c.description,
+      influencedVoxels: influenced,
+      pctOfTotal:      total > 0 ? (influenced / total * 100) : 0,
+      meanRelevance:   influenced > 0 ? totalW / influenced : 0,
+    };
+  }).sort((a, b) => b.pctOfTotal - a.pctOfTotal);
+}
+
+// ── Show concept sensitivity in panel ────────────────────────────────────────
+window._showConceptSensitivity = function() {
+  const results = computeConceptSensitivity();
+  const el = document.getElementById('concept-sensitivity-output');
+  if (!el) return;
+  if (!results.length) {
+    el.innerHTML = '<div style="font-size:10px;color:var(--text-dim)">Build a model with neural-implicit and concepts first.</div>';
+    el.style.display = 'block';
+    return;
+  }
+  el.innerHTML = results.map(r => {
+    const pct = r.pctOfTotal.toFixed(1);
+    const col = r.pctOfTotal > 30 ? 'var(--accent)' : r.pctOfTotal > 10 ? '#f0b429' : 'var(--text-mid)';
+    return `<div class="coherence-row" style="margin-bottom:3px">
+      <span class="coherence-name" title="${r.description}">${r.description.slice(0, 32)}…</span>
+      <div class="coherence-bar-wrap"><div class="coherence-bar" style="width:${Math.min(100, r.pctOfTotal * 2)}%;background:${col}"></div></div>
+      <span class="coherence-pct" style="color:${col}">${pct}%</span>
+    </div>`;
+  }).join('');
+  el.style.display = 'block';
+};
 
 // Internal alias for traceability (same as exported getVoxelAttribution)
 function _computeAttribution(worldX, worldY, worldZ) {
