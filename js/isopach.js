@@ -357,6 +357,75 @@ export class IsopachMap {
     a.download = `isopach-${new Date().toISOString().slice(0, 10)}.png`;
     a.click();
   }
+
+  // Export current horizon / isopach values as CSV
+  // Columns: X (Easting), Y (Northing), value, unit
+  exportCSV() {
+    const args = this._lastArgs;
+    if (!args) return;
+    const { grid, geoUnits } = args;
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty } = grid;
+    const mode = this._modeSelect?.value ?? 'thick';
+    const targetId = parseInt(this._select?.value ?? geoUnits[0]?.id ?? 0);
+    const unit     = geoUnits.find(u => u.id === targetId);
+    const unitById = {};
+    geoUnits.forEach(u => { unitById[u.id] = u; });
+
+    const modeLabel = mode === 'thick'        ? `${unit?.code ?? ''}_thickness_m`
+                    : mode === 'topZ'         ? `${unit?.code ?? ''}_topZ_mAOD`
+                    : mode === 'baseZ'        ? `${unit?.code ?? ''}_baseZ_mAOD`
+                    : mode === 'depth-to-top' ? `${unit?.code ?? ''}_depth_to_top_m`
+                    : mode === 'cert'         ? 'mean_certainty'
+                    : 'settlement_mm';
+
+    const rows = ['X_easting,Y_northing,' + modeLabel];
+    for (let iy = 0; iy < ny; iy++) {
+      const worldY = O.z + (iy + 0.5) * cs;
+      for (let ix = 0; ix < nx; ix++) {
+        const worldX = O.x + (ix + 0.5) * cs;
+        let v = NaN;
+        if (mode === 'thick') {
+          let cnt = 0;
+          for (let iz = 0; iz < nz; iz++) { if (unitIds[ix + iy * nx + iz * nx * ny] === targetId) cnt++; }
+          v = cnt > 0 ? cnt * ch : NaN;
+        } else if (mode === 'topZ') {
+          for (let iz = nz - 1; iz >= 0; iz--) {
+            if (unitIds[ix + iy * nx + iz * nx * ny] === targetId) { v = O.y + (iz + 1) * ch; break; }
+          }
+        } else if (mode === 'baseZ') {
+          for (let iz = 0; iz < nz; iz++) {
+            if (unitIds[ix + iy * nx + iz * nx * ny] === targetId) { v = O.y + iz * ch; break; }
+          }
+        } else if (mode === 'depth-to-top') {
+          let surfElev = NaN;
+          for (let iz = nz - 1; iz >= 0; iz--) {
+            if (unitIds[ix + iy * nx + iz * nx * ny]) { surfElev = O.y + iz * ch + ch; break; }
+          }
+          for (let iz = nz - 1; iz >= 0; iz--) {
+            if (unitIds[ix + iy * nx + iz * nx * ny] === targetId) {
+              v = isNaN(surfElev) ? NaN : surfElev - (O.y + iz * ch + ch); break;
+            }
+          }
+        } else if (mode === 'cert') {
+          let sum = 0, cnt = 0;
+          for (let iz = 0; iz < nz; iz++) {
+            const flat = ix + iy * nx + iz * nx * ny;
+            if (unitIds[flat]) { sum += certainty[flat]; cnt++; }
+          }
+          v = cnt > 0 ? sum / cnt : NaN;
+        }
+        if (!isNaN(v)) rows.push(`${worldX.toFixed(2)},${worldY.toFixed(2)},${v.toFixed(3)}`);
+      }
+    }
+
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `horizon-${modeLabel}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 }
 
 // ── Per-column settlement (mm) — Terzaghi 1D consolidation ────────────────────

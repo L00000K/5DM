@@ -740,6 +740,43 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
     if (!nnPredict) log('NN training yielded no samples — falling back to IDW', 'warn');
   }
 
+  // ── Concept-steered anisotropy for IDW/kriging ────────────────────────────────
+  // When a conceptStore is active, compute per-column local anisotropy from the
+  // concept embedding (axes 3=EW, 4=NS elongation) and use it to steer the
+  // search ellipsoid in getCandidates(). This extends concept influence to all
+  // interpolation methods, not just neural-implicit.
+  // Cache is keyed by (ix, iy) column since concept relevance is horizontal-only.
+  const conceptStore = options.conceptStore ?? null;
+  const conceptAnisoCache = new Map(); // key = ix*ny+iy → {sinAz, cosAz, ratio}
+  function _conceptAniso(ix, iy, worldX, worldY) {
+    const key = ix * ny + iy;
+    let cached = conceptAnisoCache.get(key);
+    if (cached !== undefined) return cached;
+    if (!conceptStore || conceptStore.isEmpty) {
+      cached = null;
+      conceptAnisoCache.set(key, cached);
+      return null;
+    }
+    const ctx = conceptStore.computeAt(worldX, worldY, 0);
+    if (ctx.totalWeight < 0.1) {
+      cached = null; conceptAnisoCache.set(key, cached); return null;
+    }
+    const ew = ctx.vec[3] ?? 0;  // east_west_elongation
+    const ns = ctx.vec[4] ?? 0;  // north_south_elongation
+    const maxAx = Math.max(Math.abs(ew), Math.abs(ns));
+    if (maxAx < 0.2) {
+      cached = null; conceptAnisoCache.set(key, cached); return null;
+    }
+    // Derive azimuth: direction of maximum elongation
+    // ew > ns → body elongated E-W → azimuth = 90° (East)
+    // ns > ew → body elongated N-S → azimuth = 0° (North)
+    const az = Math.atan2(ew, ns); // angle from North clockwise
+    const ratio = Math.max(1, Math.min(6, Math.exp(maxAx * 1.2)));
+    cached = { sinAz: Math.sin(az), cosAz: Math.cos(az), ratio };
+    conceptAnisoCache.set(key, cached);
+    return cached;
+  }
+
   // ── 3. Classify every voxel (top-down so transition matrix can look upward) ─
   for (let iz = nz - 1; iz >= 0; iz--) {
     const z = oz + iz * cellH + cellH * 0.5;
@@ -758,7 +795,14 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
         if (method === 'nn' && nnPredict) {
           result = nnPredict(x, y, z);
         } else {
-          let cands = getCandidates(allBoreholes, x, y, z, anisoSinAz, anisoCosAz, anisoRatio);
+          // Apply concept-steered anisotropy if available, else fall back to global setting
+          const cAniso = _conceptAniso(ix, iy, x, y);
+          const effSinAz = cAniso ? cAniso.sinAz * (1 - anisoRatio / 10) + anisoSinAz * (anisoRatio / 10)
+                                  : anisoSinAz;
+          const effCosAz = cAniso ? cAniso.cosAz * (1 - anisoRatio / 10) + anisoCosAz * (anisoRatio / 10)
+                                  : anisoCosAz;
+          const effRatio = cAniso ? Math.max(anisoRatio, cAniso.ratio) : anisoRatio;
+          let cands = getCandidates(allBoreholes, x, y, z, effSinAz, effCosAz, effRatio);
           // Fault plane filtering: restrict candidates to same side of each fault as the voxel
           if (options.faultPlanes?.length) {
             cands = cands.filter(c => options.faultPlanes.every(f => {

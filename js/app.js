@@ -1916,6 +1916,12 @@ function initIsopachMap() {
       AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH, AppState.conceptStore
     );
   });
+
+  document.getElementById('isopach-export-csv')?.addEventListener('click', () => {
+    if (!AppState.isopachMap?._lastArgs) { log('Open the isopach map first.', 'warn'); return; }
+    AppState.isopachMap.exportCSV();
+    log('Horizon data exported as CSV', 'ok');
+  });
 }
 
 // ── Fence section (2D cross-section) ─────────────────────────────────────────
