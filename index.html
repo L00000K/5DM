@@ -503,8 +503,20 @@
         <!-- Global concept influence summary -->
         <div id="concept-global-tensor" class="concept-global-tensor" style="display:none"></div>
 
-        <!-- Export / Import concept store -->
+        <!-- Quick 3D concept influence overlays -->
         <div class="btn-row" style="margin-top:6px;gap:4px">
+          <button id="btn-show-concept-influence" class="btn btn-secondary btn-sm" style="flex:1;font-size:10px" disabled
+            title="Colour the 3D model by how much concept (vs borehole data) drove each voxel">
+            ⬤ Concept influence overlay
+          </button>
+          <button id="btn-show-dominant-concept" class="btn btn-secondary btn-sm" style="flex:1;font-size:10px" disabled
+            title="Colour voxels by their dominant active geological concept">
+            ⬤ Dominant concept
+          </button>
+        </div>
+
+        <!-- Export / Import concept store -->
+        <div class="btn-row" style="margin-top:4px;gap:4px">
           <button class="btn btn-ghost" style="font-size:11px;flex:1" onclick="_exportConceptStore()" title="Download concepts as JSON">⬇ Export JSON</button>
           <label class="btn btn-ghost" style="font-size:11px;flex:1;cursor:pointer;text-align:center" title="Import concepts from JSON file">
             ⬆ Import JSON

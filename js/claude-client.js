@@ -41,6 +41,24 @@ async function callClaude(messages, apiKey) {
   }
 }
 
+// ── Generic Claude request that returns raw response (no JSON parse) ──────────
+async function _claudeRequest(messages, apiKey, model = MODEL, maxTokens = MAX_TOKENS) {
+  const resp = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type':      'application/json',
+      'x-api-key':         apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({ model, max_tokens: maxTokens, messages }),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `API error ${resp.status}`);
+  }
+  return resp.json();
+}
+
 // ── Classify a single borehole layer description ───────────────────────────────
 async function classifyLayer(description, knownUnits, apiKey) {
   const unitsHint = knownUnits.length
@@ -1244,6 +1262,125 @@ Return ONLY the JSON array, nothing else.`;
     return Array.isArray(arr) ? arr.filter(x => x.recommendedCode && x.currentCode !== x.recommendedCode) : [];
   } catch (e) {
     console.warn('autoCorrelateUnits error:', e.message);
+    return [];
+  }
+}
+
+// ── Concept Refinement Loop ───────────────────────────────────────────────────
+// After building the neural implicit model, if concept-geometry match is poor,
+// ask Claude to analyse the mismatch and suggest refined concept descriptions or
+// updated embedding axis values. Returns an array of refinement suggestions.
+//
+// geoCheck: output of measureConceptGeometry()
+// concepts: AppState.conceptStore.concepts
+// demoMode: boolean — use heuristic feedback if no API key
+//
+// Returns [{
+//   conceptId: string,         — id of concept to update (or null for new concept)
+//   description: string,       — new or existing description
+//   reason: string,            — why this change is suggested
+//   adjustments: [{axis, delta}],  — axis index + recommended delta (−1..+1)
+//   newEmbedding: number[]|null,   — full 32-dim replacement (only when API available)
+// }]
+export async function refineConceptsWithClaude(geoCheck, concepts, apiKey, demoMode) {
+  // Demo mode: simple rule-based suggestions without API
+  if (demoMode || !apiKey) {
+    const suggestions = [];
+    for (const r of geoCheck) {
+      if (r.conceptMatch >= 0.9) continue;
+      const ewExpected = r.predictedEW > r.predictedNS;
+      const ewActual   = r.ewRatio > r.nsRatio;
+      if (ewExpected && !ewActual) {
+        suggestions.push({
+          conceptId:   null,
+          description: `${r.unitName} — elongated E-W with stronger lateral continuity`,
+          reason:      `${r.unitCode}: concept predicted E-W elongation ×${r.predictedEW} but model only achieved ×${r.ewRatio}. Increasing east_west_elongation and lateral_continuity axes may help.`,
+          adjustments: [{ axis: 3, delta: +0.3 }, { axis: 9, delta: +0.2 }],
+          newEmbedding: null,
+        });
+      } else if (!ewExpected && ewActual) {
+        suggestions.push({
+          conceptId:   null,
+          description: `${r.unitName} — elongated N-S`,
+          reason:      `${r.unitCode}: concept predicted N-S elongation but model output is E-W elongated (×${r.ewRatio}). Add a concept emphasising N-S continuity.`,
+          adjustments: [{ axis: 4, delta: +0.3 }, { axis: 3, delta: -0.2 }],
+          newEmbedding: null,
+        });
+      } else {
+        suggestions.push({
+          conceptId:   null,
+          description: `Add more borehole data or increase concept confidence for ${r.unitName}`,
+          reason:      `${r.unitCode} geometry does not match concept prediction — may need more data or a stronger concept.`,
+          adjustments: [{ axis: 26, delta: +0.2 }],
+          newEmbedding: null,
+        });
+      }
+    }
+    return suggestions;
+  }
+
+  // Build context for Claude
+  const conceptSummary = concepts.map(c => {
+    const axes = CONCEPT_AXES.map((a, i) => ({ a, v: c.embedding[i] }))
+      .filter(x => Math.abs(x.v) > 0.2)
+      .sort((a, b) => Math.abs(b.v) - Math.abs(a.v))
+      .slice(0, 6)
+      .map(x => `${x.a}: ${x.v > 0 ? '+' : ''}${x.v.toFixed(2)}`);
+    return `  [${c.id}] "${c.description}" (confidence ${c.confidence?.toFixed(2) ?? '?'})\n    Active axes: ${axes.join(', ')}`;
+  }).join('\n');
+
+  const geoSummary = geoCheck.map(r =>
+    `  ${r.unitCode} (${r.unitName}): actual E-W ×${r.ewRatio} N-S ×${r.nsRatio} · concept predicted E-W ×${r.predictedEW} N-S ×${r.predictedNS} · ${r.count} voxels · match: ${r.conceptMatch >= 0.9 ? 'GOOD' : r.conceptMatch >= 0.5 ? 'PARTIAL' : 'POOR'}`
+  ).join('\n');
+
+  const axisLines = CONCEPT_AXES.map((a, i) => `[${i}] ${a}`).join(', ');
+
+  const prompt = `You are a geological modelling expert. A neural implicit geological model has been built from borehole data conditioned by semantic concept embeddings. Analyse the mismatch between predicted and actual geometry and suggest concept refinements.
+
+CURRENT CONCEPTS:
+${conceptSummary}
+
+GEOMETRY VERIFICATION (actual model output vs concept prediction):
+${geoSummary}
+
+AVAILABLE AXES (32-dim embedding, values −1 to +1):
+${axisLines}
+
+For each unit with PARTIAL or POOR match, suggest:
+1. Which existing concept to adjust (by its id), OR suggest a new concept description
+2. Which axes to modify and by how much (delta values −0.5 to +0.5)
+3. A brief reason
+
+Respond ONLY with a JSON array:
+[{
+  "conceptId": "c1" or null,
+  "description": "refined or new concept text",
+  "reason": "brief explanation of what is causing the mismatch and how this fixes it",
+  "adjustments": [{"axis": 3, "delta": 0.3}, ...]
+}]
+No prose, no markdown, JSON only.`;
+
+  try {
+    const resp = await _claudeRequest([{ role: 'user', content: prompt }], apiKey, 'claude-haiku-4-5-20251001', 800);
+    const text = resp.content?.[0]?.text ?? '';
+    const arr  = JSON.parse(text.match(/\[[\s\S]*\]/)?.[0] ?? '[]');
+    if (!Array.isArray(arr)) return [];
+
+    // For each suggestion with axis adjustments, compute a full updated embedding
+    // by applying deltas to the most relevant existing concept's embedding.
+    return arr.map(s => {
+      const base = s.conceptId ? concepts.find(c => c.id === s.conceptId) : null;
+      if (base && s.adjustments?.length) {
+        const emb = Array.from(base.embedding);
+        for (const { axis, delta } of s.adjustments) {
+          if (axis >= 0 && axis < 32) emb[axis] = Math.max(-1, Math.min(1, emb[axis] + (delta ?? 0)));
+        }
+        s.newEmbedding = emb;
+      }
+      return s;
+    }).filter(s => s.reason || s.description);
+  } catch (e) {
+    console.warn('refineConceptsWithClaude error:', e.message);
     return [];
   }
 }

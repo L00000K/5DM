@@ -36,7 +36,7 @@ import { parseSectionFromText, sectionToVirtualBoreholes,
 import { SectionSketch } from './section-sketch.js';
 import { FourierEncoder, measureConceptGeometry } from './geo-implicit.js';
 import { ConceptStore, CONCEPT_AXES } from './concept-store.js';
-import { encodeGeologicalConcept } from './claude-client.js';
+import { encodeGeologicalConcept, refineConceptsWithClaude } from './claude-client.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -664,6 +664,8 @@ function initReset() {
     setEnabled('btn-formation-stats', false);
     setEnabled('btn-semantic-model', false);
     setEnabled('btn-depth-vol-compute', false);
+    setEnabled('btn-show-concept-influence', false);
+    setEnabled('btn-show-dominant-concept', false);
     updateStratColumn();
     if (AppState.scene) AppState.scene.clear();
     showWelcome();
@@ -6003,6 +6005,24 @@ function initConceptPanel() {
   // Drawn bbox domain stored when user completes a plan-view drag
   let _drawnBboxDomain = null;
 
+  // Concept influence overlays — enabled after model build
+  document.getElementById('btn-show-concept-influence')?.addEventListener('click', () => {
+    if (!AppState.scene) return;
+    const ok = AppState.scene.colorByConceptInfluence();
+    if (!ok) log('Concept influence data not available — build with Neural Implicit method first.', 'warn');
+    else log('3D view: coloured by concept semantic influence (blue=data-driven, red=concept-driven)', 'ok');
+  });
+  document.getElementById('btn-show-dominant-concept')?.addEventListener('click', () => {
+    if (!AppState.scene || !AppState.conceptStore) return;
+    const ok = AppState.scene.colorByDominantConcept(AppState.conceptStore);
+    if (!ok) log('Dominant concept data not available — build with Neural Implicit method first.', 'warn');
+    else log('3D view: coloured by dominant geological concept', 'ok');
+  });
+  document.addEventListener('geomodel:model-built', () => {
+    setEnabled('btn-show-concept-influence', !!(AppState.voxelGrid?.conceptInfluence));
+    setEnabled('btn-show-dominant-concept', !!(AppState.voxelGrid?.conceptInfluence));
+  });
+
   // Render concept library chips and scenario list
   _initConceptLibrary();
 
@@ -7117,12 +7137,19 @@ function _renderAttribution(attr, unitCode) {
 // Shows measured E-W/N-S elongation per unit vs concept predictions.
 function _showConceptGeometryReport(geoCheck) {
   const el = document.getElementById('concept-coherence-output');
-  if (!el) { geoCheck.forEach(r => log(`${r.unitCode}: E-W ${r.ewRatio}× / N-S ${r.nsRatio}× (concept predicted E-W ×${r.predictedEW} N-S ×${r.predictedNS}) — match: ${r.conceptMatch >= 0.9 ? '✓' : r.conceptMatch >= 0.5 ? '~' : '✗'}`, r.conceptMatch >= 0.5 ? 'ok' : 'warn')); return; }
+  if (!el) {
+    geoCheck.forEach(r => log(
+      `${r.unitCode}: E-W ×${r.ewRatio} / N-S ×${r.nsRatio} (predicted E-W ×${r.predictedEW}) — ${r.conceptMatch >= 0.9 ? '✓' : r.conceptMatch >= 0.5 ? '~' : '✗'}`,
+      r.conceptMatch >= 0.5 ? 'ok' : 'warn'));
+    return;
+  }
 
-  let html = '<div style="font-size:10px;color:var(--text-mid);margin-bottom:6px;font-weight:600">Concept → Geometry Verification</div>';
+  const hasMismatch = geoCheck.some(r => r.conceptMatch < 0.9);
+  let html = `<div style="font-size:10px;color:var(--text-mid);margin-bottom:6px;font-weight:600">Concept → Geometry Verification</div>`;
+
   for (const r of geoCheck) {
     const match = r.conceptMatch >= 0.9 ? '✓' : r.conceptMatch >= 0.5 ? '~' : '✗';
-    const matchColor = r.conceptMatch >= 0.9 ? 'var(--accent)' : r.conceptMatch >= 0.5 ? 'var(--warn)' : 'var(--red)';
+    const matchColor = r.conceptMatch >= 0.9 ? 'var(--accent)' : r.conceptMatch >= 0.5 ? '#d4a843' : 'var(--red)';
     const ewPct = Math.min(100, r.ewRatio * 30).toFixed(0);
     const nsPct = Math.min(100, r.nsRatio * 30).toFixed(0);
     html += `<div style="margin-bottom:6px;padding:5px;background:var(--bg-surface);border-radius:4px;border:1px solid var(--border)">
@@ -7146,6 +7173,92 @@ function _showConceptGeometryReport(geoCheck) {
       </div>
     </div>`;
   }
+
+  // AI Refinement button — only when there are mismatches
+  if (hasMismatch) {
+    html += `<button id="btn-refine-concepts-ai" class="btn btn-secondary" style="width:100%;font-size:10px;margin-top:4px">
+      ✦ Ask AI to suggest concept refinements
+    </button>
+    <div id="concept-refinement-output" style="margin-top:6px"></div>`;
+  }
+
   el.style.display = 'block';
   el.innerHTML = html;
+
+  // Wire the refinement button
+  document.getElementById('btn-refine-concepts-ai')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-refine-concepts-ai');
+    const out = document.getElementById('concept-refinement-output');
+    if (btn) { btn.disabled = true; btn.textContent = '⟳ Asking AI…'; }
+    try {
+      const apiKey = sessionStorage.getItem('anthropic_api_key') ?? '';
+      const suggestions = await refineConceptsWithClaude(
+        geoCheck, AppState.conceptStore.concepts, apiKey, !apiKey
+      );
+      if (!suggestions.length) {
+        if (out) out.innerHTML = '<p class="hint" style="font-size:10px">No refinements suggested — model geometry is consistent with concepts.</p>';
+        return;
+      }
+      _renderConceptRefinements(suggestions, out);
+      log(`AI suggested ${suggestions.length} concept refinement(s).`, 'ok');
+    } catch (e) {
+      log(`Concept refinement failed: ${e.message}`, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '✦ Ask AI to suggest concept refinements'; }
+    }
+  });
+}
+
+function _renderConceptRefinements(suggestions, container) {
+  if (!container) return;
+  let html = '<div style="font-size:10px;font-weight:600;color:var(--text-mid);margin-bottom:5px">AI Concept Refinements</div>';
+  suggestions.forEach((s, i) => {
+    const axes = (s.adjustments ?? []).map(a => {
+      const name = (CONCEPT_AXES ?? [])[a.axis] ?? `axis${a.axis}`;
+      return `${name}: ${a.delta > 0 ? '+' : ''}${a.delta.toFixed(2)}`;
+    }).join(', ');
+    html += `<div style="padding:5px;border:1px solid var(--border);border-radius:4px;margin-bottom:4px;font-size:10px">
+      <div style="font-style:italic;color:var(--text-primary);margin-bottom:2px">"${escHtml(s.description)}"</div>
+      <div style="font-size:9px;color:var(--text-dim);margin-bottom:3px">${escHtml(s.reason)}</div>
+      ${axes ? `<div style="font-size:9px;font-family:var(--font-mono);color:var(--accent);margin-bottom:3px">Adjustments: ${escHtml(axes)}</div>` : ''}
+      <div style="display:flex;gap:4px">
+        <button class="btn-ghost btn-sm" style="font-size:9px;flex:1" data-sug-i="${i}">+ Apply this refinement</button>
+      </div>
+    </div>`;
+  });
+  container.innerHTML = html;
+  container.querySelectorAll('[data-sug-i]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const s = suggestions[parseInt(btn.dataset.sugI)];
+      if (!s || !AppState.conceptStore) return;
+      btn.disabled = true; btn.textContent = '⟳';
+      try {
+        if (s.newEmbedding) {
+          // Apply full replacement embedding
+          if (s.conceptId) {
+            const c = AppState.conceptStore.concepts.find(c => c.id === s.conceptId);
+            if (c) { c.embedding = new Float32Array(s.newEmbedding); c.description = s.description; }
+          } else {
+            AppState.conceptStore.add({ description: s.description, embedding: new Float32Array(s.newEmbedding), confidence: 0.75, domain: { type: 'global' } });
+          }
+        } else if (s.adjustments?.length && s.conceptId) {
+          const c = AppState.conceptStore.concepts.find(c => c.id === s.conceptId);
+          if (c) {
+            for (const { axis, delta } of s.adjustments) {
+              if (axis >= 0 && axis < 32) c.embedding[axis] = Math.max(-1, Math.min(1, c.embedding[axis] + delta));
+            }
+          }
+        } else {
+          // Encode new concept via API or demo
+          const apiKey = sessionStorage.getItem('anthropic_api_key') ?? '';
+          const emb = await encodeGeologicalConcept(s.description, apiKey, !apiKey);
+          AppState.conceptStore.add({ description: s.description, embedding: emb, confidence: 0.75, domain: { type: 'global' } });
+        }
+        _renderConceptList?.();
+        _saveConceptStore?.();
+        log(`Applied refinement: "${s.description.slice(0, 60)}"`, 'ok');
+        btn.textContent = '✓ Applied';
+      } catch (e) { log(`Apply refinement failed: ${e.message}`, 'error'); btn.textContent = '✗'; }
+    });
+  });
 }
