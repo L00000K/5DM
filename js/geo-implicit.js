@@ -438,8 +438,8 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
   // continuity in the concept direction without adding hard constraints.
   if (conceptStore && !conceptStore.isEmpty) {
     const gT = conceptStore.globalTensor();
-    // Only synthesise if there's meaningful anisotropy (>1.5× in any axis)
-    if (Math.max(gT.Ax, gT.Ay) > 1.5) {
+    // Only synthesise if there's meaningful anisotropy (>1.3× in any axis)
+    if (Math.max(gT.Ax, gT.Ay) > 1.3) {
       const unitBHs = {};  // { unitIdx → [{x, y, z, unitCode}] }
       for (const bh of boreholes) {
         for (const layer of (bh.layers ?? [])) {
@@ -450,7 +450,8 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
           unitBHs[ti].push({ x: bh.x, y: bh.y, z: zMid, unitCode: layer.unitCode });
         }
       }
-      const N_SYNTH = 2; // points along the interpolation between each pair
+      // N_SYNTH scales with anisotropy strength: stronger concept → more virtual samples
+      const N_SYNTH = Math.min(4, Math.ceil(Math.max(gT.Ax, gT.Ay) / 1.5) + 1);
       for (const [ti, pts] of Object.entries(unitBHs)) {
         if (pts.length < 2) continue;
         // Connect nearby pairs (within 3× site span / concept anisotropy)
@@ -492,9 +493,26 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
     }
   }
 
-  const nRealSamples    = samples.filter(s => s.weight >= 0.4).length;
-  const nVirtualSamples = samples.length - nRealSamples;
-  if (onProgress) onProgress(0, 0, { nSamples: samples.length, nReal: nRealSamples, nVirtual: nVirtualSamples });
+  // Separate real and virtual samples for diagnostics and capping
+  const realSamples    = samples.filter(s => s.weight > 0.35);
+  const virtualSamples = samples.filter(s => s.weight <= 0.35);
+  const nRealSamples   = realSamples.length;
+  let nVirtualSamples  = virtualSamples.length;
+
+  // Cap virtual samples at 3× real samples to prevent concept data from
+  // overwhelming factual borehole observations.
+  let allSamples = realSamples;
+  if (virtualSamples.length > 0) {
+    const maxVirtual = Math.min(virtualSamples.length, nRealSamples * 3);
+    // Shuffle virtual samples and take the capped count
+    for (let i = virtualSamples.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [virtualSamples[i], virtualSamples[j]] = [virtualSamples[j], virtualSamples[i]];
+    }
+    nVirtualSamples = maxVirtual;
+    allSamples = [...realSamples, ...virtualSamples.slice(0, maxVirtual)];
+  }
+  if (onProgress) onProgress(0, 0, { nSamples: allSamples.length, nReal: nRealSamples, nVirtual: nVirtualSamples });
 
   const net = new GeoImplicitNet(nIn, 64, nUnits, fourierEnc.outDim);
   const opt = new AdamOpt(net._params, lr);
@@ -519,12 +537,12 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
     }
 
     // Fisher-Yates shuffle
-    for (let i = samples.length - 1; i > 0; i--) {
+    for (let i = allSamples.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      [samples[i], samples[j]] = [samples[j], samples[i]];
+      [allSamples[i], allSamples[j]] = [allSamples[j], allSamples[i]];
     }
     let totalLoss = 0;
-    for (const s of samples) {
+    for (const s of allSamples) {
       const act  = net.forward(s.inp);
       const loss = -Math.log(Math.max(act.probs[s.target], 1e-9));
       totalLoss += s.weight * loss;
@@ -540,7 +558,7 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
     }
 
     if (onProgress && ep % 20 === 0) {
-      onProgress(ep / epochs, totalLoss / samples.length);
+      onProgress(ep / epochs, totalLoss / allSamples.length);
       await new Promise(r => setTimeout(r, 0));
     }
   }

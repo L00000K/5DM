@@ -639,6 +639,8 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
       certainty.set(inferred.certainty);
       blendUnitIds.set(inferred.blendUnitIds);
       blendRatios.set(inferred.blendRatios);
+      // Pass through concept influence map for visualisation
+      const conceptInfluence = inferred.conceptInfluence ?? null;
 
       // Oracle refinement: find uncertain clusters and pass to injected oracle fn
       const oracleFn = options.oracleRefineFn;
@@ -663,6 +665,7 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
         worldHeight: nz * cellH,
         worldDepth:  ny * cellSize,
         unitIds, certainty, blendUnitIds, blendRatios,
+        ...(conceptInfluence ? { conceptInfluence } : {}),
       };
     }
   }
