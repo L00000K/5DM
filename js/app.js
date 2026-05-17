@@ -981,6 +981,16 @@ function initProjectConfig() {
         AppState.scene?.setGroundwaterTable(cfg.gwtElevation);
       }
 
+      // Restore concept store from project config
+      if (cfg.concepts) {
+        try {
+          const cs = ConceptStore.deserialize(JSON.stringify(cfg.concepts));
+          AppState.conceptStore = cs;
+          _renderConceptList();
+          log(`Restored ${cs.concepts.length} geological concept(s) from project.`, 'ok');
+        } catch { /* ignore malformed concept data */ }
+      }
+
       updateLegend();
       updateInfoPanel();
       updateBHTable();

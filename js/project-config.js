@@ -8,6 +8,9 @@ export function exportConfig(state) {
   const constraints = document.getElementById('constraints-text')?.value ?? '';
   const gwt         = parseFloat(document.getElementById('gwt-elevation')?.value ?? '') || null;
   const siteHistory = document.getElementById('input-site-history')?.value ?? '';
+  const conceptsJson = state.conceptStore?.isEmpty === false
+    ? JSON.parse(state.conceptStore.serialize())
+    : null;
 
   // Collect unit descriptions from desc-list
   const unitDescs = Array.from(document.querySelectorAll('#desc-list .desc-item'))
@@ -56,9 +59,10 @@ export function exportConfig(state) {
       trendOrder:    state.trendOrder   ?? 1,
     },
     constraints,
-    gwtElevation:  gwt,
+    gwtElevation:     gwt,
     siteHistory,
     unitDescriptions: unitDescs,
+    concepts:         conceptsJson,
   };
 }
 
@@ -77,9 +81,10 @@ export function importConfig(data) {
     anisoAzimuth:    data.settings?.anisoAzimuth ?? 0,
     anisoRatio:      data.settings?.anisoRatio   ?? 1,
     trendOrder:      data.settings?.trendOrder   ?? 1,
-    constraints:     data.constraints    ?? '',
-    gwtElevation:    data.gwtElevation   ?? null,
-    siteHistory:     data.siteHistory    ?? '',
+    constraints:      data.constraints    ?? '',
+    gwtElevation:     data.gwtElevation   ?? null,
+    siteHistory:      data.siteHistory    ?? '',
     unitDescriptions: data.unitDescriptions ?? [],
+    concepts:         data.concepts        ?? null,
   };
 }
