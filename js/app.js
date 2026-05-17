@@ -3910,6 +3910,32 @@ function initConceptPanel() {
     if (confLabel) confLabel.textContent = parseFloat(confidence.value).toFixed(2);
   });
 
+  // Real-time preview: run demo encoding as user types, so they see which axes light up
+  const previewWrap = document.getElementById('concept-preview-wrap');
+  const previewAxes = document.getElementById('concept-preview-axes');
+  let _previewTimer = null;
+  textarea?.addEventListener('input', () => {
+    clearTimeout(_previewTimer);
+    const text = textarea.value.trim();
+    if (!text || text.length < 5) {
+      if (previewWrap) previewWrap.style.display = 'none';
+      return;
+    }
+    _previewTimer = setTimeout(async () => {
+      // Use demo encoding (instant) for live preview — API encoding happens on submit
+      const emb = await encodeGeologicalConcept(text, null, true);
+      if (!previewAxes || !previewWrap) return;
+      previewAxes.innerHTML = Array.from(emb).map((v, i) => {
+        const pct = Math.round(Math.abs(v) * 100);
+        const col = v >= 0 ? 'var(--accent)' : 'var(--red)';
+        return `<div class="concept-bar-wrap" title="${CONCEPT_AXES[i]}: ${v.toFixed(2)}">
+          <div class="concept-bar" style="width:${pct}%;background:${col}"></div>
+        </div>`;
+      }).join('');
+      previewWrap.style.display = 'block';
+    }, 250);  // debounce 250ms
+  });
+
   // Show/hide draw bbox row based on domain selection
   domainSel?.addEventListener('change', () => {
     const isDraw = domainSel.value === 'draw';
