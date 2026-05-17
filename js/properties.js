@@ -2,6 +2,29 @@
 // Renders an editable table of engineering parameters per geological unit.
 // Parameters are stored on geoUnit objects as unit.params = {…}.
 
+// ICS standard geological period colours (simplified)
+export const GEO_PERIODS = [
+  { name: '—',             code: '',    color: null    },
+  { name: 'Quaternary',    code: 'Q',   color: '#f9f97f' },
+  { name: 'Holocene',      code: 'Qh',  color: '#fff2ae' },
+  { name: 'Pleistocene',   code: 'Qp',  color: '#fff987' },
+  { name: 'Neogene',       code: 'Ng',  color: '#ffe619' },
+  { name: 'Palaeogene',    code: 'Pg',  color: '#fd9a52' },
+  { name: 'Cretaceous',    code: 'K',   color: '#7fc64e' },
+  { name: 'Jurassic',      code: 'J',   color: '#34b2c9' },
+  { name: 'Triassic',      code: 'Tr',  color: '#812b92' },
+  { name: 'Permian',       code: 'P',   color: '#f04028' },
+  { name: 'Carboniferous', code: 'C',   color: '#67a599' },
+  { name: 'Devonian',      code: 'D',   color: '#cb8c37' },
+  { name: 'Silurian',      code: 'S',   color: '#b3e1b6' },
+  { name: 'Ordovician',    code: 'O',   color: '#009270' },
+  { name: 'Cambrian',      code: 'Cm',  color: '#7fa056' },
+  { name: 'Precambrian',   code: 'pC',  color: '#f74370' },
+  { name: 'Made Ground',   code: 'MG',  color: '#b5b5b5' },
+  { name: 'Alluvium',      code: 'Al',  color: '#daf0e3' },
+  { name: 'River Terrace', code: 'RT',  color: '#f9ddb9' },
+];
+
 const DEFAULT_PARAMS = {
   gamma:  null,   // bulk unit weight (kN/m³)
   cu:     null,   // undrained shear strength (kPa)
@@ -52,22 +75,31 @@ export function renderPropertiesTable(geoUnits, onUpdate) {
     { key: 'anisoAzimuth',label: 'Az°',      placeholder: '0',    title: 'Anisotropy strike azimuth for this unit (° from North)' },
   ];
 
+  const periodOpts = GEO_PERIODS.map(p =>
+    `<option value="${p.code}">${p.name}</option>`).join('');
+
   let html = `<table class="props-table">
     <thead><tr>
-      <th>Code</th><th>Name</th>
+      <th>Code</th><th>Name</th><th title="Geological age / period (ICS)">Period</th>
       ${cols.map(c => `<th>${c.label}</th>`).join('')}
       <th class="props-geom-sep" colspan="${geomCols.length}" title="Per-unit geostatistical geometry overrides">Geometry ▾</th>
     </tr><tr class="props-geom-subrow">
-      <th colspan="2"></th>
+      <th colspan="3"></th>
       ${cols.map(() => '<th></th>').join('')}
       ${geomCols.map(c => `<th title="${c.title}">${c.label}</th>`).join('')}
     </tr></thead>
     <tbody>`;
 
   for (const u of geoUnits) {
+    const curPeriod = u.period ?? '';
+    const pDef = GEO_PERIODS.find(p => p.code === curPeriod);
+    const pColor = pDef?.color ? `background:${pDef.color};` : '';
     html += `<tr data-uid="${u.id}">
       <td><span class="props-swatch" style="background:${u.color}"></span>${_esc(u.code)}</td>
       <td class="props-name-cell" contenteditable="true" data-field="name">${_esc(u.name)}</td>
+      <td><select class="props-period-sel" data-uid="${u.id}" style="font-size:9px;${pColor}">
+        ${GEO_PERIODS.map(p => `<option value="${p.code}"${p.code===curPeriod?' selected':''}>${p.name}</option>`).join('')}
+      </select></td>
       ${cols.map(c => {
         const val = u.params[c.key] ?? '';
         return `<td><input class="props-input" type="number" data-uid="${u.id}"
@@ -84,6 +116,19 @@ export function renderPropertiesTable(geoUnits, onUpdate) {
   }
   html += '</tbody></table>';
   wrap.innerHTML = html;
+
+  // Wire period selectors
+  wrap.querySelectorAll('.props-period-sel').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const uid  = parseInt(sel.dataset.uid);
+      const unit = geoUnits.find(u => u.id === uid);
+      if (!unit) return;
+      unit.period = sel.value;
+      const pDef = GEO_PERIODS.find(p => p.code === sel.value);
+      sel.style.background = pDef?.color ?? '';
+      onUpdate?.();
+    });
+  });
 
   // Wire name editing
   wrap.querySelectorAll('[contenteditable][data-field="name"]').forEach(cell => {

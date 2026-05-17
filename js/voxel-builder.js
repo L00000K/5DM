@@ -487,6 +487,27 @@ export class VoxelBuilder {
     return true;
   }
 
+  // Color all voxels by geological period (ICS stratigraphy colour).
+  // Units without a period assigned keep their existing colour.
+  colorByGeologicalAge(geoUnits, periodColorMap) {
+    if (!this.grid) return;
+    const unitById = {};
+    geoUnits.forEach(u => { unitById[u.id] = u; });
+    const col = new THREE.Color();
+    for (const [code, mesh] of Object.entries(this.meshes)) {
+      const flatIdx = this._unitFlatIdx?.[code];
+      if (!flatIdx) continue;
+      const colorAttr = mesh.geometry.getAttribute('voxelColor');
+      const unit  = geoUnits.find(u => u.code === code);
+      const hex   = unit?.period ? periodColorMap[unit.period] : null;
+      if (hex) col.set(hex); else col.set(unit?.color ?? '#888888');
+      for (let i = 0; i < flatIdx.length; i++) {
+        colorAttr.setXYZ(i, col.r, col.g, col.b);
+      }
+      colorAttr.needsUpdate = true;
+    }
+  }
+
   // Restore original unit colours after parameter coloring.
   resetUnitColors() {
     for (const [code, mesh] of Object.entries(this.meshes)) {

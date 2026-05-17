@@ -327,6 +327,10 @@ class SceneManager {
     return this._builder?.colorByConceptInfluence() ?? false;
   }
 
+  colorByGeologicalAge(geoUnits, periodColorMap) {
+    this._builder?.colorByGeologicalAge(geoUnits, periodColorMap);
+  }
+
   setSurfaceOpacity(op) {
     this._surfaces.setOpacity(op);
     this._surfaces.setMCOpacity(op);

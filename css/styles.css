@@ -2359,6 +2359,19 @@ kbd {
 }
 .scenario-del:hover { color: var(--red); }
 
+/* ── BH Data Sub-tabs ──────────────────────────────────────────────────────── */
+.bhdata-sub-tab {
+  font-size: 10px; padding: 2px 8px; background: none;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text-mid); cursor: pointer;
+}
+.bhdata-sub-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.formation-tops-table { border-collapse: collapse; font-size: 10px; white-space: nowrap; }
+.formation-tops-table th, .formation-tops-table td {
+  border: 1px solid var(--border); padding: 2px 6px; text-align: center;
+}
+.formation-tops-table th { background: var(--bg-surface); font-weight: 600; font-size: 9px; }
+
 /* ── SPT Depth Profile ─────────────────────────────────────────────────────── */
 #spt-profile-wrap { overflow-x: auto; }
 #spt-profile-canvas { border: 1px solid var(--border); border-radius: 4px; background: #f8fafb; }

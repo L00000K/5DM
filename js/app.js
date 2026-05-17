@@ -16,7 +16,7 @@ import { StratCorrelation } from './strat-correlation.js';
 import { IsopachMap  } from './isopach.js';
 import { ModelReport } from './report.js';
 import { PlanView } from './plan-view.js';
-import { renderPropertiesTable, applyBS5930Colors } from './properties.js';
+import { renderPropertiesTable, applyBS5930Colors, GEO_PERIODS } from './properties.js';
 import { saveSession, loadSession, hasSavedSession } from './session.js';
 import { calculateSettlement, renderSettlementResults,
          consolidationTimeCurve, renderConsolidationCurve } from './settlement.js';
@@ -2889,6 +2889,130 @@ export function updateBHTable() {
   });
 }
 
+// ── Formation Tops Matrix ─────────────────────────────────────────────────────
+function renderFormationTopsTable() {
+  const wrap    = document.getElementById('formation-tops-wrap');
+  const expBtn  = document.getElementById('btn-tops-export');
+  if (!wrap) return;
+
+  const bhs   = AppState.classifiedBH.filter(b => !b.synthetic && b.layers?.length);
+  const units = AppState.geoUnits;
+  if (!bhs.length || !units.length) {
+    wrap.innerHTML = '<p class="hint" style="padding:8px">Load classified borehole data.</p>';
+    return;
+  }
+
+  const useElev = document.getElementById('tops-show-elev')?.checked ?? false;
+
+  // Build lookup: bhId → unitCode → {top, base}
+  const matrix = {};
+  bhs.forEach(bh => {
+    matrix[bh.id] = {};
+    bh.layers.forEach(l => {
+      if (!matrix[bh.id][l.unitCode]) {
+        matrix[bh.id][l.unitCode] = { top: l.top, base: l.base };
+      }
+    });
+  });
+
+  const fmtVal = (bh, code) => {
+    const entry = matrix[bh.id]?.[code];
+    if (!entry) return '—';
+    if (useElev) {
+      const elev = (bh.groundLevel ?? 0) - entry.top;
+      return elev.toFixed(1);
+    }
+    return entry.top.toFixed(1);
+  };
+
+  // Header row
+  let html = `<table class="formation-tops-table"><thead><tr>
+    <th style="position:sticky;left:0;background:var(--bg-surface);z-index:1">Unit</th>
+    ${bhs.map(b => `<th>${escHtml(b.id.slice(0, 8))}</th>`).join('')}
+  </tr></thead><tbody>`;
+
+  units.forEach(u => {
+    const hasSome = bhs.some(b => matrix[b.id]?.[u.code]);
+    if (!hasSome) return;
+    const swatch = `<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${u.color};margin-right:4px;vertical-align:middle"></span>`;
+    html += `<tr>
+      <td style="position:sticky;left:0;background:var(--bg-surface);white-space:nowrap;font-size:10px;font-weight:600">
+        ${swatch}${escHtml(u.code)}
+      </td>
+      ${bhs.map(b => {
+        const entry = matrix[b.id]?.[u.code];
+        const val   = fmtVal(b, u.code);
+        const absent = !entry;
+        return `<td style="font-size:9px;font-family:var(--font-mono);color:${absent ? '#aaa' : 'var(--text)'};text-align:right">${val}</td>`;
+      }).join('')}
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+  if (expBtn) expBtn.disabled = false;
+}
+
+function exportFormationTopsCSV() {
+  const bhs   = AppState.classifiedBH.filter(b => !b.synthetic && b.layers?.length);
+  const units = AppState.geoUnits;
+  if (!bhs.length) return;
+
+  const useElev = document.getElementById('tops-show-elev')?.checked ?? false;
+  const matrix = {};
+  bhs.forEach(bh => {
+    matrix[bh.id] = {};
+    bh.layers.forEach(l => {
+      if (!matrix[bh.id][l.unitCode]) {
+        matrix[bh.id][l.unitCode] = { top: l.top, base: l.base };
+      }
+    });
+  });
+
+  const fmtVal = (bh, code) => {
+    const entry = matrix[bh.id]?.[code];
+    if (!entry) return '';
+    if (useElev) return ((bh.groundLevel ?? 0) - entry.top).toFixed(2);
+    return entry.top.toFixed(2);
+  };
+
+  const header = ['Unit', ...bhs.map(b => b.id)];
+  const label  = useElev ? 'top_elevation_mAOD' : 'depth_to_top_m';
+  let csv = `# Formation Top Matrix — ${label}\n${header.join(',')}\n`;
+  units.forEach(u => {
+    const vals = bhs.map(b => fmtVal(b, u.code));
+    if (vals.every(v => !v)) return;
+    csv += [u.code, ...vals].join(',') + '\n';
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'formation-tops.csv';
+  a.click();
+}
+
+function initBHDataSubTabs() {
+  document.querySelectorAll('.bhdata-sub-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.bhdata-sub-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const key = btn.dataset.bhdTab;
+      document.getElementById('bhd-sub-raw').hidden  = (key !== 'raw');
+      document.getElementById('bhd-sub-tops').hidden = (key !== 'tops');
+      if (key === 'tops') renderFormationTopsTable();
+    });
+  });
+
+  document.getElementById('tops-show-elev')?.addEventListener('change', () => {
+    if (!document.getElementById('bhd-sub-tops')?.hidden) renderFormationTopsTable();
+  });
+
+  document.getElementById('btn-tops-export')?.addEventListener('click', () => {
+    exportFormationTopsCSV();
+  });
+}
+
 function _openBHEditor(bhid, wrap) {
   const editRow = wrap.querySelector(`.bh-edit-row[data-bhid="${_cssEsc(bhid)}"]`);
   if (!editRow) return;
@@ -3301,6 +3425,31 @@ function initParameterView() {
       document.getElementById('param-scale-mid').textContent = '·';
       document.getElementById('param-scale-label').textContent = `Dominant concept — grey=no concept, ${store.concepts.length} concept(s) shown`;
       log(`Parameter view: dominant concept (${store.concepts.length} concepts)`, 'ok');
+      return;
+    }
+
+    if (paramName === 'geological_age') {
+      const hasPeriods = AppState.geoUnits.some(u => u.period);
+      if (!hasPeriods) {
+        log('No geological periods assigned — set periods in the Properties tab first.', 'warn');
+        return;
+      }
+      // Build period → colour map from GEO_PERIODS
+      const periodColorMap = {};
+      GEO_PERIODS.forEach(p => { if (p.color) periodColorMap[p.code] = p.color; });
+      AppState.scene.colorByGeologicalAge(AppState.geoUnits, periodColorMap);
+      // Build ICS legend gradient from assigned periods
+      const used = [...new Set(AppState.geoUnits.filter(u => u.period).map(u => u.period))];
+      const stops = used.map(code => GEO_PERIODS.find(p => p.code === code)?.color ?? '#888');
+      const cs2 = document.getElementById('param-colorscale');
+      cs2.querySelector('div').style.background = stops.length > 1
+        ? `linear-gradient(to right,${stops.join(',')})` : `${stops[0] ?? '#888'}`;
+      cs2.style.display = 'block';
+      document.getElementById('param-scale-min').textContent = '';
+      document.getElementById('param-scale-mid').textContent = '';
+      document.getElementById('param-scale-max').textContent = '';
+      document.getElementById('param-scale-label').textContent = `ICS geological age — ${used.map(c => GEO_PERIODS.find(p=>p.code===c)?.name ?? c).join(', ')}`;
+      log(`Parameter view: geological age (${used.length} period(s) assigned)`, 'ok');
       return;
     }
 
@@ -4250,6 +4399,7 @@ async function init() {
   initBHLogView();
   initLogSubTabs();
   initSPTProfile();
+  initBHDataSubTabs();
   initCPTImport();
   initWelcomeOverlay();
   initStereonet();

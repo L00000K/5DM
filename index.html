@@ -649,8 +649,26 @@
 
       <!-- BH DATA TAB -->
       <div class="tab-content" id="tab-bhdata" role="tabpanel">
-        <div id="bh-data-table-wrap" class="bh-table-wrap">
-          <p class="hint" style="padding:8px">Load borehole data to see table.</p>
+        <div style="display:flex;gap:4px;padding:5px 8px 0;flex-wrap:wrap">
+          <button class="bhdata-sub-tab active" data-bhd-tab="raw" style="font-size:10px">Layer Data</button>
+          <button class="bhdata-sub-tab" data-bhd-tab="tops" style="font-size:10px">Formation Tops</button>
+        </div>
+        <div id="bhd-sub-raw">
+          <div id="bh-data-table-wrap" class="bh-table-wrap">
+            <p class="hint" style="padding:8px">Load borehole data to see table.</p>
+          </div>
+        </div>
+        <div id="bhd-sub-tops" hidden>
+          <p class="hint" style="padding:6px 8px 2px;font-size:10px">Depth to top of each unit per borehole. — = unit absent.</p>
+          <div style="padding:3px 8px;display:flex;gap:6px;align-items:center">
+            <label style="font-size:10px;color:var(--text-mid)">
+              <input type="checkbox" id="tops-show-elev"> Elevation (mAOD)
+            </label>
+            <button id="btn-tops-export" class="btn-secondary btn-sm" style="font-size:9px;padding:1px 6px" disabled>⬇ CSV</button>
+          </div>
+          <div id="formation-tops-wrap" style="overflow:auto;max-height:380px;padding:0 4px 8px">
+            <p class="hint" style="padding:8px">Load classified borehole data to see formation top matrix.</p>
+          </div>
         </div>
       </div>
 
@@ -1071,6 +1089,7 @@
             <option value="concept_influence">Concept semantic influence</option>
             <option value="coverage_density">Borehole coverage density</option>
             <option value="dominant_concept">Dominant concept</option>
+            <option value="geological_age">Geological age (ICS period)</option>
           </select>
         </div>
         <div style="display:flex;gap:4px;margin-top:5px">
