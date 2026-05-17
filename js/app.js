@@ -639,6 +639,7 @@ function initReset() {
     setEnabled('btn-export-pointcloud', false);
     setEnabled('btn-export-stats', false);
     setEnabled('btn-export-blockmodel', false);
+    setEnabled('btn-export-qty-report', false);
     setEnabled('btn-export-bh-csv', false); setEnabled('btn-export-las', false);
     setEnabled('btn-export-ags', false);
     setEnabled('btn-export-props', false);
@@ -662,6 +663,7 @@ function initReset() {
     setEnabled('btn-crossplot-draw', false); setEnabled('btn-depthplot-draw', false);
     setEnabled('btn-formation-stats', false);
     setEnabled('btn-semantic-model', false);
+    setEnabled('btn-depth-vol-compute', false);
     updateStratColumn();
     if (AppState.scene) AppState.scene.clear();
     showWelcome();
@@ -941,6 +943,7 @@ function initBuildModel() {
       setEnabled('btn-export-pointcloud', true);
       setEnabled('btn-export-stats', true);
       setEnabled('btn-export-blockmodel', true);
+      setEnabled('btn-export-qty-report', true);
       setEnabled('btn-build-model', true);
       setEnabled('btn-apply-constraints', true);
       setEnabled('btn-isopach', true);
@@ -3995,6 +3998,83 @@ function initParameterView() {
   });
 }
 
+// ── Volume by Depth Slice ─────────────────────────────────────────────────────
+function initVolumeByDepth() {
+  const btn     = document.getElementById('btn-depth-vol-compute');
+  const results = document.getElementById('depth-vol-results');
+
+  btn?.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('Build the 3D model first.', 'warn'); return; }
+
+    const depthFrom = parseFloat(document.getElementById('depth-vol-from')?.value ?? '0');
+    const depthTo   = parseFloat(document.getElementById('depth-vol-to')?.value ?? '10');
+    if (!isFinite(depthFrom) || !isFinite(depthTo) || depthTo <= depthFrom) {
+      log('Enter valid depth range (from < to).', 'warn'); return;
+    }
+
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds } = grid;
+    const cellVol = cs * cs * ch;
+
+    // Ground reference: max collar elevation
+    const groundRef = AppState.classifiedBH.reduce((m, b) => Math.max(m, b.groundLevel ?? 0), O.y + nz * ch);
+
+    // Elevation range for this depth slice
+    const elevTop    = groundRef - depthFrom;
+    const elevBottom = groundRef - depthTo;
+
+    const izTop    = Math.max(0, Math.min(nz - 1, Math.floor((elevTop    - O.y) / ch)));
+    const izBottom = Math.max(0, Math.min(nz - 1, Math.floor((elevBottom - O.y) / ch)));
+    const izMin = Math.min(izTop, izBottom);
+    const izMax = Math.max(izTop, izBottom);
+
+    const counts = {};
+    AppState.geoUnits.forEach(u => { counts[u.id] = 0; });
+    let total = 0;
+
+    for (let iz = izMin; iz <= izMax; iz++) {
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          const uid = unitIds[ix + iy * nx + iz * nx * ny];
+          if (uid && counts[uid] !== undefined) { counts[uid]++; total++; }
+        }
+      }
+    }
+
+    if (!total) {
+      if (results) { results.style.display = 'block'; results.innerHTML = '<p class="hint" style="font-size:10px">No model data in this depth range.</p>'; }
+      return;
+    }
+
+    const sliceVol = total * cellVol;
+    let html = `<div style="font-size:10px;color:var(--text-mid);margin-bottom:4px">
+      Depth ${depthFrom}–${depthTo} m bgl · Total slice: ${sliceVol >= 1000 ? (sliceVol/1000).toFixed(1)+'k' : sliceVol.toFixed(0)} m³</div>`;
+
+    AppState.geoUnits.forEach(u => {
+      const n = counts[u.id] ?? 0;
+      if (!n) return;
+      const vol = n * cellVol;
+      const pct = (n / total * 100).toFixed(1);
+      html += `<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
+        <span style="width:9px;height:9px;border-radius:2px;background:${u.color};flex-shrink:0;display:inline-block"></span>
+        <span style="font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(u.code)}</span>
+        <span style="font-size:9px;font-family:var(--font-mono);color:var(--accent)">${vol >= 1000 ? (vol/1000).toFixed(1)+'k' : vol.toFixed(0)} m³</span>
+        <div style="width:40px;height:5px;background:var(--bg-surface);border-radius:2px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${u.color}"></div>
+        </div>
+        <span style="font-size:9px;font-family:var(--font-mono);color:var(--text-dim);width:28px;text-align:right">${pct}%</span>
+      </div>`;
+    });
+
+    if (results) { results.style.display = 'block'; results.innerHTML = html; }
+    log(`Depth slice ${depthFrom}–${depthTo}m: ${sliceVol.toFixed(0)} m³ total (${izMax - izMin + 1} Z levels)`, 'ok');
+  });
+
+  document.addEventListener('geomodel:model-built', () => {
+    if (btn) btn.disabled = false;
+  });
+}
+
 // ── Grade Shell ───────────────────────────────────────────────────────────────
 function initGradeShell() {
   const modeEl     = document.getElementById('grade-mode');
@@ -5077,6 +5157,7 @@ async function init() {
   initGWT();
   initCameraPresets();
   initViewBookmarks();
+  initVolumeByDepth();
   initGradeShell();
   initCrossPlot();
   initVariogramControls();

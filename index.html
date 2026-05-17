@@ -700,6 +700,23 @@
           </div>
         </div>
 
+        <!-- Volume by depth slice panel -->
+        <div class="panel-section" style="margin:4px 0 0">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+            <h3 style="margin:0">Volume by Depth</h3>
+            <button id="btn-depth-vol-compute" class="btn-secondary btn-sm" disabled>Compute</button>
+          </div>
+          <p class="hint" style="margin-bottom:6px;font-size:10px">Volume of each geological unit within a depth range (m bgl). Useful for cut-and-fill, excavation quantities.</p>
+          <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
+            <label style="font-size:10px;color:var(--text-mid);white-space:nowrap">Depth from</label>
+            <input type="number" id="depth-vol-from" class="cell-size-input" value="0" min="0" step="0.5" style="width:55px">
+            <label style="font-size:10px;color:var(--text-mid)">to</label>
+            <input type="number" id="depth-vol-to" class="cell-size-input" value="10" min="0" step="0.5" style="width:55px">
+            <span style="font-size:10px;color:var(--text-dim)">m bgl</span>
+          </div>
+          <div id="depth-vol-results" style="display:none;margin-top:4px"></div>
+        </div>
+
         <div id="analysis-log" class="analysis-log">
           <div class="log-entry log-info">Run AI Analysis to see results here.</div>
         </div>
@@ -1643,6 +1660,7 @@
         <div class="settings-divider">GIS / Analysis</div>
         <button id="btn-export-pointcloud" class="btn-secondary" disabled>⬇ Point Cloud CSV</button>
         <button id="btn-export-stats" class="btn-secondary" disabled>⬇ Model Statistics CSV</button>
+        <button id="btn-export-qty-report" class="btn-secondary" disabled title="Printable HTML material quantity takeoff — volume, mass, area, thickness per unit">⬇ Quantity Takeoff HTML</button>
         <button id="btn-export-blockmodel" class="btn-secondary" disabled title="Full voxel block model with centroids, unit codes and engineering parameters — compatible with Leapfrog, Vulcan, Datamine">⬇ Block Model CSV</button>
         <div style="display:flex;gap:4px;align-items:center;margin-top:3px">
           <button id="btn-export-geojson" class="btn-secondary" disabled title="Export geological unit boundaries at a specified depth as GeoJSON polygons (for QGIS, ArcGIS, Mapbox)">⬇ GeoJSON</button>

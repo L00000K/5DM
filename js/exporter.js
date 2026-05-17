@@ -234,6 +234,99 @@ export function initExporter() {
     log(`Model statistics exported — ${rows.length - 1} units.`, 'ok');
   });
 
+  // ── Material Quantity Takeoff — HTML printable report ──────────────────────
+  document.getElementById('btn-export-qty-report')?.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('Build the 3D model first.', 'warn'); return; }
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty } = grid;
+    const cellVol = cs * cs * ch;
+
+    const stats = {};
+    AppState.geoUnits.forEach(u => { stats[u.id] = { count: 0, certSum: 0, minElev: Infinity, maxElev: -Infinity }; });
+    const topElev = {};
+    AppState.geoUnits.forEach(u => { topElev[u.id] = { sum: 0, count: 0 }; });
+
+    for (let iy = 0; iy < ny; iy++) {
+      for (let ix = 0; ix < nx; ix++) {
+        const colTop = {};
+        for (let iz = nz - 1; iz >= 0; iz--) {
+          const flat = ix + iy * nx + iz * nx * ny;
+          const uid  = unitIds[flat];
+          if (!uid || !stats[uid]) continue;
+          const elev = O.y + iz * ch + ch * 0.5;
+          const s = stats[uid];
+          s.count++;
+          s.certSum += certainty[flat];
+          s.minElev = Math.min(s.minElev, elev - ch * 0.5);
+          s.maxElev = Math.max(s.maxElev, elev + ch * 0.5);
+          if (colTop[uid] === undefined) colTop[uid] = elev + ch * 0.5;
+        }
+        for (const [uid, e] of Object.entries(colTop)) {
+          topElev[uid].sum += e; topElev[uid].count++;
+        }
+      }
+    }
+
+    const totalVol = AppState.geoUnits.reduce((a, u) => a + (stats[u.id]?.count ?? 0) * cellVol, 0);
+    const dateStr = new Date().toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' });
+
+    const rows = AppState.geoUnits.map(u => {
+      const s = stats[u.id];
+      if (!s?.count) return '';
+      const vol   = s.count * cellVol;
+      const gamma = u.params?.gamma;
+      const mass  = gamma ? (vol * gamma * 0.1).toFixed(0) : '—'; // γ kN/m³ → t/m³ ≈ γ/9.81, mass = vol × density
+      const massT = gamma ? `${(vol * gamma / 9.81).toFixed(0)} t` : '—';
+      const area  = topElev[u.id].count > 0 ? (topElev[u.id].count * cs * cs).toFixed(0) : '—';
+      const thick = (s.maxElev !== -Infinity && s.minElev !== Infinity)
+        ? (s.maxElev - s.minElev).toFixed(1) : '—';
+      const cert  = (s.certSum / s.count * 100).toFixed(0);
+      const pct   = totalVol > 0 ? (vol / totalVol * 100).toFixed(1) : '0';
+      return `<tr>
+        <td><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:${u.color};margin-right:5px;vertical-align:middle"></span>${u.code}</td>
+        <td>${u.name ?? ''}</td>
+        <td style="text-align:right;font-family:monospace">${vol >= 1e6 ? (vol/1e6).toFixed(2)+' Mm³' : vol >= 1000 ? (vol/1000).toFixed(0)+' k m³' : vol.toFixed(0)+' m³'}</td>
+        <td style="text-align:right;font-family:monospace">${massT}</td>
+        <td style="text-align:right;font-family:monospace">${area} m²</td>
+        <td style="text-align:right;font-family:monospace">${thick} m</td>
+        <td style="text-align:right">${cert}%</td>
+        <td style="text-align:right">${pct}%</td>
+      </tr>`;
+    }).filter(Boolean).join('');
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>Material Quantity Takeoff</title>
+<style>
+  body { font-family: Arial,sans-serif; font-size: 12px; color: #222; margin: 20px; }
+  h1 { font-size: 18px; margin-bottom: 4px; }
+  .meta { font-size: 11px; color: #666; margin-bottom: 16px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+  th, td { border: 1px solid #ccc; padding: 5px 8px; font-size: 11px; }
+  th { background: #f0f4f8; font-weight: 600; text-align: center; }
+  tr:nth-child(even) { background: #f8fafb; }
+  .footer { margin-top: 16px; font-size: 10px; color: #888; }
+  @media print { @page { margin: 1cm; } }
+</style>
+</head><body>
+<h1>Material Quantity Takeoff</h1>
+<div class="meta">Generated: ${dateStr} &nbsp;|&nbsp; Grid: ${nx}×${ny}×${nz} cells &nbsp;|&nbsp; Cell: ${cs}m × ${cs}m × ${ch}m &nbsp;|&nbsp; Total model volume: ${(totalVol/1000).toFixed(0)} k m³</div>
+<table>
+  <thead><tr>
+    <th>Code</th><th>Unit Name</th><th>Volume</th><th>Mass*</th>
+    <th>Plan Area</th><th>Thickness Range</th><th>Mean Certainty</th><th>% Model</th>
+  </tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<div class="footer">* Mass calculated from unit weight γ (kN/m³) where assigned; — where not assigned.<br>
+Volume from voxel model. Certainty from classification confidence. Plan area = footprint of unit at model top surface.</div>
+</body></html>`;
+
+    downloadBlob(new Blob([html], { type: 'text/html' }),
+      `quantity-takeoff-${new Date().toISOString().slice(0,10)}.html`);
+    log(`Material quantity takeoff exported — ${AppState.geoUnits.filter(u => stats[u.id]?.count).length} units.`, 'ok');
+  });
+
   // ── Export unit properties as CSV ─────────────────────────────────────────
   document.getElementById('btn-export-props')?.addEventListener('click', () => {
     if (!AppState.geoUnits.length) { log('No units to export.', 'warn'); return; }
