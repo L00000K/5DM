@@ -81,6 +81,7 @@ export const AppState = {
   shapeBoreholes: [],
   sectionBoreholes: [],   // virtual BHs from section descriptions/sketches
   conceptStore: null,     // ConceptStore — geological concept embeddings for neural field
+  geoEvents: [],          // Geological event timeline (oldest first)
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
@@ -3376,6 +3377,7 @@ async function init() {
   initVBHButton();
   initIsopachMap();
   _initStratLockToggle();
+  _initGeoEventTimeline();
   initFenceSection();
   initScreenshot();
   initBackgroundToggle();
@@ -4404,6 +4406,185 @@ function _renderScenarioList() {
       <button class="scenario-del" onclick="_deleteConceptScenario(${i})" title="Delete">×</button>
     </div>`;
   }).join('');
+}
+
+// ── Geological Event Timeline ─────────────────────────────────────────────────
+// Leapfrog-style ordered list of geological events (oldest → youngest).
+// Each event: { id, type, name, unitCodes[] }
+// The list drives stratOrder and can auto-encode associated concepts.
+
+const GEO_EVENT_TYPES = {
+  deposition: { icon: '⬤', label: 'Deposition',      axes: { horizontal_layering: 0.7, lateral_continuity: 0.8, fining_upward: 0.3 } },
+  erosion:    { icon: '≈',  label: 'Erosion/Incision', axes: { erosional_contact: 0.9, irregular_base: 0.7, incision_depth_ratio: 0.7 } },
+  fault:      { icon: '/',  label: 'Faulting',         axes: { fault_controlled: 1.0, stepped_boundary: 0.8, structural_complexity: 0.7 } },
+  intrusion:  { icon: '▲',  label: 'Intrusion',        axes: { dome_anticline: 0.7, structural_complexity: 0.6, dip_magnitude: 0.5 } },
+  folding:    { icon: '~',  label: 'Folding',           axes: { inclined_bedding: 0.8, dip_magnitude: 0.7, structural_complexity: 0.6 } },
+  karst:      { icon: '◉',  label: 'Karst dissolution', axes: { dissolution_features: 1.0, irregular_base: 0.8, structural_complexity: 0.5 } },
+  fill:       { icon: '▥',  label: 'Channel/Valley fill', axes: { channel_morphology: 1.0, erosional_contact: 0.8, gravel_basal_lag: 0.7, fining_upward: 0.5 } },
+  terrace:    { icon: '—',  label: 'Terrace formation', axes: { horizontal_layering: 0.7, lateral_continuity: 0.8, gravel_basal_lag: 0.6, erosional_contact: 0.5 } },
+};
+
+// Axis name → index mapping (matches CONCEPT_AXES in geo-implicit.js)
+const AXIS_NAME_TO_IDX = {
+  horizontal_layering:0, inclined_bedding:1, dip_magnitude:2, east_west_elongation:3,
+  north_south_elongation:4, channel_morphology:5, dome_anticline:6, fault_controlled:7,
+  erosional_contact:8, lateral_continuity:9, lateral_thinning_east:10, lateral_thinning_west:11,
+  lateral_thinning_north:12, lateral_thinning_south:13, deepens_east:14, deepens_west:15,
+  deepens_north:16, deepens_south:17, stepped_boundary:18, irregular_base:19,
+  nested_channels:20, coarsening_upward:21, fining_upward:22, gravel_basal_lag:23,
+  dissolution_features:24, structural_complexity:25, data_confidence:26, lateral_anisotropy:27,
+  vertical_anisotropy:28, incision_depth_ratio:29, overburden_control:30, complexity_gradient:31,
+};
+
+function _renderGeoEventList() {
+  const list = document.getElementById('geo-event-list');
+  if (!list) return;
+  const events = AppState.geoEvents; // oldest first in state; displayed oldest at bottom
+  if (!events.length) {
+    list.innerHTML = '<li style="font-size:10px;color:var(--text-muted);padding:4px 6px">No events added yet.</li>';
+    return;
+  }
+
+  list.innerHTML = '';
+  // Display: youngest at top → reverse the state array for display
+  const displayed = [...events].reverse();
+  displayed.forEach((evt, dispIdx) => {
+    const stateIdx = events.length - 1 - dispIdx; // actual index in AppState.geoEvents
+    const typeInfo = GEO_EVENT_TYPES[evt.type] ?? { icon: '?', label: evt.type };
+    const li = document.createElement('li');
+    li.className = 'geo-event-item';
+    li.draggable = true;
+    li.dataset.id = evt.id;
+    li.dataset.stateIdx = stateIdx;
+    li.innerHTML = `
+      <span class="geo-event-drag" title="Drag to reorder">⠿</span>
+      <span class="geo-event-type-icon" title="${typeInfo.label}">${typeInfo.icon}</span>
+      <span class="geo-event-name-text">${evt.name || typeInfo.label}</span>
+      ${evt.unitCodes?.length ? `<span class="geo-event-units-text">${evt.unitCodes.join(',')}</span>` : ''}
+      <button class="geo-event-del" title="Remove" data-id="${evt.id}">×</button>
+    `;
+    list.appendChild(li);
+  });
+
+  // ── Drag-and-drop ─────────────────────────────────────────────────────────
+  let dragSrc = null;
+  list.querySelectorAll('.geo-event-item').forEach(item => {
+    item.addEventListener('dragstart', e => {
+      dragSrc = item; e.dataTransfer.effectAllowed = 'move';
+      item.classList.add('dragging');
+    });
+    item.addEventListener('dragend', () => {
+      item.classList.remove('dragging');
+      list.querySelectorAll('.geo-event-item').forEach(i => i.classList.remove('drag-over'));
+    });
+    item.addEventListener('dragover', e => {
+      e.preventDefault();
+      if (item !== dragSrc) {
+        list.querySelectorAll('.geo-event-item').forEach(i => i.classList.remove('drag-over'));
+        item.classList.add('drag-over');
+      }
+    });
+    item.addEventListener('drop', e => {
+      e.preventDefault();
+      if (dragSrc && dragSrc !== item) {
+        const allItems = [...list.querySelectorAll('.geo-event-item')];
+        const srcDispIdx = allItems.indexOf(dragSrc);
+        const dstDispIdx = allItems.indexOf(item);
+        // Reorder in AppState (events are oldest-first; display is reversed)
+        const srcStateIdx = AppState.geoEvents.length - 1 - srcDispIdx;
+        const dstStateIdx = AppState.geoEvents.length - 1 - dstDispIdx;
+        const [moved] = AppState.geoEvents.splice(srcStateIdx, 1);
+        AppState.geoEvents.splice(dstStateIdx, 0, moved);
+        _renderGeoEventList();
+      }
+      list.querySelectorAll('.geo-event-item').forEach(i => i.classList.remove('drag-over'));
+    });
+  });
+
+  // Delete buttons
+  list.querySelectorAll('.geo-event-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      AppState.geoEvents = AppState.geoEvents.filter(e => e.id !== id);
+      _renderGeoEventList();
+    });
+  });
+}
+
+function _initGeoEventTimeline() {
+  const toggle = document.getElementById('geo-events-toggle');
+  const body   = document.getElementById('geo-events-body');
+  if (toggle && body) {
+    toggle.addEventListener('click', () => {
+      body.hidden = !body.hidden;
+      const arrow = toggle.querySelector('.collapse-arrow');
+      if (arrow) arrow.textContent = body.hidden ? '›' : '⌄';
+    });
+  }
+
+  document.getElementById('btn-add-geo-event')?.addEventListener('click', () => {
+    const type  = document.getElementById('geo-event-type')?.value ?? 'deposition';
+    const name  = document.getElementById('geo-event-name')?.value?.trim() ?? '';
+    const rawU  = document.getElementById('geo-event-units')?.value ?? '';
+    const units = rawU.split(/[,\s]+/).map(s => s.trim().toUpperCase()).filter(Boolean);
+    const evt = {
+      id: `evt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      type, name, unitCodes: units,
+    };
+    AppState.geoEvents.push(evt); // push to end = youngest
+    document.getElementById('geo-event-name').value = '';
+    document.getElementById('geo-event-units').value = '';
+    _renderGeoEventList();
+  });
+
+  // Apply: set stratOrder from event list (youngest unit codes first = top)
+  document.getElementById('btn-apply-geo-events')?.addEventListener('click', () => {
+    const events = AppState.geoEvents; // oldest first
+    const orderCodes = [];
+    // Walk oldest → youngest; collect unit codes in that order (oldest = deepest = last in strat)
+    for (const evt of events) {
+      for (const code of (evt.unitCodes ?? [])) {
+        if (!orderCodes.includes(code)) orderCodes.push(code);
+      }
+    }
+    // stratOrder = youngest → oldest (top → bottom)
+    const stratCodes = [...orderCodes].reverse();
+    AppState.stratOrder = stratCodes;
+    AppState._stratDisplayOrder = stratCodes;
+    // Lock the strat column
+    const lockEl = document.getElementById('strat-manual-lock');
+    if (lockEl) lockEl.checked = true;
+    updateStratColumn();
+    log(`Event timeline applied → stratigraphic order: ${stratCodes.join(' → ')}`, 'ok');
+  });
+
+  // Auto-encode: for each event, build a 32-dim embedding from type axes and encode it
+  document.getElementById('btn-events-to-concepts')?.addEventListener('click', async () => {
+    const events = AppState.geoEvents;
+    if (!events.length) { log('Add geological events first.', 'warn'); return; }
+    let added = 0;
+    for (const evt of events) {
+      const typeInfo = GEO_EVENT_TYPES[evt.type];
+      if (!typeInfo) continue;
+      const vec = new Float32Array(32).fill(0);
+      for (const [axisName, value] of Object.entries(typeInfo.axes)) {
+        const idx = AXIS_NAME_TO_IDX[axisName];
+        if (idx != null) vec[idx] = value;
+      }
+      const description = `${typeInfo.label}${evt.name ? ': ' + evt.name : ''}`;
+      const unitCodes = evt.unitCodes?.length ? evt.unitCodes : null;
+      const conceptId = AppState.conceptStore.add({
+        description, embedding: vec, confidence: 0.70,
+        domain: { type: 'global' }, unitAffinity: unitCodes,
+      });
+      added++;
+    }
+    _renderConceptList();
+    _saveConceptStore();
+    log(`Auto-encoded ${added} event-type concept(s) from timeline.`, 'ok');
+  });
+
+  _renderGeoEventList();
 }
 
 // ── Concept conflict detection ────────────────────────────────────────────────

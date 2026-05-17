@@ -2271,6 +2271,38 @@ kbd {
 }
 
 /* Traceability panel */
+/* ── Geological event timeline ── */
+.geo-event-form { margin-bottom: 4px; }
+.geo-timeline-header, .geo-timeline-footer {
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  padding: 1px 4px; margin: 2px 0; background: var(--bg-deep);
+}
+.geo-event-list {
+  list-style: none; padding: 0; margin: 0;
+  border-left: 2px solid var(--border-mid);
+  margin-left: 8px;
+}
+.geo-event-item {
+  display: flex; align-items: center; gap: 6px; padding: 3px 6px;
+  font-size: 10px; cursor: grab; border-radius: 3px;
+  border: 1px solid transparent; transition: background 0.1s;
+  user-select: none; position: relative;
+}
+.geo-event-item::before {
+  content: ''; position: absolute; left: -9px; top: 50%; transform: translateY(-50%);
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); border: 1.5px solid var(--bg-panel);
+}
+.geo-event-item:hover { background: var(--bg-hover); }
+.geo-event-item.dragging { opacity: 0.4; }
+.geo-event-item.drag-over { border-color: var(--accent); background: rgba(79,140,255,0.08); }
+.geo-event-drag { color: var(--text-muted); flex-shrink: 0; font-size: 12px; }
+.geo-event-type-icon { flex-shrink: 0; font-size: 12px; }
+.geo-event-name-text { font-weight: 600; color: var(--text-dark); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.geo-event-units-text { font-family: var(--font-mono); font-size: 9px; color: var(--accent); flex-shrink: 0; }
+.geo-event-del { background: none; border: none; cursor: pointer; color: var(--text-muted); padding: 0 2px; font-size: 12px; flex-shrink: 0; }
+.geo-event-del:hover { color: #d04040; }
+
 .traceability-panel {
   margin-top: 12px; border: 1px solid var(--accent-dim); border-radius: var(--radius);
   background: var(--bg-raised); padding: 8px 10px;
