@@ -498,6 +498,14 @@
           <div id="concept-scenario-list"></div>
         </div>
 
+        <!-- Coherence check — verify geometry matches concepts -->
+        <div style="margin-top:8px">
+          <button class="btn btn-ghost" style="font-size:10px;width:100%" onclick="_showConceptCoherence()" title="Check how well the built model geometry matches each concept">
+            ⊙ Check concept-geometry coherence
+          </button>
+          <div id="concept-coherence-output" style="display:none;margin-top:6px"></div>
+        </div>
+
         <!-- Traceability panel — shown on voxel hover -->
         <div id="traceability-panel" class="traceability-panel hidden">
           <div class="trace-title">Voxel Attribution</div>

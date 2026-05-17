@@ -2208,6 +2208,18 @@ kbd {
 .trace-weight { color: var(--accent); font-family: var(--font-mono); font-size: 10px; text-align: right; }
 .trace-warp   { color: var(--text-mid); font-family: var(--font-mono); font-size: 10px; grid-column: 1/-1; }
 
+/* Concept coherence scoring */
+.coherence-row {
+  display: grid; grid-template-columns: 1fr 60px 28px; gap: 4px; align-items: center;
+  padding: 2px 0;
+}
+.coherence-name { font-size: 10px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coherence-bar-wrap { height: 5px; background: var(--bg-surface); border-radius: 2px; overflow: hidden; }
+.coherence-bar { height: 100%; border-radius: 2px; transition: width 0.3s; }
+.coherence-pct { font-size: 10px; font-family: var(--font-mono); text-align: right; }
+.coherence-details { font-size: 9px; color: var(--text-dim); font-family: var(--font-mono); margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.coherence-details span { margin-right: 6px; }
+
 /* Scenario entries */
 .scenario-entry {
   display: flex; align-items: center; gap: 4px;

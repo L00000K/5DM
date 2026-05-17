@@ -3982,6 +3982,114 @@ function _renderScenarioList() {
   }).join('');
 }
 
+// ── Concept coherence scoring ─────────────────────────────────────────────────
+// Computes how well the built voxel model's spatial geometry agrees with each
+// concept's stated axes. Checks E-W elongation, N-S elongation, and layering.
+// Returns [{conceptId, score, details}] — score 0–1 (1 = perfect agreement).
+export function computeConceptCoherence() {
+  const grid = AppState.voxelGrid;
+  const store = AppState.conceptStore;
+  if (!grid || !store || store.isEmpty) return [];
+
+  const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds } = grid;
+  const geoUnits = AppState.geoUnits;
+  const unitById = {};
+  geoUnits.forEach(u => { unitById[u.id] = u; });
+
+  // For each unit: compute centroid and bounding box of its occupied voxels
+  const unitBounds = {};
+  for (let iz = 0; iz < nz; iz++) {
+    for (let iy = 0; iy < ny; iy++) {
+      for (let ix = 0; ix < nx; ix++) {
+        const uid = unitIds[ix + iy * nx + iz * nx * ny];
+        if (!uid) continue;
+        if (!unitBounds[uid]) unitBounds[uid] = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity, minZ: Infinity, maxZ: -Infinity, count: 0 };
+        const b = unitBounds[uid];
+        const wx = O.x + (ix + 0.5) * cs;
+        const wy = O.z + (iy + 0.5) * cs;
+        const wz = O.y + (iz + 0.5) * ch;
+        if (wx < b.minX) b.minX = wx; if (wx > b.maxX) b.maxX = wx;
+        if (wy < b.minY) b.minY = wy; if (wy > b.maxY) b.maxY = wy;
+        if (wz < b.minZ) b.minZ = wz; if (wz > b.maxZ) b.maxZ = wz;
+        b.count++;
+      }
+    }
+  }
+
+  return store.concepts.map(c => {
+    const emb = c.embedding;
+    let score = 0.5; // neutral start
+    const details = [];
+
+    // Check all units or only affinity-specified ones
+    const targetUnitIds = c.unitAffinity?.length
+      ? geoUnits.filter(u => c.unitAffinity.includes(u.code)).map(u => u.id)
+      : Object.keys(unitBounds).map(Number);
+
+    for (const uid of targetUnitIds) {
+      const b = unitBounds[uid];
+      if (!b || b.count < 3) continue;
+      const spanX = b.maxX - b.minX;   // E-W extent
+      const spanY = b.maxY - b.minY;   // N-S extent
+      const spanZ = b.maxZ - b.minZ;   // vertical extent
+
+      // E-W elongation: concept says spanX >> spanY
+      const ewAxis = emb[3]; // east_west_elongation
+      const nsAxis = emb[4]; // north_south_elongation
+      if (Math.abs(ewAxis) > 0.3) {
+        const actualRatio = spanX / Math.max(spanY, 0.1);
+        const expectedRatio = Math.exp(ewAxis * 1.4) / Math.exp(nsAxis * 1.4);
+        const match = 1 - Math.min(1, Math.abs(Math.log(actualRatio / expectedRatio)) / 1.5);
+        details.push({ axis: 'E-W elongation', expected: ewAxis.toFixed(2), actual: actualRatio.toFixed(1), match });
+        score += (match - 0.5) * 0.3 * Math.abs(ewAxis);
+      }
+
+      // Depth incision: concept says spanZ >> horiz span
+      const inciAxis = emb[29]; // incision_depth_ratio
+      if (Math.abs(inciAxis) > 0.3) {
+        const actualDepth = spanZ / Math.max(Math.min(spanX, spanY), 0.1);
+        const expectedDepth = Math.exp(inciAxis * 0.8);
+        const match = 1 - Math.min(1, Math.abs(Math.log(actualDepth / Math.max(expectedDepth, 0.1))) / 1.5);
+        details.push({ axis: 'incision depth', expected: inciAxis.toFixed(2), actual: actualDepth.toFixed(2), match });
+        score += (match - 0.5) * 0.2 * Math.abs(inciAxis);
+      }
+
+      // Layering: concept says spanX/spanY >> spanZ (horizontal flat body)
+      const layerAxis = emb[0]; // horizontal_layering
+      if (Math.abs(layerAxis) > 0.3) {
+        const actualFlat = Math.max(spanX, spanY) / Math.max(spanZ, 0.01);
+        const flat = layerAxis > 0 ? (actualFlat > 3 ? 1 : actualFlat / 3) : (actualFlat < 3 ? 1 : 3 / actualFlat);
+        details.push({ axis: 'horizontal layering', expected: layerAxis.toFixed(2), actual: actualFlat.toFixed(1), match: flat });
+        score += (flat - 0.5) * 0.2 * Math.abs(layerAxis);
+      }
+    }
+
+    score = Math.max(0, Math.min(1, score));
+    return { conceptId: c.id, description: c.description, score, details };
+  });
+}
+
+// Show coherence scores when triggered (button in concept panel)
+window._showConceptCoherence = function() {
+  const results = computeConceptCoherence();
+  if (!results.length) { log('Build the 3D model first, then check coherence.', 'warn'); return; }
+  const el = document.getElementById('concept-coherence-output');
+  if (!el) return;
+  el.innerHTML = results.map(r => {
+    const pct = (r.score * 100).toFixed(0);
+    const col = r.score > 0.65 ? 'var(--accent)' : r.score > 0.4 ? '#f0b429' : 'var(--red)';
+    return `<div class="coherence-row">
+      <span class="coherence-name" title="${r.description}">${r.description.slice(0, 35)}…</span>
+      <div class="coherence-bar-wrap"><div class="coherence-bar" style="width:${pct}%;background:${col}"></div></div>
+      <span class="coherence-pct" style="color:${col}">${pct}%</span>
+    </div>` +
+    (r.details.length
+      ? `<div class="coherence-details">${r.details.map(d => `<span>${d.axis}: exp ${d.expected} · got ${d.actual} · ${(d.match*100).toFixed(0)}%</span>`).join(' | ')}</div>`
+      : '');
+  }).join('');
+  el.style.display = 'block';
+};
+
 export function _renderConceptList() {
   const listEl = document.getElementById('concept-list');
   if (!listEl || !AppState.conceptStore) return;
