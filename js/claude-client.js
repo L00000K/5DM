@@ -951,11 +951,39 @@ function _demoConceptEmbedding(description) {
   if (/irregular|wavy|undulating/.test(d))               { acc(19, 0.7); }
   if (/complex|variable|heterogeneous/.test(d))          { acc(25, 0.7); acc(31, 0.5); }
 
+  // ── Sedimentary body geometry ─────────────────────────────────────────────
+  if (/lacustrine|lake\s+deposit|lacustral/.test(d))  { acc(0, 0.8); acc(9, 0.8); acc(0, 0.1); }
+  if (/fluvial|river\s+deposit|braided/.test(d))      { acc(5, 0.4); acc(27, 0.6); acc(22, 0.3); }
+  if (/aeolian|dune|wind.?blown/.test(d))             { acc(1, 0.5); acc(2, 0.4); acc(27, 0.7); }
+  if (/delta|deltaic|prograding/.test(d))             { acc(1, 0.5); acc(8, 0.4); acc(9, 0.5); acc(27, 0.6); }
+  if (/sand\s+body|sandstone\s+body/.test(d))         { acc(27, 0.5); acc(9, 0.3); }
+  if (/bedded|stratified|laminated/.test(d))          { acc(0, 0.7); acc(9, 0.6); acc(28, 0.5); }
+  if (/massive|structureless|unbedded/.test(d))       { acc(0, -0.7); acc(28, -0.4); }
+  if (/thick|wide|extensive\s+body/.test(d))          { acc(9, 0.5); acc(27, 0.4); }
+  if (/thin\s+bed|lamina|varve/.test(d))              { acc(0, 0.8); acc(28, 0.7); }
+
+  // ── Overburden and load controls ─────────────────────────────────────────
+  if (/overburden|load|preconsolid|ice.?load|surcharge/.test(d)) { acc(30, 0.8); }
+  if (/confined|loaded|buried\s+deep/.test(d))                   { acc(30, 0.5); }
+  if (/near.?surface|shallow|outcrop/.test(d))                   { acc(30, -0.3); }
+
+  // ── Complexity gradient ───────────────────────────────────────────────────
+  if (/complexity\s+increas|more\s+complex|highly\s+variable/.test(d)) { acc(31, 0.8); }
+  if (/increases\s+(?:towards?|toward)\s+(east|west|north|south)/.test(d)) { acc(31, 0.7); }
+  if (/uniform|consistent|homogeneous/.test(d))                           { acc(31, -0.5); }
+
+  // ── Vertical sequence ─────────────────────────────────────────────────────
+  if (/upward.?fining|fining.?up/.test(d))           { acc(22, 0.9); }
+  if (/upward.?coarsen|coarsen.?up/.test(d))         { acc(21, 0.9); }
+  if (/graded\s+bed|normal\s+grading/.test(d))       { acc(22, 0.7); }
+  if (/reverse\s+grad/.test(d))                      { acc(21, 0.7); }
+  if (/basal\s+sand|sand\s+base/.test(d))            { acc(8, 0.6); acc(23, 0.3); }
+
   // ── Confidence qualifiers ─────────────────────────────────────────────────
-  if (/certain|confident|definite|clear/.test(d))   { acc(26, 0.4); } // add to base 0.6
+  if (/certain|confident|definite|clear/.test(d))    { acc(26, 0.4); }
   if (/uncertain|possible|probable|inferred/.test(d)) { acc(26, -0.3); }
-  if (/very\s+likely|high\s+confidence/.test(d))    { acc(26, 0.3); }
-  if (/low\s+confidence|speculative/.test(d))        { acc(26, -0.5); }
+  if (/very\s+likely|high\s+confidence/.test(d))     { acc(26, 0.3); }
+  if (/low\s+confidence|speculative/.test(d))         { acc(26, -0.5); }
 
   // Data confidence default
   if (emb[26] === 0) acc(26, 0.6);

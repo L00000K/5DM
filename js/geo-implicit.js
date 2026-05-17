@@ -411,7 +411,16 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
         // extra semantic certainty, so we want stronger gradient signal there.
         const conceptBoost = ctx ? Math.min(0.5, ctx.totalWeight * 0.3) : 0;
         const warped = { x: bh.x / tensor.Ax, y: bh.y / tensor.Ay, z: wz / tensor.Az };
-        const pos = fourierEnc.encode(warped.x, warped.y, warped.z, warpedBounds);
+        // Apply depth trend: deepening axes tilt the Z coordinate in normalised space.
+        // This makes the implicit field naturally learn dipping contacts without extra samples.
+        let warpedZ = warped.z;
+        const trend = ctx?.trend;
+        if (trend && (Math.abs(trend.dz_dxN) > 0.005 || Math.abs(trend.dz_dyN) > 0.005)) {
+          const xN = 2 * (warped.x - warpedBounds.minX) / Math.max(1e-6, warpedBounds.maxX - warpedBounds.minX) - 1;
+          const yN = 2 * (warped.y - warpedBounds.minY) / Math.max(1e-6, warpedBounds.maxY - warpedBounds.minY) - 1;
+          warpedZ += trend.dz_dxN * xN + trend.dz_dyN * yN;
+        }
+        const pos = fourierEnc.encode(warped.x, warped.y, warpedZ, warpedBounds);
         const inp = new Float32Array(nIn);
         inp.set(pos);
         inp.set(ctxVec, fourierEnc.outDim);
@@ -463,7 +472,14 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
               if (ctx.totalWeight < 0.2) continue;
               const tensor = ctx.tensor;
               const warpedPt = { x: sx / tensor.Ax, y: sy / tensor.Ay, z: sz / tensor.Az };
-              const pos  = fourierEnc.encode(warpedPt.x, warpedPt.y, warpedPt.z, warpedBounds);
+              let warpedPtZ = warpedPt.z;
+              const vTrend = ctx.trend;
+              if (vTrend && (Math.abs(vTrend.dz_dxN) > 0.005 || Math.abs(vTrend.dz_dyN) > 0.005)) {
+                const xN = 2 * (warpedPt.x - warpedBounds.minX) / Math.max(1e-6, warpedBounds.maxX - warpedBounds.minX) - 1;
+                const yN = 2 * (warpedPt.y - warpedBounds.minY) / Math.max(1e-6, warpedBounds.maxY - warpedBounds.minY) - 1;
+                warpedPtZ += vTrend.dz_dxN * xN + vTrend.dz_dyN * yN;
+              }
+              const pos  = fourierEnc.encode(warpedPt.x, warpedPt.y, warpedPtZ, warpedBounds);
               const inp  = new Float32Array(nIn);
               inp.set(pos);
               inp.set(ctx.vec, fourierEnc.outDim);
@@ -562,6 +578,11 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore) {
   const codeToId = {};
   geoUnits.forEach(u => { codeToId[u.code] = u.id; });
 
+  // Column-context cache: concept context only varies with (worldX, worldY) since
+  // all current domain types use only horizontal position for relevance.
+  // Caching saves nz concept-context computations per column during inference.
+  const colCtxCache = new Map(); // key = `${ix},${iy}`
+
   for (let iz = nz - 1; iz >= 0; iz--) {
     const worldZ = origin.y + iz * cellHeight + cellHeight * 0.5;
     for (let iy = 0; iy < ny; iy++) {
@@ -570,15 +591,27 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore) {
         const worldX = origin.x + ix * cellSize + cellSize * 0.5;
         const idx    = ix + iy * nx + iz * nx * ny;
 
-        // Compute per-voxel concept context and anisotropy tensor
-        const ctx    = conceptStore ? conceptStore.computeAt(worldX, worldY, worldZ) : null;
+        // Fetch or compute concept context — cached per (ix,iy) column
+        const colKey = ix * ny + iy;
+        let ctx = colCtxCache.get(colKey);
+        if (ctx === undefined) {
+          ctx = conceptStore ? conceptStore.computeAt(worldX, worldY, worldZ) : null;
+          colCtxCache.set(colKey, ctx);
+        }
         const ctxVec = ctx?.vec ?? zeroCtx;
         const tensor = ctx?.tensor ?? gTensor;
 
         // Warp coordinates by concept anisotropy tensor, then Fourier encode
         const wx  = worldX / tensor.Ax;
         const wy  = worldY / tensor.Ay;
-        const wz  = worldZ / tensor.Az;
+        let   wz  = worldZ / tensor.Az;
+        // Apply depth trend: tilt Z so the field naturally dips in the predicted direction
+        const iTrend = ctx?.trend;
+        if (iTrend && (Math.abs(iTrend.dz_dxN) > 0.005 || Math.abs(iTrend.dz_dyN) > 0.005)) {
+          const xN = 2 * (wx - useBounds.minX) / Math.max(1e-6, useBounds.maxX - useBounds.minX) - 1;
+          const yN = 2 * (wy - useBounds.minY) / Math.max(1e-6, useBounds.maxY - useBounds.minY) - 1;
+          wz += iTrend.dz_dxN * xN + iTrend.dz_dyN * yN;
+        }
         const pos = fourierEnc.encode(wx, wy, wz, useBounds);
 
         const inp = new Float32Array(nIn);

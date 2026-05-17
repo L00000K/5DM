@@ -143,7 +143,18 @@ export class ConceptStore {
       .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
       .slice(0, 8);
 
-    return { vec, weights, tensor: this._embeddingToTensor(vec), totalWeight: totalW, activeAxes };
+    // Depth trend: axes 14-17 encode E/W/N/S deepening directions.
+    // Net trend vector in normalised coordinate space (per unit of normalised position).
+    // Applied as: z_adj = z + trend.dz_dxN * xNorm + trend.dz_dyN * yNorm
+    // This biases the Z coordinate so the implicit surface naturally dips in the
+    // predicted direction without needing extra training samples.
+    const TREND_SCALE = 0.35; // controls how strongly deepening axes tilt the coordinate
+    const trend = {
+      dz_dxN: (vec[14] - vec[15]) * TREND_SCALE,  // E deepening → dz/dx positive
+      dz_dyN: (vec[16] - vec[17]) * TREND_SCALE,  // N deepening → dz/dy positive
+    };
+
+    return { vec, weights, tensor: this._embeddingToTensor(vec), totalWeight: totalW, activeAxes, trend };
   }
 
   /**

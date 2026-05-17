@@ -3482,6 +3482,24 @@ function initSectionInterpreter() {
       // warp the neural field's coordinate space, shaping the output geometry.
       if (!AppState.conceptStore) AppState.conceptStore = new ConceptStore();
       const statements = parsed.conceptual_statements ?? parsed.semantic_keywords ?? [];
+
+      // Assign a spatial domain matching the fence footprint so section-derived
+      // concepts influence only the region around the section, not the whole site.
+      const sectionLen = fence
+        ? Math.hypot(fence.endX - fence.startX, fence.endY - fence.startY)
+        : 0;
+      const sectionBuf = Math.max(20, sectionLen * 0.25);
+      const conceptDomain = fence && sectionLen > 0
+        ? {
+            type: 'bbox',
+            minX: Math.min(fence.startX, fence.endX) - sectionBuf,
+            maxX: Math.max(fence.startX, fence.endX) + sectionBuf,
+            minY: Math.min(fence.startY, fence.endY) - sectionBuf,
+            maxY: Math.max(fence.startY, fence.endY) + sectionBuf,
+            sigma: Math.max(30, sectionLen * 0.4),
+          }
+        : { type: 'global' };
+
       const conceptIds = [];
       for (const stmt of statements) {
         if (!stmt?.trim()) continue;
@@ -3491,7 +3509,7 @@ function initSectionInterpreter() {
             description: stmt,
             embedding:   emb,
             confidence:  parsed.confidence ?? 0.72,
-            domain:      { type: 'global' },
+            domain:      conceptDomain,
           });
           conceptIds.push(id);
         } catch (e) { log(`Concept encode warning: ${e.message}`, 'warn'); }
@@ -4033,34 +4051,54 @@ export function computeConceptCoherence() {
       const spanY = b.maxY - b.minY;   // N-S extent
       const spanZ = b.maxZ - b.minZ;   // vertical extent
 
-      // E-W elongation: concept says spanX >> spanY
+      // E-W vs N-S elongation axes
       const ewAxis = emb[3]; // east_west_elongation
       const nsAxis = emb[4]; // north_south_elongation
-      if (Math.abs(ewAxis) > 0.3) {
+      const netEW = ewAxis - nsAxis; // positive → should be E-W elongated
+      if (Math.abs(netEW) > 0.25) {
         const actualRatio = spanX / Math.max(spanY, 0.1);
-        const expectedRatio = Math.exp(ewAxis * 1.4) / Math.exp(nsAxis * 1.4);
-        const match = 1 - Math.min(1, Math.abs(Math.log(actualRatio / expectedRatio)) / 1.5);
-        details.push({ axis: 'E-W elongation', expected: ewAxis.toFixed(2), actual: actualRatio.toFixed(1), match });
-        score += (match - 0.5) * 0.3 * Math.abs(ewAxis);
+        const expectedRatio = Math.exp(netEW * 1.4);
+        const match = 1 - Math.min(1, Math.abs(Math.log(actualRatio / Math.max(expectedRatio, 0.05))) / 2.0);
+        details.push({ axis: 'E/W vs N/S elongation', expected: netEW.toFixed(2), actual: actualRatio.toFixed(1), match });
+        score += (match - 0.5) * 0.35 * Math.abs(netEW);
       }
 
-      // Depth incision: concept says spanZ >> horiz span
+      // Lateral anisotropy (any direction): concept says max(spanX,spanY) >> min
+      const latAxis = emb[27]; // lateral_anisotropy
+      if (latAxis > 0.3) {
+        const horizRatio = Math.max(spanX, spanY) / Math.max(Math.min(spanX, spanY), 0.1);
+        const match = Math.min(1, (horizRatio - 1) / (Math.exp(latAxis * 1.4) - 1 + 0.1));
+        details.push({ axis: 'lateral anisotropy', expected: latAxis.toFixed(2), actual: horizRatio.toFixed(1), match });
+        score += (match - 0.5) * 0.2 * latAxis;
+      }
+
+      // Depth incision: concept says spanZ proportional to incision_depth_ratio
       const inciAxis = emb[29]; // incision_depth_ratio
       if (Math.abs(inciAxis) > 0.3) {
         const actualDepth = spanZ / Math.max(Math.min(spanX, spanY), 0.1);
         const expectedDepth = Math.exp(inciAxis * 0.8);
-        const match = 1 - Math.min(1, Math.abs(Math.log(actualDepth / Math.max(expectedDepth, 0.1))) / 1.5);
+        const match = 1 - Math.min(1, Math.abs(Math.log(actualDepth / Math.max(expectedDepth, 0.05))) / 1.5);
         details.push({ axis: 'incision depth', expected: inciAxis.toFixed(2), actual: actualDepth.toFixed(2), match });
         score += (match - 0.5) * 0.2 * Math.abs(inciAxis);
       }
 
-      // Layering: concept says spanX/spanY >> spanZ (horizontal flat body)
+      // Horizontal layering: concept says spanX/spanY >> spanZ (flat body)
       const layerAxis = emb[0]; // horizontal_layering
       if (Math.abs(layerAxis) > 0.3) {
         const actualFlat = Math.max(spanX, spanY) / Math.max(spanZ, 0.01);
-        const flat = layerAxis > 0 ? (actualFlat > 3 ? 1 : actualFlat / 3) : (actualFlat < 3 ? 1 : 3 / actualFlat);
-        details.push({ axis: 'horizontal layering', expected: layerAxis.toFixed(2), actual: actualFlat.toFixed(1), match: flat });
-        score += (flat - 0.5) * 0.2 * Math.abs(layerAxis);
+        const match = layerAxis > 0 ? (actualFlat > 3 ? 1 : actualFlat / 3) : (actualFlat < 3 ? 1 : 3 / actualFlat);
+        details.push({ axis: 'horizontal layering', expected: layerAxis.toFixed(2), actual: actualFlat.toFixed(1), match });
+        score += (match - 0.5) * 0.2 * Math.abs(layerAxis);
+      }
+
+      // Channel morphology: concept says body should be narrow relative to incision
+      const chanAxis = emb[5]; // channel_morphology
+      if (chanAxis > 0.3) {
+        // High channel_morphology → body should be deep relative to width
+        const narrowness = spanZ / Math.max(Math.max(spanX, spanY), 0.1);
+        const match = Math.min(1, narrowness / Math.exp(chanAxis * 0.8));
+        details.push({ axis: 'channel morphology', expected: chanAxis.toFixed(2), actual: narrowness.toFixed(2), match });
+        score += (match - 0.5) * 0.15 * chanAxis;
       }
     }
 
@@ -4177,12 +4215,14 @@ export function getVoxelAttribution(worldX, worldY, worldZ, unitCode = null) {
   const bhWeights = _nearestBHWeights(worldX, worldY, worldZ, depth, 3);
 
   const tensor = concepts.tensor;
+  const trend  = concepts.trend ?? { dz_dxN: 0, dz_dyN: 0 };
   return {
     conceptWeights:    concepts.weights.slice(0, 4),
     bhWeights,
     tensor:            { Ax: tensor.Ax.toFixed(2), Ay: tensor.Ay.toFixed(2), Az: tensor.Az.toFixed(2) },
     semanticDominance: concepts.totalWeight > 0 ? Math.min(1, concepts.totalWeight) : 0,
     activeAxes:        concepts.activeAxes ?? [],
+    trend:             { dz_dxN: trend.dz_dxN, dz_dyN: trend.dz_dyN },
   };
 }
 
@@ -4216,7 +4256,7 @@ function _computeAttribution(worldX, worldY, worldZ) {
 
 function _renderAttribution(attr, unitCode) {
   if (!attr) return '';
-  const { conceptWeights, bhWeights, tensor, semanticDominance, activeAxes } = attr;
+  const { conceptWeights, bhWeights, tensor, semanticDominance, activeAxes, trend } = attr;
 
   const semPct = (semanticDominance * 100).toFixed(0);
   const datPct = Math.max(0, 100 - semPct).toFixed(0);
@@ -4277,5 +4317,6 @@ function _renderAttribution(attr, unitCode) {
     <div class="trace-section">
       <div class="trace-section-hdr">Coordinate Warp</div>
       <div class="trace-warp">E-W ×${tensor.Ax} · N-S ×${tensor.Ay} · Z ×${tensor.Az}</div>
+      ${trend && (Math.abs(trend.dz_dxN) > 0.01 || Math.abs(trend.dz_dyN) > 0.01) ? `<div class="trace-warp" style="margin-top:2px;color:var(--text-mid)">Depth trend: E ${trend.dz_dxN >= 0 ? '↘' : '↗'} ${Math.abs(trend.dz_dxN).toFixed(3)} · N ${trend.dz_dyN >= 0 ? '↘' : '↗'} ${Math.abs(trend.dz_dyN).toFixed(3)}</div>` : ''}
     </div>`;
 }
