@@ -4987,6 +4987,9 @@ function initBHSticksToggle() {
   document.getElementById('show-bh-sticks')?.addEventListener('change', e => {
     if (AppState.scene) AppState.scene.toggleBoreholeSticks(e.target.checked);
   });
+  document.getElementById('show-orient-symbols')?.addEventListener('change', e => {
+    if (AppState.scene) AppState.scene.toggleOrientationSymbols(e.target.checked);
+  });
 }
 
 // ── Certainty threshold ────────────────────────────────────────────────────────
@@ -5268,8 +5271,55 @@ function initStereonet() {
         statsEl.innerHTML = lines || 'No orientation data';
       }
     }
+
+    // Show 3D dip symbols — sample ~50 representative positions per unit
+    _showDipSymbols3D(allOrientations, filterCode);
+
     log(`Stereonet: ${displayOrientations.length} orientation measurements computed`, 'ok');
   });
+}
+
+function _showDipSymbols3D(allOrientations, filterCode) {
+  if (!AppState.scene || !AppState.voxelGrid) return;
+  const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds } = AppState.voxelGrid;
+
+  const symbols = [];
+  const targetCodes = filterCode ? [filterCode] : Object.keys(allOrientations);
+  const MAX_PER_UNIT = 30;
+
+  for (const code of targetCodes) {
+    const orients = allOrientations[code];
+    if (!orients?.length) continue;
+    const unit = AppState.geoUnits.find(u => u.code === code);
+    const color = unit?.color ?? '#ff8800';
+
+    // Find surface cells for this unit and sample them
+    const cells = [];
+    for (let iy = 1; iy < ny - 1; iy++) {
+      for (let ix = 1; ix < nx - 1; ix++) {
+        for (let iz = nz - 1; iz >= 0; iz--) {
+          if (unitIds[ix + iy * nx + iz * nx * ny] === unit?.id) {
+            cells.push({ ix, iy, iz }); break;
+          }
+        }
+      }
+    }
+
+    const step = Math.max(1, Math.ceil(cells.length / MAX_PER_UNIT));
+    let oi = 0;
+    for (let ci = 0; ci < cells.length; ci += step) {
+      if (oi >= orients.length) oi = 0;
+      const { ix, iy, iz } = cells[ci];
+      const x    = O.x + (ix + 0.5) * cs;
+      const y    = O.z + (iy + 0.5) * cs;
+      const elev = O.y + (iz + 0.5) * ch;
+      const { dip, dipDir } = orients[oi++];
+      symbols.push({ x, y, elev, dip, dipDir, color });
+    }
+  }
+
+  AppState.scene.showOrientationSymbols(symbols);
+  if (symbols.length) log(`Showing ${symbols.length} dip symbols in 3D view.`, 'info');
 }
 
 // ── Bishop slope stability panel ──────────────────────────────────────────────

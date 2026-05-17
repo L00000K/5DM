@@ -336,6 +336,64 @@ class SceneManager {
     return this._builder?.colorByGradeShell(paramName, minVal, maxVal, mode, highlightHex, dimOthers, geoUnits) ?? null;
   }
 
+  // ── 3D Orientation / dip symbols ──────────────────────────────────────────
+  // orientations: [{x, y, elev, dip, dipDir, color}] — dip in degrees from horizontal,
+  //               dipDir in degrees clockwise from north (same as dip direction convention).
+  showOrientationSymbols(orientations) {
+    if (this._orientGroup) {
+      this._scene.remove(this._orientGroup);
+      this._orientGroup.traverse(o => { o.geometry?.dispose(); o.material?.dispose(); });
+    }
+    if (!orientations?.length) { this._orientGroup = null; return; }
+
+    const group = new THREE.Group();
+    const DEG = Math.PI / 180;
+    const RADIUS = 2.5;
+
+    for (const o of orientations) {
+      const { x, y, elev, dip, dipDir, color = '#ff8800' } = o;
+      const dipRad = (dip ?? 0) * DEG;
+      const azRad  = (dipDir ?? 0) * DEG; // clockwise from north
+
+      // Create a disc (circle) with a tick mark showing dip direction
+      const discGeom = new THREE.CircleGeometry(RADIUS, 16);
+      const mat = new THREE.MeshBasicMaterial({
+        color, side: THREE.DoubleSide, transparent: true, opacity: 0.75,
+      });
+      const disc = new THREE.Mesh(discGeom, mat);
+
+      // Strike direction is dipDir - 90° (right-hand rule)
+      const strikeRad = azRad - Math.PI / 2;
+
+      // Rotate disc: start flat (XZ plane), rotate around strike axis by dip angle
+      disc.rotation.x = Math.PI / 2;   // lie in XZ plane
+      disc.rotation.y = -strikeRad;    // align strike
+      disc.rotateOnWorldAxis(new THREE.Vector3(Math.cos(strikeRad), 0, Math.sin(strikeRad)), dipRad);
+
+      disc.position.set(x, elev, y);
+      group.add(disc);
+
+      // Dip tick: a short line in the dip direction from centre
+      const tickEnd = new THREE.Vector3(
+        x + RADIUS * 0.8 * Math.sin(azRad) * Math.cos(dipRad),
+        elev - RADIUS * 0.8 * Math.sin(dipRad),
+        y + RADIUS * 0.8 * Math.cos(azRad) * Math.cos(dipRad),
+      );
+      const tickGeom = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(x, elev, y), tickEnd,
+      ]);
+      group.add(new THREE.Line(tickGeom, new THREE.LineBasicMaterial({ color: 0x222222 })));
+    }
+
+    this._orientGroup = group;
+    this._scene.add(group);
+    return orientations.length;
+  }
+
+  toggleOrientationSymbols(visible) {
+    if (this._orientGroup) this._orientGroup.visible = visible;
+  }
+
   setSurfaceOpacity(op) {
     this._surfaces.setOpacity(op);
     this._surfaces.setMCOpacity(op);
