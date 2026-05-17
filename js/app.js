@@ -30,6 +30,10 @@ import { computeOrientations, orientationStats, renderStereonet, renderRoseDiagr
 import { bishopAnalysis, renderSlopeSection } from './slope-stability.js';
 import { assessLiquefaction, renderLiquefactionProfile, summarizeCPTLiquefaction } from './liquefaction.js';
 import { computeMohrCircle, renderMohrCircle } from './mohr-circle.js';
+import { parseSectionFromText, sectionToVirtualBoreholes, sectionToTrainingSamples,
+         computeLocalContext, sketchToVirtualBoreholes, fenceLength } from './section-interpreter.js';
+import { SectionSketch } from './section-sketch.js';
+import { FourierEncoder, GeoKeywordEncoder } from './geo-implicit.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -73,6 +77,9 @@ export const AppState = {
   mcRealisations: 20,
   faultPlanes: [],
   shapeBoreholes: [],
+  sectionBoreholes: [],   // virtual BHs from section descriptions/sketches
+  sectionSamples: [],     // neural implicit training samples from sections
+  sectionPlanes: [],      // [{fence, localKwVec}] for inference-time local context
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
@@ -705,6 +712,12 @@ function initBuildModel() {
         log(`Injecting ${AppState.shapeBoreholes.length} geological feature virtual boreholes`, 'info');
       }
 
+      // Inject section boreholes (described or sketched cross-sections)
+      if (AppState.sectionBoreholes?.length) {
+        bhForModel = [...bhForModel, ...AppState.sectionBoreholes];
+        log(`Injecting ${AppState.sectionBoreholes.length} section virtual boreholes (${AppState.sectionPlanes?.length ?? 0} section plane(s))`, 'info');
+      }
+
       // Extract fault planes from constraint text before building
       const constraintText = document.getElementById('constraints-text')?.value?.trim() ?? '';
       if (constraintText && AppState.geoUnits.length) {
@@ -737,6 +750,9 @@ function initBuildModel() {
         varSill:   AppState.varSill,
         varNugget: AppState.varNugget,
         faultPlanes: AppState.faultPlanes,
+        sectionSamples:      AppState.sectionSamples ?? [],
+        sectionPlanes:       AppState.sectionPlanes  ?? [],
+        computeLocalContext: AppState.sectionPlanes?.length ? computeLocalContext : null,
         onProgress: p => setBuildProgress(p),
       };
 
@@ -1885,6 +1901,7 @@ function initFenceSection() {
       slicer._thickness,
       AppState.classifiedBH
     );
+    window.dispatchEvent(new CustomEvent('geomodel:fence-updated'));
   });
 
   document.getElementById('fence-export-dxf')?.addEventListener('click', () => {
@@ -3056,6 +3073,7 @@ async function init() {
   initGeoFeatures();
   initLiquefaction();
   initMohrCircle();
+  initSectionInterpreter();
 
   // Sample tile buttons (left panel)
   document.querySelectorAll('.sample-tile').forEach(btn => {
@@ -3314,6 +3332,213 @@ function initLiquefaction() {
         btn.disabled = false; btn.textContent = '⚡ Run Liquefaction Assessment';
       }
     }, 10);
+  });
+}
+
+// ── Section Interpreter (text description + sketch) ───────────────────────────
+function initSectionInterpreter() {
+  // ── Sub-tab switching ──────────────────────────────────────────────────────
+  document.querySelectorAll('.section-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.section-tab-btn').forEach(b => {
+        b.style.borderBottomColor = 'transparent';
+        b.style.color = 'var(--text-mid)';
+      });
+      btn.style.borderBottomColor = 'var(--accent)';
+      btn.style.color = 'var(--accent)';
+      const tab = btn.dataset.stab;
+      document.getElementById('section-tab-describe').hidden = tab !== 'describe';
+      document.getElementById('section-tab-sketch').hidden   = tab !== 'sketch';
+    });
+  });
+
+  // ── Fence selector ─────────────────────────────────────────────────────────
+  const fenceSel = document.getElementById('section-fence-select');
+  const _updateFenceSel = () => {
+    if (!fenceSel) return;
+    const fence = _getCurrentFence();
+    if (fence) {
+      const len = fenceLength(fence).toFixed(0);
+      fenceSel.innerHTML = `<option value="current">Current fence (${len} m)</option>`;
+    } else {
+      fenceSel.innerHTML = '<option value="">— draw a fence section first —</option>';
+    }
+  };
+  window.addEventListener('geomodel:fence-updated', _updateFenceSel);
+
+  const _getCurrentFence = () => {
+    const args = AppState.fenceSection?._lastArgs;
+    if (!args) return null;
+    const { grid, normal, centerD } = args;
+    if (!grid || !normal) return null;
+    const { nx, ny, cellSize: cs, origin: O } = grid;
+    // Along-section direction (perpendicular to normal in XZ plane, i.e. Easting/Northing)
+    const along = { x: normal.z, z: -normal.x };
+    // Project model centre onto section plane
+    const cx0  = O.x + nx * cs * 0.5;
+    const cz0  = O.z + ny * cs * 0.5;
+    const proj  = centerD - (normal.x * cx0 + normal.z * cz0);
+    const sx0   = cx0 + normal.x * proj;
+    const sz0   = cz0 + normal.z * proj;
+    const halfW = Math.max(nx * cs, ny * cs) * 0.6;
+    // Fence in geological coords: X=Easting (wx), Y=Northing (wz)
+    return {
+      startX: sx0 + along.x * (-halfW),  startY: sz0 + along.z * (-halfW),
+      endX:   sx0 + along.x *   halfW,   endY:   sz0 + along.z *   halfW,
+    };
+  };
+
+  // ── Text description path ──────────────────────────────────────────────────
+  const parseBtn    = document.getElementById('btn-parse-section');
+  const parseResult = document.getElementById('section-parse-result');
+  const descArea    = document.getElementById('input-section-desc');
+
+  // Enable parse button once we have units
+  window.addEventListener('geomodel:data-ready',  () => setEnabled('btn-parse-section', AppState.geoUnits.length > 0));
+  window.addEventListener('geomodel:model-built', () => setEnabled('btn-parse-section', AppState.geoUnits.length > 0));
+
+  parseBtn?.addEventListener('click', async () => {
+    const text = descArea?.value?.trim();
+    if (!text) { log('Enter a section description first.', 'warn'); return; }
+    if (!AppState.geoUnits.length) { log('Run AI classification first.', 'warn'); return; }
+
+    const fence = _getCurrentFence();
+    if (!fence) {
+      log('Draw a fence section in the 3D view first (right-click → Fence section), then come back.', 'warn');
+      parseResult.textContent = '⚠ No fence line — draw one in the 3D view first.';
+      return;
+    }
+
+    parseBtn.disabled = true;
+    parseBtn.textContent = '⏳ Parsing with Claude…';
+    parseResult.textContent = '';
+    log('Parsing geological section description…', 'info');
+
+    try {
+      const parsed = await parseSectionFromText(
+        text, AppState.geoUnits, fence,
+        AppState.apiKey, AppState.demoMode,
+      );
+
+      const gl = Math.max(...AppState.classifiedBH.map(b => b.groundLevel ?? 0), 0);
+      const vbhs = sectionToVirtualBoreholes(parsed, fence, AppState.geoUnits, gl);
+
+      // Build neural implicit section training samples
+      const fourierEnc = new FourierEncoder();
+      const xs = AppState.classifiedBH.map(b => b.x);
+      const ys = AppState.classifiedBH.map(b => b.y);
+      const bounds = {
+        minX: Math.min(...xs) - 10, maxX: Math.max(...xs) + 10,
+        minY: Math.min(...ys) - 10, maxY: Math.max(...ys) + 10,
+        minZ: gl - 40, maxZ: gl + 2,
+      };
+      const secSamples = sectionToTrainingSamples(
+        parsed, fence, AppState.geoUnits, fourierEnc, bounds, text, gl,
+      );
+
+      // Store section's local keyword vector for inference-time context
+      const kwEnc2 = new GeoKeywordEncoder();
+      const localKwVec = kwEnc2.encode([
+        text, ...(parsed.semantic_keywords ?? [])
+      ].join(' '));
+
+      AppState.sectionBoreholes = [...(AppState.sectionBoreholes ?? []), ...vbhs];
+      AppState.sectionSamples   = [...(AppState.sectionSamples   ?? []), ...secSamples];
+      AppState.sectionPlanes    = [...(AppState.sectionPlanes    ?? []), { fence, localKwVec }];
+
+      const kws = (parsed.semantic_keywords ?? []).join(', ') || '—';
+      parseResult.innerHTML =
+        `<span style="color:#4ae87a">✓ ${vbhs.length} virtual boreholes injected · ${secSamples.length} neural samples · keywords: ${kws}</span><br>
+         <span style="color:var(--text-mid)">Rebuild the 3D model to apply.</span>`;
+      log(`Section parsed: ${vbhs.length} virtual BHs · ${secSamples.length} neural training samples · keywords: ${kws}`, 'ok');
+      setEnabled('btn-build-model', true);
+
+    } catch (err) {
+      parseResult.innerHTML = `<span style="color:#e84040">Error: ${err.message}</span>`;
+      log(`Section parse error: ${err.message}`, 'error');
+    } finally {
+      parseBtn.disabled = false;
+      parseBtn.textContent = '✦ Parse Section & Inject →';
+    }
+  });
+
+  // ── Sketch path ────────────────────────────────────────────────────────────
+  const sketchCanvas = document.getElementById('sketch-canvas');
+  const sketchInfo   = document.getElementById('sketch-info');
+  const unitSel      = document.getElementById('sketch-unit-select');
+  const undoBtn      = document.getElementById('btn-sketch-undo');
+  const clearBtn     = document.getElementById('btn-sketch-clear');
+  const injectBtn    = document.getElementById('btn-sketch-inject');
+  let sketch = null;
+
+  const _initSketch = () => {
+    if (!sketchCanvas) return;
+    if (sketch) sketch.destroy();
+    sketch = new SectionSketch(sketchCanvas, sketchInfo);
+    const fence = _getCurrentFence();
+    if (fence && AppState.geoUnits.length) {
+      const gl = Math.max(...AppState.classifiedBH.map(b => b.groundLevel ?? 0), 0);
+      sketch.setContext(fence, AppState.geoUnits, 30, AppState.voxelGrid);
+      const firstUnit = AppState.geoUnits.find(u => u.code !== 'UNKN');
+      if (firstUnit) { sketch.setActiveUnit(firstUnit.code); unitSel.value = firstUnit.code; }
+    }
+  };
+
+  // Populate unit selector when model is built
+  const _populateSketchUnits = () => {
+    if (!unitSel || !AppState.geoUnits.length) return;
+    unitSel.innerHTML = AppState.geoUnits
+      .filter(u => u.code !== 'UNKN')
+      .map(u => `<option value="${u.code}" style="color:${u.color}">${u.code} — ${u.name}</option>`)
+      .join('');
+    if (sketch) sketch.setActiveUnit(AppState.geoUnits.find(u => u.code !== 'UNKN')?.code);
+  };
+  window.addEventListener('geomodel:model-built', () => { _populateSketchUnits(); _initSketch(); });
+  window.addEventListener('geomodel:data-ready',  _populateSketchUnits);
+
+  // Switch to sketch tab → init sketch
+  document.querySelector('.section-tab-btn[data-stab="sketch"]')?.addEventListener('click', _initSketch);
+
+  unitSel?.addEventListener('change', () => sketch?.setActiveUnit(unitSel.value));
+
+  undoBtn?.addEventListener('click',  () => {
+    sketch?.undoLast();
+    if (undoBtn) undoBtn.disabled  = !sketch?.hasStrokes();
+    if (clearBtn) clearBtn.disabled = !sketch?.hasStrokes();
+    if (injectBtn) injectBtn.disabled = !sketch?.hasStrokes();
+  });
+  clearBtn?.addEventListener('click', () => {
+    sketch?.clearAll();
+    if (undoBtn) undoBtn.disabled  = true;
+    if (clearBtn) clearBtn.disabled = true;
+    if (injectBtn) injectBtn.disabled = true;
+  });
+
+  // Enable buttons when sketch has strokes
+  if (sketchCanvas) {
+    sketchCanvas.addEventListener('mouseup',   _sketchBtnUpdate);
+    sketchCanvas.addEventListener('touchend',  _sketchBtnUpdate);
+  }
+  function _sketchBtnUpdate() {
+    const has = sketch?.hasStrokes() ?? false;
+    if (undoBtn)  undoBtn.disabled  = !has;
+    if (clearBtn) clearBtn.disabled = !has;
+    if (injectBtn) injectBtn.disabled = !has;
+  }
+
+  injectBtn?.addEventListener('click', () => {
+    if (!sketch?.hasStrokes()) return;
+    const fence = _getCurrentFence();
+    if (!fence) { log('No fence line — draw one first.', 'warn'); return; }
+    const gl   = Math.max(...AppState.classifiedBH.map(b => b.groundLevel ?? 0), 0);
+    const vbhs = sketch.toVirtualBoreholes(gl);
+    if (!vbhs.length) { log('No valid strokes to inject.', 'warn'); return; }
+
+    AppState.sectionBoreholes = [...(AppState.sectionBoreholes ?? []), ...vbhs];
+    log(`Sketch: ${vbhs.length} virtual boreholes injected from section sketch. Rebuild model to apply.`, 'ok');
+    setEnabled('btn-build-model', true);
+    sketch.clearAll();
+    _sketchBtnUpdate();
   });
 }
 

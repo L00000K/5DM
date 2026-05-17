@@ -330,6 +330,64 @@
           <p id="orientation-result" class="hint" style="margin-top:3px"></p>
         </div>
 
+        <div class="settings-divider">Geological Section Input ✦ AI</div>
+        <div class="field-group">
+          <p class="hint" style="margin-bottom:6px;font-size:10px">Describe or sketch a cross-section to constrain the 3D model. Observations become dense virtual boreholes <em>and</em> section-local semantic context for the neural implicit field.</p>
+
+          <!-- Sub-tabs: Describe / Sketch -->
+          <div style="display:flex;gap:0;margin-bottom:8px;border-bottom:1px solid var(--border)">
+            <button class="section-tab-btn active" data-stab="describe"
+              style="flex:1;padding:4px 8px;font-size:10px;background:none;border:none;border-bottom:2px solid var(--accent);color:var(--accent);cursor:pointer">
+              ✍ Describe
+            </button>
+            <button class="section-tab-btn" data-stab="sketch"
+              style="flex:1;padding:4px 8px;font-size:10px;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-mid);cursor:pointer">
+              ✏ Sketch
+            </button>
+          </div>
+
+          <!-- Fence selector (shared) -->
+          <label style="font-size:10px;color:var(--text-mid);display:block;margin-bottom:4px">
+            Fence line
+            <select id="section-fence-select" class="isopach-select" style="width:100%;margin-top:2px">
+              <option value="">— draw a fence section first —</option>
+            </select>
+          </label>
+
+          <!-- Describe tab -->
+          <div id="section-tab-describe">
+            <textarea id="input-section-desc" rows="7"
+              style="width:100%;font-size:11px;background:var(--bg-panel);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;padding:6px;resize:vertical;font-family:inherit"
+              placeholder="Describe the geology along this section in plain English. Examples:&#10;&#10;• &quot;The London Clay starts at 2 m at the west end, deepening to 5 m at the east end at ~3° dip.&quot;&#10;• &quot;A sand lens (SA) sits at 8–12 m between chainage 100–200 m.&quot;&#10;• &quot;Made ground is 1.5 m thick throughout. Chalk is present at the east end from 20 m depth.&quot;&#10;&#10;Claude will parse this into virtual borehole observations and inject them into the interpolation."></textarea>
+            <button id="btn-parse-section" class="btn-secondary btn-sm"
+              style="margin-top:4px;width:100%;background:linear-gradient(135deg,var(--accent-cyan) 0%,#2a6aad 100%);color:#fff;border:none" disabled>
+              ✦ Parse Section &amp; Inject →
+            </button>
+            <div id="section-parse-result" class="hint" style="margin-top:4px;font-size:10px"></div>
+          </div>
+
+          <!-- Sketch tab -->
+          <div id="section-tab-sketch" hidden>
+            <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:6px;margin-bottom:4px">
+              Draw unit:
+              <select id="sketch-unit-select" class="isopach-select" style="flex:1;font-size:10px">
+                <option value="">— select unit —</option>
+              </select>
+            </label>
+            <canvas id="sketch-canvas" width="240" height="180"
+              style="width:100%;border:1px solid var(--border);border-radius:4px;cursor:crosshair;display:block;touch-action:none"></canvas>
+            <div id="sketch-info" class="hint" style="font-size:9px;margin:2px 0 4px">Select a fence line and unit, then draw boundary lines on the section.</div>
+            <div style="display:flex;gap:4px">
+              <button id="btn-sketch-undo" class="btn-secondary btn-sm" style="flex:1" disabled>↩ Undo</button>
+              <button id="btn-sketch-clear" class="btn-secondary btn-sm" style="flex:1" disabled>✕ Clear</button>
+              <button id="btn-sketch-inject" class="btn-secondary btn-sm"
+                style="flex:1;background:linear-gradient(135deg,var(--accent-cyan) 0%,#2a6aad 100%);color:#fff;border:none" disabled>
+                ↑ Inject
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div class="settings-divider">Geological Features ✦ AI</div>
         <div class="field-group">
           <label for="input-geo-features">Feature Descriptions</label>

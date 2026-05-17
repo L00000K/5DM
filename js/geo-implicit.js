@@ -245,6 +245,7 @@ export async function trainGeoImplicit(boreholes, geoUnits, context, options = {
     l2              = 0.001,
     samplesPerLayer = 6,
     onProgress      = null,
+    sectionSamples  = [],   // [{pos, target, weight, localKwVec}] from section-interpreter
   } = options;
 
   // Compute world bounds from borehole data
@@ -259,6 +260,14 @@ export async function trainGeoImplicit(boreholes, geoUnits, context, options = {
       bounds.maxZ = Math.max(bounds.maxZ, bh.groundLevel - l.top);
     }
   }
+  // Expand bounds to include section sample positions
+  for (const s of sectionSamples) {
+    if (s.x != null) {
+      bounds.minX = Math.min(bounds.minX, s.x); bounds.maxX = Math.max(bounds.maxX, s.x);
+      bounds.minY = Math.min(bounds.minY, s.y); bounds.maxY = Math.max(bounds.maxY, s.y);
+      bounds.minZ = Math.min(bounds.minZ, s.z); bounds.maxZ = Math.max(bounds.maxZ, s.z);
+    }
+  }
   // Add margin to avoid normalisation edge issues
   for (const [mn, mx] of [['minX','maxX'],['minY','maxY'],['minZ','maxZ']]) {
     const margin = (bounds[mx] - bounds[mn]) * 0.05 || 1;
@@ -266,15 +275,17 @@ export async function trainGeoImplicit(boreholes, geoUnits, context, options = {
   }
 
   const fourierEnc = new FourierEncoder(L_FOURIER);
-  const kwEnc   = context?.kwEncoder ?? new GeoKeywordEncoder();
-  const kwVec   = context?.keywords  ?? new Float32Array(kwEnc.outDim);
-  const nIn     = fourierEnc.outDim + kwEnc.outDim;
-  const nUnits  = geoUnits.length;
-  const unitCodes = geoUnits.map(u => u.code);
-  const unitIdx   = {};
+  const kwEnc      = context?.kwEncoder ?? new GeoKeywordEncoder();
+  const kwVec      = context?.keywords  ?? new Float32Array(kwEnc.outDim);
+  const localDim   = kwEnc.outDim;  // local section context has same vocab size
+  const nIn        = fourierEnc.outDim + kwEnc.outDim + localDim;
+  const nUnits     = geoUnits.length;
+  const unitCodes  = geoUnits.map(u => u.code);
+  const unitIdx    = {};
   geoUnits.forEach((u, i) => { unitIdx[u.code] = i; });
+  const zeroLocal  = new Float32Array(localDim); // BH samples have no local section context
 
-  // Build training samples
+  // Build training samples from boreholes (local context = zeros)
   const samples = [];
   for (const bh of boreholes) {
     for (const layer of (bh.layers ?? [])) {
@@ -289,11 +300,23 @@ export async function trainGeoImplicit(boreholes, geoUnits, context, options = {
         const pos = fourierEnc.encode(bh.x, bh.y, z, bounds);
         const inp = new Float32Array(nIn);
         inp.set(pos);
-        inp.set(kwVec, fourierEnc.outDim);
+        inp.set(kwVec,    fourierEnc.outDim);
+        inp.set(zeroLocal, fourierEnc.outDim + kwEnc.outDim); // no local context at BH locations
         samples.push({ inp, target: ti, weight: wt });
       }
     }
   }
+
+  // Merge section training samples (carry their local keyword context)
+  for (const ss of sectionSamples) {
+    const pos = ss.pos ?? fourierEnc.encode(ss.x, ss.y, ss.z, bounds);
+    const inp = new Float32Array(nIn);
+    inp.set(pos);
+    inp.set(kwVec, fourierEnc.outDim);
+    inp.set(ss.localKwVec ?? zeroLocal, fourierEnc.outDim + kwEnc.outDim);
+    samples.push({ inp, target: ss.target, weight: ss.weight });
+  }
+
   if (samples.length === 0) return null;
 
   const net = new GeoImplicitNet(nIn, 64, nUnits);
@@ -324,15 +347,22 @@ export async function trainGeoImplicit(boreholes, geoUnits, context, options = {
   }
 
   if (onProgress) onProgress(1, 0);
-  return { net, fourierEnc, kwVec, bounds, nUnits, unitCodes };
+  return { net, fourierEnc, kwVec, localDim, bounds, nUnits, unitCodes };
 }
 
 // ── Infer voxel grid from trained model ─────────────────────────────────────
 // grid must have { nx, ny, nz, cellSize, cellHeight, origin: {x,y,z} }
-export function inferGeoImplicit(trained, grid, geoUnits) {
-  const { net, fourierEnc, kwVec, bounds, unitCodes } = trained;
+// options.sectionPlanes: [{fence, localKwVec}] for spatially-local section context
+// options.computeLocalContext: function(x, y, planes) from section-interpreter
+export function inferGeoImplicit(trained, grid, geoUnits, options = {}) {
+  const sectionPlanes = Array.isArray(options) ? [] : (options.sectionPlanes ?? []);
+  const computeLC     = Array.isArray(options) ? null : (options.computeLocalContext ?? null);
+  const { net, fourierEnc, kwVec, localDim, bounds, unitCodes } = trained;
+  const zeroLocal = new Float32Array(localDim ?? 0);
   const { nx, ny, nz, cellSize, cellHeight, origin } = grid;
-  const nIn = fourierEnc.outDim + (kwVec?.length ?? 0);
+  const kwLen  = kwVec?.length ?? 0;
+  const locLen = localDim ?? 0;
+  const nIn    = fourierEnc.outDim + kwLen + locLen;
 
   const unitIds      = new Uint8Array(nx * ny * nz);
   const certainty    = new Float32Array(nx * ny * nz);
@@ -354,6 +384,11 @@ export function inferGeoImplicit(trained, grid, geoUnits) {
         const inp = new Float32Array(nIn);
         inp.set(pos);
         if (kwVec) inp.set(kwVec, fourierEnc.outDim);
+        // Local context from section planes — spatially blended by proximity
+        if (computeLC && sectionPlanes.length && locLen > 0) {
+          const local = computeLC(worldX, worldY, sectionPlanes);
+          inp.set(local, fourierEnc.outDim + kwLen);
+        }
 
         const probs = net.predict(inp);
 

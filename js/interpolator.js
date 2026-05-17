@@ -613,6 +613,11 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
     log(`Training neural implicit field (${options.niEpochs ?? 400} epochs)…`, 'info');
     if (onProgress) onProgress(0.02);
 
+    const sectionSamples = options.sectionSamples ?? [];
+    if (sectionSamples.length) {
+      log(`Section semantics: ${sectionSamples.length} section training sample(s) added to neural field`, 'info');
+    }
+
     const trainedModel = await trainGeoImplicit(
       allBoreholes, geoUnits, geoCtx,
       {
@@ -621,6 +626,7 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
         lrMin:           0.001,
         l2:              0.001,
         samplesPerLayer: 8,
+        sectionSamples,
         onProgress: (frac, loss) => {
           if (onProgress) onProgress(0.02 + frac * 0.7);
           if (frac < 1) log(`  …epoch ${Math.round(frac * (options.niEpochs ?? 400))} loss=${loss?.toFixed(4) ?? '–'}`, 'info');
@@ -634,7 +640,10 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
     } else {
       log('Inferring voxel grid from neural implicit field…', 'info');
       const gridMeta = { nx, ny, nz, cellSize, cellHeight: cellH, origin: { x: ox, y: oz, z: oy } };
-      const inferred = inferGeoImplicit(trainedModel, gridMeta, geoUnits);
+      const inferred = inferGeoImplicit(trainedModel, gridMeta, geoUnits, {
+        sectionPlanes:      options.sectionPlanes ?? [],
+        computeLocalContext: options.computeLocalContext ?? null,
+      });
       unitIds.set(inferred.unitIds);
       certainty.set(inferred.certainty);
       blendUnitIds.set(inferred.blendUnitIds);
