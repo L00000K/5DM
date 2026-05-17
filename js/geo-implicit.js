@@ -83,15 +83,24 @@ class AdamOpt {
     this.v = params.map(p => new Float32Array(p.length));
   }
 
-  step(grads) {
+  step(grads, clipNorm = 5.0) {
     this.t++;
     const { beta1, beta2, eps, t } = this;
     const lrt = this.lr * Math.sqrt(1 - Math.pow(beta2, t)) / (1 - Math.pow(beta1, t));
+
+    // Global gradient clipping: prevents explosive updates when concept boosts
+    // create large gradient magnitudes early in training.
+    let gnorm2 = 0;
+    for (const g of grads) for (let i = 0; i < g.length; i++) gnorm2 += g[i] * g[i];
+    const gnorm = Math.sqrt(gnorm2);
+    const scale = gnorm > clipNorm ? clipNorm / gnorm : 1.0;
+
     for (let pi = 0; pi < this.params.length; pi++) {
       const p = this.params[pi], g = grads[pi], m = this.m[pi], v = this.v[pi];
       for (let i = 0; i < p.length; i++) {
-        m[i] = beta1 * m[i] + (1 - beta1) * g[i];
-        v[i] = beta2 * v[i] + (1 - beta2) * g[i] * g[i];
+        const gi = g[i] * scale;
+        m[i] = beta1 * m[i] + (1 - beta1) * gi;
+        v[i] = beta2 * v[i] + (1 - beta2) * gi * gi;
         p[i] -= lrt * m[i] / (Math.sqrt(v[i]) + eps);
       }
     }
@@ -474,8 +483,25 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
   const net = new GeoImplicitNet(nIn, 64, nUnits, fourierEnc.outDim);
   const opt = new AdamOpt(net._params, lr);
 
+  // FiLM warmup: for the first filmWarmup fraction of training, gradually scale up
+  // FiLM contributions so the base network learns the borehole distribution first,
+  // then FiLM modulation refines the geometry toward the conceptual model.
+  const FILM_WARMUP = 0.25; // fraction of epochs for warmup
+  const filmParamStart = 4; // params 4-7 are Wg0,Wg1,Wb0,Wb1 (FiLM weights)
+  const filmParamEnd   = 8;
+  const filmOrigScales = net._params.slice(filmParamStart, filmParamEnd).map(p => p.slice());
+
   for (let ep = 0; ep < epochs; ep++) {
     opt.setLr(lrMin + 0.5 * (lr - lrMin) * (1 + Math.cos(Math.PI * ep / epochs)));
+
+    // FiLM warmup: scale film weights by ramp factor (0→1 over first 25% of epochs)
+    const filmScale = Math.min(1, ep / Math.max(1, FILM_WARMUP * epochs));
+    for (let pi = filmParamStart; pi < filmParamEnd; pi++) {
+      const orig = filmOrigScales[pi - filmParamStart];
+      const cur  = net._params[pi];
+      for (let i = 0; i < cur.length; i++) cur[i] = orig[i] * filmScale;
+    }
+
     // Fisher-Yates shuffle
     for (let i = samples.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -489,6 +515,14 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
       // Pass sample weight so high-confidence concept regions drive stronger gradient updates
       opt.step(net.backward(s.inp, act, s.target, l2, s.weight));
     }
+
+    // After warmup ends, let Adam update FiLM weights naturally (don't rescale anymore)
+    if (ep === Math.floor(FILM_WARMUP * epochs)) {
+      for (let pi = filmParamStart; pi < filmParamEnd; pi++) {
+        filmOrigScales[pi - filmParamStart].set(net._params[pi]);
+      }
+    }
+
     if (onProgress && ep % 20 === 0) {
       onProgress(ep / epochs, totalLoss / samples.length);
       await new Promise(r => setTimeout(r, 0));
