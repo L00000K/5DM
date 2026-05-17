@@ -393,7 +393,51 @@ function _renderVariogram(boreholes) {
   if (fitted) {
     ctx.fillStyle = '#8a9bb0'; ctx.font = '7px monospace'; ctx.textAlign = 'right';
     ctx.fillText(`C0=${fitted.nugget.toFixed(2)} C1=${fitted.partialSill.toFixed(2)}`, W - PAD.r, H - 4);
+
+    // Populate manual override fields (only if not already manually set)
+    const nugEl = document.getElementById('var-nugget');
+    const silEl = document.getElementById('var-sill');
+    const ranEl = document.getElementById('var-range');
+    const infEl = document.getElementById('var-model-info');
+    if (nugEl && !nugEl._manualSet) nugEl.value = fitted.nugget.toFixed(3);
+    if (silEl && !silEl._manualSet) silEl.value = (fitted.nugget + fitted.partialSill).toFixed(3);
+    if (ranEl && !ranEl._manualSet) ranEl.value  = fitted.range.toFixed(1);
+    if (infEl) infEl.textContent = `Spherical model  C₀=${fitted.nugget.toFixed(3)}  C₁=${fitted.partialSill.toFixed(3)}  a=${fitted.range.toFixed(1)}m`;
   }
+}
+
+// ── Variogram manual controls ────────────────────────────────────────────────
+function initVariogramControls() {
+  document.getElementById('btn-var-apply')?.addEventListener('click', () => {
+    const nugget = parseFloat(document.getElementById('var-nugget')?.value ?? 'NaN');
+    const sill   = parseFloat(document.getElementById('var-sill')?.value ?? 'NaN');
+    const range  = parseFloat(document.getElementById('var-range')?.value ?? 'NaN');
+    if (!isFinite(nugget) || !isFinite(sill) || !isFinite(range)) {
+      log('Enter valid nugget, sill, and range values.', 'warn'); return;
+    }
+    if (sill <= nugget) { log('Sill must be greater than nugget.', 'warn'); return; }
+    if (range <= 0)     { log('Range must be positive.', 'warn'); return; }
+    AppState.varNugget = nugget;
+    AppState.varSill   = sill;
+    AppState.varRange  = range;
+    // Mark as manually set so auto-fit won't overwrite
+    ['var-nugget','var-sill','var-range'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el._manualSet = true;
+    });
+    const infEl = document.getElementById('var-model-info');
+    if (infEl) infEl.textContent = `Manual: C₀=${nugget.toFixed(3)}  C₁=${(sill - nugget).toFixed(3)}  a=${range.toFixed(1)}m  ✓`;
+    log(`Variogram: nugget=${nugget.toFixed(3)}, sill=${sill.toFixed(3)}, range=${range.toFixed(1)}m applied.`, 'ok');
+  });
+
+  document.getElementById('btn-var-refit')?.addEventListener('click', () => {
+    ['var-nugget','var-sill','var-range'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el._manualSet = false; el.value = ''; }
+    });
+    _renderVariogram(AppState.classifiedBH);
+    log('Variogram auto-refit from data.', 'info');
+  });
 }
 
 // ── Collapsible sections ───────────────────────────────────────────────────────
@@ -441,17 +485,14 @@ function initTopoUpload() {
 function parseTopoFile(file, infoEl) {
   const reader = new FileReader();
   reader.onload = e => {
-    const lines = e.target.result.split('\n').map(l => l.trim()).filter(Boolean);
-    const points = [];
-    for (const line of lines) {
-      const parts = line.split(/[,\t ]+/);
-      const x = parseFloat(parts[0]);
-      const y = parseFloat(parts[1]);
-      const z = parseFloat(parts[2]);
-      if (!isNaN(x) && !isNaN(y) && !isNaN(z)) points.push({ x, y, z });
-    }
+    const text = e.target.result;
+    const isAsc = file.name.toLowerCase().endsWith('.asc')
+      || text.slice(0, 200).toLowerCase().includes('ncols');
+
+    const points = isAsc ? _parseAscGrid(text) : _parseXYZCSV(text);
+
     if (points.length < 3) {
-      log('Topo file needs at least 3 valid X,Y,Z rows', 'warn');
+      log('Topo file needs at least 3 valid data points. Supports XYZ CSV and Esri ASCII Grid (.asc).', 'warn');
       return;
     }
     AppState.topoPoints = points;
@@ -460,10 +501,70 @@ function parseTopoFile(file, infoEl) {
       <span class="file-size">${points.length} pts</span></div>`;
     if (AppState.scene) {
       AppState.scene.showTopography(points);
-      log(`Topography loaded — ${points.length} points`, 'ok');
+      log(`Topography loaded — ${points.length} points${isAsc ? ' (Esri ASCII Grid)' : ''}`, 'ok');
     }
   };
   reader.readAsText(file);
+}
+
+function _parseXYZCSV(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const points = [];
+  for (const line of lines) {
+    const parts = line.split(/[,\t ]+/);
+    const x = parseFloat(parts[0]), y = parseFloat(parts[1]), z = parseFloat(parts[2]);
+    if (!isNaN(x) && !isNaN(y) && !isNaN(z)) points.push({ x, y, z });
+  }
+  return points;
+}
+
+function _parseAscGrid(text) {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const hdr = {};
+  let dataStart = 0;
+  // Parse header key-value pairs
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(\w+)\s+([-\d.eE+]+)/);
+    if (m) {
+      hdr[m[1].toLowerCase()] = parseFloat(m[2]);
+      dataStart = i + 1;
+    } else if (lines[i].match(/^[-\d.eE+]/)) {
+      dataStart = i;
+      break;
+    }
+  }
+
+  const ncols    = hdr.ncols    ?? hdr.nCols   ?? 0;
+  const nrows    = hdr.nrows    ?? hdr.nRows   ?? 0;
+  const xllcorner = hdr.xllcorner ?? hdr.xllcenter ?? 0;
+  const yllcorner = hdr.yllcorner ?? hdr.yllcenter ?? 0;
+  const cellsize  = hdr.cellsize ?? hdr.cellSize ?? 1;
+  const nodata    = hdr.nodata_value ?? hdr['nodata_value'] ?? -9999;
+
+  if (!ncols || !nrows) return [];
+
+  const points = [];
+  let row = 0;
+  for (let li = dataStart; li < lines.length && row < nrows; li++) {
+    const vals = lines[li].split(/\s+/).filter(Boolean).map(Number);
+    for (let col = 0; col < vals.length && col < ncols; col++) {
+      const z = vals[col];
+      if (z !== nodata && isFinite(z)) {
+        const x = xllcorner + (col + 0.5) * cellsize;
+        // ASC rows go top-to-bottom, so row 0 = northernmost
+        const y = yllcorner + (nrows - row - 0.5) * cellsize;
+        points.push({ x, y, z });
+      }
+    }
+    if (vals.length > 0) row++;
+  }
+
+  // Sub-sample if too large (> 40k points → every Nth)
+  if (points.length > 40000) {
+    const step = Math.ceil(points.length / 40000);
+    return points.filter((_, i) => i % step === 0);
+  }
+  return points;
 }
 
 // ── Reset ──────────────────────────────────────────────────────────────────────
@@ -521,6 +622,9 @@ function initReset() {
     setEnabled('btn-param-apply', false);
     setEnabled('btn-param-reset', false);
     setEnabled('btn-build-isosurfaces', false);
+    setEnabled('btn-grade-apply', false);
+    setEnabled('btn-crossplot-draw', false);
+    setEnabled('btn-formation-stats', false);
     setEnabled('btn-semantic-model', false);
     updateStratColumn();
     if (AppState.scene) AppState.scene.clear();
@@ -591,7 +695,7 @@ async function loadDemoSite(demoName) {
     setEnabled('btn-build-model', true);
     setEnabled('btn-export-bh-csv', true); setEnabled('btn-export-las', true);
       setEnabled('btn-export-ags', true);
-    setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true);
+    setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true); setEnabled('btn-crossplot-draw', true);
     setEnabled('btn-auto-params', true);
     setEnabled('btn-interpret-geology', true);
     setEnabled('btn-semantic-model', true);
@@ -659,7 +763,7 @@ function initRunAI() {
       AppState.classifiedBH = classified;
       setEnabled('btn-export-bh-csv', true); setEnabled('btn-export-las', true);
       setEnabled('btn-export-ags', true);
-      setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true);
+      setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true); setEnabled('btn-crossplot-draw', true);
       setEnabled('btn-auto-params', true);
       setEnabled('btn-strat-corr', classified.filter(b => !b.synthetic).length >= 2);
       updateLegend();
@@ -1040,7 +1144,7 @@ function initProjectConfig() {
       setEnabled('btn-run-ai', true);
       setEnabled('btn-build-model', AppState.classifiedBH.length > 0);
       setEnabled('btn-export-bh-csv', AppState.classifiedBH.length > 0); setEnabled('btn-export-las', AppState.classifiedBH.length > 0);
-      setEnabled('btn-export-props', AppState.geoUnits.length > 0); setEnabled('btn-formation-stats', AppState.geoUnits.length > 0);
+      setEnabled('btn-export-props', AppState.geoUnits.length > 0); setEnabled('btn-formation-stats', AppState.geoUnits.length > 0); setEnabled('btn-crossplot-draw', AppState.geoUnits.length > 0);
       setEnabled('btn-auto-params', AppState.geoUnits.length > 0);
       hideWelcome();
       log(`Project loaded: ${AppState.geoUnits.length} units, ${AppState.classifiedBH.length} BH. Click "Build 3D Model".`, 'ok');
@@ -1390,7 +1494,7 @@ function initUnitEditor() {
     renderPropertiesTable(AppState.geoUnits, () => updateLegend());
     setEnabled('btn-run-ai', AppState.geoUnits.length > 0 && AppState.classifiedBH.length === 0);
     setEnabled('btn-auto-params', AppState.geoUnits.length > 0);
-    setEnabled('btn-export-props', AppState.geoUnits.length > 0); setEnabled('btn-formation-stats', AppState.geoUnits.length > 0);
+    setEnabled('btn-export-props', AppState.geoUnits.length > 0); setEnabled('btn-formation-stats', AppState.geoUnits.length > 0); setEnabled('btn-crossplot-draw', AppState.geoUnits.length > 0);
     log(`Unit definitions updated — ${AppState.geoUnits.length} unit(s).`, 'ok');
     modal.hidden = true;
   }
@@ -2018,7 +2122,7 @@ function initSession() {
     setEnabled('btn-build-model', AppState.classifiedBH.length > 0);
     setEnabled('btn-export-bh-csv', true); setEnabled('btn-export-las', true);
       setEnabled('btn-export-ags', true);
-    setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true);
+    setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true); setEnabled('btn-crossplot-draw', true);
     setEnabled('btn-auto-params', true);
     hideWelcome();
     log(`Session restored — ${AppState.classifiedBH.length} BH, ${AppState.geoUnits.length} units. Click "Build 3D Model" to regenerate.`, 'ok');
@@ -3747,6 +3851,131 @@ function initGradeShell() {
   });
 }
 
+// ── Cross-Plot (scatter plot) ─────────────────────────────────────────────────
+function initCrossPlot() {
+  document.getElementById('btn-crossplot-draw')?.addEventListener('click', () => _drawCrossPlot());
+}
+
+function _drawCrossPlot() {
+  const canvas = document.getElementById('crossplot-canvas');
+  const wrap   = document.getElementById('crossplot-wrap');
+  const legend = document.getElementById('crossplot-legend');
+  if (!canvas || !AppState.classifiedBH.length) {
+    log('Load borehole data first.', 'warn'); return;
+  }
+
+  const xParam = document.getElementById('crossplot-x')?.value ?? 'depth';
+  const yParam = document.getElementById('crossplot-y')?.value ?? 'N_spt';
+
+  const PARAM_LABELS = {
+    depth: 'Depth (m bgl)', N_spt: 'SPT N', cu: 'Cu (kPa)',
+    phi: 'φ′ (°)', E: 'E (MPa)', gamma: 'γ (kN/m³)', Cc: 'Cc',
+  };
+
+  // Collect data points: {x, y, unitCode, unitColor}
+  const points = [];
+  for (const bh of AppState.classifiedBH) {
+    if (bh.synthetic || !bh.layers?.length) continue;
+    for (const layer of bh.layers) {
+      if (!layer.unitCode) continue;
+      const unit = AppState.geoUnits.find(u => u.code === layer.unitCode);
+      const depth = (layer.top + layer.base) / 2;
+
+      const getVal = (p) => {
+        if (p === 'depth') return depth;
+        if (p === 'N_spt') return layer.sptN ?? null;
+        return unit?.params?.[p] ?? null;
+      };
+
+      const xv = getVal(xParam), yv = getVal(yParam);
+      if (xv != null && yv != null && isFinite(xv) && isFinite(yv)) {
+        points.push({ x: xv, y: yv, unitCode: layer.unitCode, color: unit?.color ?? '#888888' });
+      }
+    }
+  }
+
+  if (!points.length) {
+    log(`No data for ${PARAM_LABELS[xParam]} vs ${PARAM_LABELS[yParam]}. Check borehole layers have SPT/parameter values.`, 'warn');
+    return;
+  }
+
+  const W = 260, H = 200, PAD = 36, PAD_R = 10, PAD_T = 10;
+  canvas.width = W; canvas.height = H;
+  if (wrap) wrap.style.display = 'block';
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  const xs = points.map(p => p.x), ys = points.map(p => p.y);
+  const xMin = Math.min(...xs), xMax = Math.max(...xs) || xMin + 1;
+  const yMin = Math.min(...ys), yMax = Math.max(...ys) || yMin + 1;
+  const xR = xMax - xMin || 1, yR = yMax - yMin || 1;
+
+  const toCanX = (v) => PAD + (v - xMin) / xR * (W - PAD - PAD_R);
+  const toCanY = (v) => PAD_T + (1 - (v - yMin) / yR) * (H - PAD - PAD_T);
+
+  // Axes
+  ctx.strokeStyle = '#999'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(PAD, PAD_T); ctx.lineTo(PAD, H - PAD);
+  ctx.moveTo(PAD, H - PAD); ctx.lineTo(W - PAD_R, H - PAD);
+  ctx.stroke();
+
+  // Axis labels
+  ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText(PARAM_LABELS[xParam] ?? xParam, (PAD + W - PAD_R) / 2, H - 4);
+  ctx.save(); ctx.translate(10, (PAD_T + H - PAD) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText(PARAM_LABELS[yParam] ?? yParam, 0, 0);
+  ctx.restore();
+
+  // Tick marks + values
+  ctx.font = '8px sans-serif'; ctx.fillStyle = '#888';
+  const nTicks = 4;
+  for (let i = 0; i <= nTicks; i++) {
+    const xv = xMin + i / nTicks * xR;
+    const xc = toCanX(xv);
+    ctx.textAlign = 'center';
+    ctx.fillText(xv.toFixed(xR < 1 ? 2 : 0), xc, H - PAD + 10);
+    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(xc, PAD_T); ctx.lineTo(xc, H - PAD); ctx.stroke();
+  }
+  for (let i = 0; i <= nTicks; i++) {
+    const yv = yMin + i / nTicks * yR;
+    const yc = toCanY(yv);
+    ctx.textAlign = 'right';
+    ctx.fillText(yv.toFixed(yR < 1 ? 2 : 0), PAD - 3, yc + 3);
+    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(PAD, yc); ctx.lineTo(W - PAD_R, yc); ctx.stroke();
+  }
+
+  // Points
+  ctx.lineWidth = 0;
+  for (const p of points) {
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = 0.72;
+    ctx.beginPath();
+    ctx.arc(toCanX(p.x), toCanY(p.y), 3.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Legend
+  const units = [...new Map(points.map(p => [p.unitCode, { code: p.unitCode, color: p.color }])).values()];
+  if (legend) {
+    legend.innerHTML = units.map(u => {
+      const label = AppState.geoUnits.find(g => g.code === u.code)?.name ?? u.code;
+      return `<span style="display:flex;align-items:center;gap:3px">
+        <span style="width:9px;height:9px;border-radius:50%;background:${u.color};flex-shrink:0;display:inline-block"></span>
+        <span>${escHtml(label)}</span>
+      </span>`;
+    }).join('');
+  }
+
+  log(`Cross-plot: ${PARAM_LABELS[xParam]} vs ${PARAM_LABELS[yParam]} — ${points.length} data points`, 'ok');
+}
+
 // ── Structural orientation import ─────────────────────────────────────────────
 // Parses strike/dip measurements and computes circular-mean strike azimuth.
 // Accepted formats: "045 15" (azimuth dip), "strike 060, dip 20 NW", "N45E 15"
@@ -4650,6 +4879,8 @@ async function init() {
   initCameraPresets();
   initViewBookmarks();
   initGradeShell();
+  initCrossPlot();
+  initVariogramControls();
   initSession();
   initProjectConfig();
   initInterpretGeology();

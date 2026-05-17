@@ -115,9 +115,9 @@
         <div id="topo-section" class="collapsible-body" hidden>
           <div class="drop-zone drop-zone-sm" id="drop-topo" tabindex="0" role="button">
             <div class="drop-icon" style="font-size:18px">⬇</div>
-            <div class="drop-label" style="font-size:12px">Topography CSV</div>
-            <div class="drop-hint">Columns: X, Y, Z (mAOD)</div>
-            <input type="file" id="file-topo" accept=".csv,.txt" hidden>
+            <div class="drop-label" style="font-size:12px">Topography Surface</div>
+            <div class="drop-hint">XYZ CSV or Esri ASCII Grid (.asc)</div>
+            <input type="file" id="file-topo" accept=".csv,.txt,.asc,.xyz" hidden>
           </div>
           <div id="topo-file-info" class="file-list"></div>
           <label class="inline-check" style="margin-top:4px">
@@ -277,9 +277,28 @@
         </div>
 
         <div id="variogram-panel" style="display:none;margin-top:6px">
-          <div class="settings-divider">Variogram Diagnostics</div>
+          <div class="settings-divider">Variogram Fitting</div>
           <canvas id="variogram-canvas" width="240" height="100" style="width:100%;max-height:100px;background:var(--bg-surface);border-radius:var(--radius)"></canvas>
-          <p class="hint" style="font-size:10px;margin-top:3px">Empirical γ(h) — computed from BH data when Kriging is active.</p>
+          <p class="hint" style="font-size:10px;margin-top:3px">Blue dots = empirical γ(h). Orange dashed = fitted spherical model. Auto-fitted on data load; override below.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;margin-top:5px">
+            <div>
+              <div style="font-size:9px;color:var(--text-dim);text-align:center;margin-bottom:2px">Nugget C₀</div>
+              <input type="number" id="var-nugget" class="cell-size-input" step="0.01" min="0" max="1" placeholder="auto" style="width:100%;text-align:center">
+            </div>
+            <div>
+              <div style="font-size:9px;color:var(--text-dim);text-align:center;margin-bottom:2px">Sill C₀+C₁</div>
+              <input type="number" id="var-sill" class="cell-size-input" step="0.01" min="0" max="2" placeholder="auto" style="width:100%;text-align:center">
+            </div>
+            <div>
+              <div style="font-size:9px;color:var(--text-dim);text-align:center;margin-bottom:2px">Range (m)</div>
+              <input type="number" id="var-range" class="cell-size-input" step="1" min="1" placeholder="auto" style="width:100%;text-align:center">
+            </div>
+          </div>
+          <div style="display:flex;gap:4px;margin-top:4px">
+            <button id="btn-var-apply" class="btn-secondary btn-sm" style="flex:1">Apply Manual</button>
+            <button id="btn-var-refit" class="btn-ghost btn-sm" style="flex:1">Auto-Refit</button>
+          </div>
+          <div id="var-model-info" style="font-size:9px;color:var(--text-dim);margin-top:3px;text-align:center"></div>
         </div>
 
         <div class="settings-divider">Search Anisotropy</div>
@@ -640,6 +659,45 @@
             </select>
           </div>
           <canvas id="certainty-hist-canvas" style="display:block;max-width:100%;border:1px solid var(--border);border-radius:4px;background:#f8fafb"></canvas>
+        </div>
+
+        <!-- Cross-plot panel -->
+        <div class="panel-section" style="margin:4px 0 0">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
+            <h3 style="margin:0">Cross-Plot</h3>
+            <button id="btn-crossplot-draw" class="btn-secondary btn-sm" disabled>Draw</button>
+          </div>
+          <p class="hint" style="margin-bottom:6px;font-size:10px">Scatter plot of any two engineering parameters per borehole layer, coloured by geological unit.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:5px">
+            <div>
+              <div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">X axis</div>
+              <select id="crossplot-x" class="param-input" style="font-size:10px;width:100%">
+                <option value="depth">Depth (m bgl)</option>
+                <option value="N_spt">SPT N</option>
+                <option value="cu">Cu (kPa)</option>
+                <option value="phi">φ′ (°)</option>
+                <option value="E">E (MPa)</option>
+                <option value="gamma">γ (kN/m³)</option>
+                <option value="Cc">Cc</option>
+              </select>
+            </div>
+            <div>
+              <div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">Y axis</div>
+              <select id="crossplot-y" class="param-input" style="font-size:10px;width:100%">
+                <option value="N_spt">SPT N</option>
+                <option value="depth">Depth (m bgl)</option>
+                <option value="cu">Cu (kPa)</option>
+                <option value="phi">φ′ (°)</option>
+                <option value="E">E (MPa)</option>
+                <option value="gamma">γ (kN/m³)</option>
+                <option value="Cc">Cc</option>
+              </select>
+            </div>
+          </div>
+          <div id="crossplot-wrap" style="display:none">
+            <canvas id="crossplot-canvas" style="display:block;width:100%;border:1px solid var(--border);border-radius:4px;background:#fff"></canvas>
+            <div id="crossplot-legend" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;font-size:9px"></div>
+          </div>
         </div>
 
         <div id="analysis-log" class="analysis-log">
