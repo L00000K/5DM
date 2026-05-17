@@ -488,6 +488,16 @@
           <div class="concept-lib-grid" id="concept-lib-grid"></div>
         </div>
 
+        <!-- Scenario management — save / restore named concept sets -->
+        <div class="collapsible-hdr" id="concept-scenario-toggle" style="margin-top:8px">
+          <span>Scenarios <span class="badge-opt">save &amp; compare</span></span>
+          <span class="collapse-arrow">›</span>
+        </div>
+        <div id="concept-scenario-body" class="collapsible-body" hidden>
+          <button class="btn btn-ghost" style="font-size:10px;width:100%;margin-bottom:4px" onclick="_saveConceptScenario()">⊕ Save current as scenario</button>
+          <div id="concept-scenario-list"></div>
+        </div>
+
         <!-- Traceability panel — shown on voxel hover -->
         <div id="traceability-panel" class="traceability-panel hidden">
           <div class="trace-title">Voxel Attribution</div>

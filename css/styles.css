@@ -2207,3 +2207,21 @@ kbd {
 .trace-label { color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .trace-weight { color: var(--accent); font-family: var(--font-mono); font-size: 10px; text-align: right; }
 .trace-warp   { color: var(--text-mid); font-family: var(--font-mono); font-size: 10px; grid-column: 1/-1; }
+
+/* Scenario entries */
+.scenario-entry {
+  display: flex; align-items: center; gap: 4px;
+  padding: 3px 0; border-bottom: 1px solid var(--bg-surface);
+}
+.scenario-load {
+  flex: 1; background: none; border: none; color: var(--accent);
+  font-size: 10px; cursor: pointer; text-align: left; padding: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.scenario-load:hover { text-decoration: underline; }
+.scenario-meta { font-size: 9px; color: var(--text-dim); white-space: nowrap; font-family: var(--font-mono); }
+.scenario-del {
+  background: none; border: none; color: var(--text-dim); cursor: pointer;
+  font-size: 12px; line-height: 1; padding: 0 2px; flex-shrink: 0;
+}
+.scenario-del:hover { color: var(--red); }

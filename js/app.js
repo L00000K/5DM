@@ -3790,8 +3790,21 @@ function initConceptPanel() {
   // Drawn bbox domain stored when user completes a plan-view drag
   let _drawnBboxDomain = null;
 
-  // Render concept library chips
+  // Render concept library chips and scenario list
   _initConceptLibrary();
+
+  // Wire scenario section toggle
+  const scToggle = document.getElementById('concept-scenario-toggle');
+  const scBody   = document.getElementById('concept-scenario-body');
+  if (scToggle && scBody) {
+    scToggle.addEventListener('click', () => {
+      const hidden = scBody.hasAttribute('hidden');
+      if (hidden) { scBody.removeAttribute('hidden'); _renderScenarioList(); }
+      else scBody.setAttribute('hidden', '');
+      const arrow = scToggle.querySelector('.collapse-arrow');
+      if (arrow) arrow.textContent = hidden ? '⌄' : '›';
+    });
+  }
 
   confidence?.addEventListener('input', () => {
     if (confLabel) confLabel.textContent = parseFloat(confidence.value).toFixed(2);
@@ -3886,6 +3899,70 @@ function _buildDomain(type) {
     };
   }
   return { type: 'global' };
+}
+
+// ── Concept scenario management ───────────────────────────────────────────────
+// Scenarios are saved to sessionStorage as a list of named ConceptStore snapshots.
+// Allows A/B comparison between interpretations without losing work.
+
+const SCENARIOS_KEY = 'geomodel:concept-scenarios';
+
+function _loadScenarios() {
+  try { return JSON.parse(sessionStorage.getItem(SCENARIOS_KEY) ?? '[]'); } catch { return []; }
+}
+
+function _saveScenarios(scenarios) {
+  try { sessionStorage.setItem(SCENARIOS_KEY, JSON.stringify(scenarios)); } catch {}
+}
+
+window._saveConceptScenario = function() {
+  if (!AppState.conceptStore || AppState.conceptStore.isEmpty) {
+    log('No concepts to save as scenario', 'warn'); return;
+  }
+  const name = prompt('Scenario name:', `Scenario ${_loadScenarios().length + 1}`);
+  if (!name?.trim()) return;
+  const scenarios = _loadScenarios();
+  scenarios.push({ name: name.trim(), json: AppState.conceptStore.serialize(), savedAt: Date.now() });
+  _saveScenarios(scenarios);
+  _renderScenarioList();
+  log(`Scenario "${name.trim()}" saved (${AppState.conceptStore.concepts.length} concepts)`, 'ok');
+};
+
+window._loadConceptScenario = function(idx) {
+  const scenarios = _loadScenarios();
+  const sc = scenarios[parseInt(idx)];
+  if (!sc) return;
+  AppState.conceptStore = ConceptStore.deserialize(sc.json);
+  _renderConceptList();
+  _saveConceptStore();
+  log(`Scenario "${sc.name}" loaded — ${AppState.conceptStore.concepts.length} concepts`, 'ok');
+};
+
+window._deleteConceptScenario = function(idx) {
+  const scenarios = _loadScenarios();
+  const sc = scenarios.splice(parseInt(idx), 1)[0];
+  _saveScenarios(scenarios);
+  _renderScenarioList();
+  if (sc) log(`Scenario "${sc.name}" deleted`, 'info');
+};
+
+function _renderScenarioList() {
+  const el = document.getElementById('concept-scenario-list');
+  if (!el) return;
+  const scenarios = _loadScenarios();
+  if (!scenarios.length) {
+    el.innerHTML = '<div class="concept-empty" style="font-size:10px">No saved scenarios.</div>';
+    return;
+  }
+  el.innerHTML = scenarios.map((sc, i) => {
+    const dt = new Date(sc.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const store = ConceptStore.deserialize(sc.json);
+    return `<div class="scenario-entry">
+      <button class="scenario-load" onclick="_loadConceptScenario(${i})" title="Load this scenario">${sc.name}</button>
+      <span class="scenario-meta">${store.concepts.length}c · ${dt}</span>
+      <button class="scenario-del" onclick="_deleteConceptScenario(${i})" title="Delete">×</button>
+    </div>`;
+  }).join('');
 }
 
 export function _renderConceptList() {
