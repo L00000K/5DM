@@ -2099,3 +2099,69 @@ kbd {
   #left-panel, #right-panel { height: auto; overflow: visible; }
   :root { --left-w: 100%; --right-w: 100%; }
 }
+
+/* ── Conceptual Model Panel ────────────────────────────────────── */
+.concept-panel-header { padding: 0 0 4px; }
+.concept-panel-title  { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+
+.concept-controls { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.concept-ctrl-row { display: flex; align-items: center; gap: 8px; }
+.concept-ctrl-row label { font-size: 11px; color: var(--text-mid); min-width: 72px; }
+.concept-ctrl-row input[type=range] { flex: 1; }
+.concept-ctrl-row select { flex: 1; font-size: 11px; padding: 3px 4px; border: 1px solid var(--border-mid); border-radius: var(--radius-sm); background: var(--bg-surface); color: var(--text-primary); }
+.concept-conf-val { font-size: 11px; color: var(--accent); min-width: 32px; text-align: right; font-family: var(--font-mono); }
+
+.concept-list-header {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 11px; font-weight: 600; color: var(--text-mid);
+  border-top: 1px solid var(--border); margin: 10px 0 6px; padding-top: 8px;
+}
+.concept-axes-legend { font-size: 10px; color: var(--text-dim); font-family: var(--font-mono); }
+
+.concept-list { display: flex; flex-direction: column; gap: 6px; }
+.concept-empty { font-size: 11px; color: var(--text-dim); text-align: center; padding: 12px 0; }
+
+.concept-entry {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg-surface); padding: 7px 8px;
+}
+.concept-header {
+  display: flex; align-items: center; gap: 6px;
+  margin-bottom: 5px;
+}
+.concept-desc  { font-size: 11px; color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.concept-conf  { font-size: 10px; color: var(--text-dim); white-space: nowrap; }
+.concept-remove {
+  background: none; border: none; color: var(--text-dim); cursor: pointer;
+  font-size: 14px; line-height: 1; padding: 0 2px;
+}
+.concept-remove:hover { color: var(--red); }
+
+/* 32-axis sparkline — one thin bar per axis */
+.concept-axes {
+  display: flex; gap: 1px; height: 16px; align-items: flex-end;
+}
+.concept-bar-wrap {
+  flex: 1; height: 100%; display: flex; align-items: flex-end;
+  cursor: help; min-width: 3px;
+}
+.concept-bar {
+  width: 100%; min-height: 1px; border-radius: 1px;
+  transition: height 0.2s;
+}
+.concept-bar-wrap:hover .concept-bar { opacity: 0.7; }
+
+/* Traceability panel */
+.traceability-panel {
+  margin-top: 12px; border: 1px solid var(--accent-dim); border-radius: var(--radius);
+  background: var(--bg-raised); padding: 8px 10px;
+  font-size: 11px;
+}
+.traceability-panel.hidden { display: none; }
+.trace-title { font-size: 12px; font-weight: 600; color: var(--accent); margin-bottom: 6px; }
+.trace-section { margin-bottom: 6px; }
+.trace-section-hdr { font-size: 10px; font-weight: 600; color: var(--text-mid); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 3px; }
+.trace-row { display: flex; justify-content: space-between; align-items: center; padding: 2px 0; }
+.trace-label { color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trace-weight { color: var(--accent); font-family: var(--font-mono); font-size: 10px; min-width: 32px; text-align: right; }
+.trace-warp   { color: var(--text-mid); font-family: var(--font-mono); font-size: 10px; }

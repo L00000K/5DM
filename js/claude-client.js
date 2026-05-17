@@ -1,4 +1,5 @@
 import { analysisLog, log, AppState } from './app.js';
+import { CONCEPT_AXES } from './concept-store.js';
 
 const API_URL    = 'https://api.anthropic.com/v1/messages';
 const MODEL      = 'claude-opus-4-5';
@@ -804,4 +805,100 @@ function defaultUnits() {
     { id: 3, code: 'AC',  name: 'Alluvial Clay',          color: '#4A7C59', description: 'Soft to firm silty clay' },
     { id: 4, code: 'CH',  name: 'Chalk',                  color: '#EDE8D8', description: 'Soft to medium hard chalk' },
   ];
+}
+
+// ── Encode a geological concept as a 32-dim geometry embedding ────────────────
+// Claude rates the concept on 32 geological geometry axes (−1 to +1).
+// Demo mode uses keyword heuristics when no API key is provided.
+// Returns Float32Array(32).
+export async function encodeGeologicalConcept(description, apiKey, demoMode) {
+  if (demoMode || !apiKey) {
+    return _demoConceptEmbedding(description);
+  }
+
+  const axisLines = CONCEPT_AXES.map((a, i) => `[${i}] ${a}`).join('\n');
+
+  const resp = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type':      'application/json',
+      'x-api-key':         apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: 300,
+      system: 'You are a structural geology and sedimentology expert. Return ONLY a JSON array of numbers — no explanation, no markdown.',
+      messages: [{
+        role: 'user',
+        content: `Rate the following geological concept on each of the 32 morphological axes.
+Use values from −1.0 (strongly absent / opposite sense) through 0.0 (neutral / not applicable) to +1.0 (strongly present / dominant).
+
+Concept: "${description}"
+
+Axes (in this exact order):
+${axisLines}
+
+Respond with ONLY a JSON array of exactly 32 numbers, e.g.: [0.8, -0.2, 0.5, ...]`,
+      }],
+    }),
+  });
+
+  if (!resp.ok) {
+    const e = await resp.json().catch(() => ({}));
+    throw new Error(e?.error?.message || `API error ${resp.status}`);
+  }
+
+  const data = await resp.json();
+  const text = (data.content?.[0]?.text ?? '')
+    .replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
+
+  let arr;
+  try { arr = JSON.parse(text); } catch {
+    throw new Error(`Concept encoding returned non-JSON: ${text.slice(0, 100)}`);
+  }
+  if (!Array.isArray(arr) || arr.length < 32) {
+    throw new Error(`Expected 32 values, got ${arr?.length ?? 0}`);
+  }
+
+  const emb = new Float32Array(32);
+  for (let i = 0; i < 32; i++) emb[i] = Math.max(-1, Math.min(1, +arr[i] || 0));
+  return emb;
+}
+
+function _demoConceptEmbedding(description) {
+  const d   = description.toLowerCase();
+  const emb = new Float32Array(32);
+
+  // Geometric / morphology keywords → axis contributions
+  if (/palaeochannel|paleochannel|channel|trough/.test(d)) {
+    emb[0] = -0.8; emb[5] = 1.0; emb[8] = 0.9; emb[19] = 0.6;
+    emb[23] = 0.8; emb[27] = 0.9; emb[29] = 0.8; emb[22] = 0.5;
+  }
+  if (/east.?west|e.?w\b|ew\b/.test(d))        { emb[3] = 0.9; emb[4] = Math.min(emb[4], -0.7); }
+  if (/north.?south|n.?s\b|ns\b/.test(d))       { emb[4] = 0.9; emb[3] = Math.min(emb[3], -0.7); }
+  if (/northeast|ne\b/.test(d))                  { emb[3] = 0.6; emb[4] = 0.6; }
+  if (/northwest|nw\b/.test(d))                  { emb[3] = 0.6; emb[4] = 0.6; }
+  if (/river terrace|terrace deposit/.test(d)) {
+    emb[0] = 0.7; emb[8] = 0.6; emb[9] = 0.8; emb[23] = 0.7; emb[22] = 0.4;
+  }
+  if (/fault/.test(d)) {
+    emb[7] = 1.0; emb[18] = 0.8; emb[25] = 0.7; emb[28] = 0.6;
+  }
+  if (/step|stepped/.test(d)) { emb[18] = 0.9; }
+  if (/rockhead|bedrock|top of rock|chalk|limestone/.test(d)) {
+    emb[0] = 0.3; emb[18] = 0.5; emb[19] = 0.5; emb[8] = 0.6;
+  }
+  if (/dip|inclined|dipping/.test(d))            { emb[1] = 0.8; emb[2] = 0.7; }
+  if (/dome|anticline|mound/.test(d))            { emb[6] = 0.9; emb[9] = 0.6; }
+  if (/lens|lenticle|pod/.test(d))               { emb[9] = -0.5; emb[10] = 0.6; emb[12] = 0.6; }
+  if (/karst|dissolution/.test(d))               { emb[19] = 0.8; emb[24] = 1.0; }
+  if (/layer|horizontal|flat|tabular/.test(d))   { emb[0] = 0.9; emb[9] = 0.8; }
+  if (/flood|alluvial|alluvium/.test(d))         { emb[0] = 0.6; emb[9] = 0.7; emb[22] = 0.4; }
+
+  // Confidence default
+  emb[26] = 0.6;
+  // Clamp
+  for (let i = 0; i < 32; i++) emb[i] = Math.max(-1, Math.min(1, emb[i]));
+  return emb;
 }

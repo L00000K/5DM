@@ -223,21 +223,18 @@ class GeoImplicitNet {
   }
 }
 
-// ── Build geological context from unit metadata + free text ─────────────────
+// ── Build geological context (deprecated — use ConceptStore instead) ─────────
 export function buildGeoContext(geoUnits, siteHistory, unitDescriptions) {
-  const allText = [
-    ...geoUnits.map(u => `${u.name ?? ''} ${u.description ?? ''}`),
-    siteHistory ?? '',
-    ...(unitDescriptions ?? []),
-  ].join(' ');
-  const kwEnc = new GeoKeywordEncoder();
-  const keywords = kwEnc.encode(allText);
-  return { text: allText, keywords, kwEncoder: kwEnc };
+  console.warn('buildGeoContext is deprecated. Pass a ConceptStore to trainGeoImplicit instead.');
+  return null;
 }
 
 // ── Train the neural implicit geological field ───────────────────────────────
-// Returns { net, fourierEnc, kwVec, bounds, nUnits, unitCodes } or null
-export async function trainGeoImplicit(boreholes, geoUnits, context, options = {}) {
+// conceptStore: ConceptStore instance (or null for neutral/no-concept runs)
+// The store's concept embeddings warp the coordinate space so that the output
+// geometry of the implicit field directly reflects geological conceptual inputs.
+// Returns { net, fourierEnc, conceptStore, warpedBounds, bounds, nUnits, unitCodes } or null
+export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, options = {}) {
   const {
     epochs          = 400,
     lr              = 0.01,
@@ -245,7 +242,6 @@ export async function trainGeoImplicit(boreholes, geoUnits, context, options = {
     l2              = 0.001,
     samplesPerLayer = 6,
     onProgress      = null,
-    sectionSamples  = [],   // [{pos, target, weight, localKwVec}] from section-interpreter
   } = options;
 
   // Compute world bounds from borehole data
@@ -260,32 +256,37 @@ export async function trainGeoImplicit(boreholes, geoUnits, context, options = {
       bounds.maxZ = Math.max(bounds.maxZ, bh.groundLevel - l.top);
     }
   }
-  // Expand bounds to include section sample positions
-  for (const s of sectionSamples) {
-    if (s.x != null) {
-      bounds.minX = Math.min(bounds.minX, s.x); bounds.maxX = Math.max(bounds.maxX, s.x);
-      bounds.minY = Math.min(bounds.minY, s.y); bounds.maxY = Math.max(bounds.maxY, s.y);
-      bounds.minZ = Math.min(bounds.minZ, s.z); bounds.maxZ = Math.max(bounds.maxZ, s.z);
-    }
-  }
-  // Add margin to avoid normalisation edge issues
+  // Add margin
   for (const [mn, mx] of [['minX','maxX'],['minY','maxY'],['minZ','maxZ']]) {
     const margin = (bounds[mx] - bounds[mn]) * 0.05 || 1;
     bounds[mn] -= margin; bounds[mx] += margin;
   }
 
   const fourierEnc = new FourierEncoder(L_FOURIER);
-  const kwEnc      = context?.kwEncoder ?? new GeoKeywordEncoder();
-  const kwVec      = context?.keywords  ?? new Float32Array(kwEnc.outDim);
-  const localDim   = kwEnc.outDim;  // local section context has same vocab size
-  const nIn        = fourierEnc.outDim + kwEnc.outDim + localDim;
+  const CONCEPT_DIM = 32;
+  // nIn = Fourier positional (39) + concept context (32) = 71
+  const nIn        = fourierEnc.outDim + CONCEPT_DIM;
   const nUnits     = geoUnits.length;
   const unitCodes  = geoUnits.map(u => u.code);
   const unitIdx    = {};
   geoUnits.forEach((u, i) => { unitIdx[u.code] = i; });
-  const zeroLocal  = new Float32Array(localDim); // BH samples have no local section context
 
-  // Build training samples from boreholes (local context = zeros)
+  // Compute global anisotropy tensor for the warped bounds used by the Fourier encoder.
+  // Using a global average tensor keeps the normalisation bounds consistent while still
+  // allowing per-point local warping to vary.
+  const gTensor = conceptStore?.globalTensor() ?? { Ax: 1, Ay: 1, Az: 1 };
+  const warpedBounds = {
+    minX: bounds.minX / gTensor.Ax, maxX: bounds.maxX / gTensor.Ax,
+    minY: bounds.minY / gTensor.Ay, maxY: bounds.maxY / gTensor.Ay,
+    minZ: bounds.minZ / gTensor.Az, maxZ: bounds.maxZ / gTensor.Az,
+  };
+
+  const zeroCtx = new Float32Array(CONCEPT_DIM);
+
+  // Build training samples from boreholes.
+  // Each sample's positional features are warped by the local concept tensor at (x,y,z),
+  // and the concept context vector is appended so the network learns to associate the
+  // semantic geometry signal with the factual borehole observation.
   const samples = [];
   for (const bh of boreholes) {
     for (const layer of (bh.layers ?? [])) {
@@ -296,25 +297,19 @@ export async function trainGeoImplicit(boreholes, geoUnits, context, options = {
       const wt    = layer.certainty ?? 0.9;
       for (let s = 0; s < samplesPerLayer; s++) {
         const t   = (s + 0.5) / samplesPerLayer;
-        const z   = zBase + t * (zTop - zBase);
-        const pos = fourierEnc.encode(bh.x, bh.y, z, bounds);
+        const wz  = zBase + t * (zTop - zBase);
+        // Compute local concept context at this point
+        const ctx    = conceptStore ? conceptStore.computeAt(bh.x, bh.y, wz) : null;
+        const ctxVec = ctx?.vec ?? zeroCtx;
+        const tensor = ctx?.tensor ?? gTensor;
+        const warped = { x: bh.x / tensor.Ax, y: bh.y / tensor.Ay, z: wz / tensor.Az };
+        const pos = fourierEnc.encode(warped.x, warped.y, warped.z, warpedBounds);
         const inp = new Float32Array(nIn);
         inp.set(pos);
-        inp.set(kwVec,    fourierEnc.outDim);
-        inp.set(zeroLocal, fourierEnc.outDim + kwEnc.outDim); // no local context at BH locations
+        inp.set(ctxVec, fourierEnc.outDim);
         samples.push({ inp, target: ti, weight: wt });
       }
     }
-  }
-
-  // Merge section training samples (carry their local keyword context)
-  for (const ss of sectionSamples) {
-    const pos = ss.pos ?? fourierEnc.encode(ss.x, ss.y, ss.z, bounds);
-    const inp = new Float32Array(nIn);
-    inp.set(pos);
-    inp.set(kwVec, fourierEnc.outDim);
-    inp.set(ss.localKwVec ?? zeroLocal, fourierEnc.outDim + kwEnc.outDim);
-    samples.push({ inp, target: ss.target, weight: ss.weight });
   }
 
   if (samples.length === 0) return null;
@@ -323,23 +318,18 @@ export async function trainGeoImplicit(boreholes, geoUnits, context, options = {
   const opt = new AdamOpt([...net.W, ...net.b], lr);
 
   for (let ep = 0; ep < epochs; ep++) {
-    // Cosine LR annealing
     opt.setLr(lrMin + 0.5 * (lr - lrMin) * (1 + Math.cos(Math.PI * ep / epochs)));
-
     // Fisher-Yates shuffle
     for (let i = samples.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
-      const tmp = samples[i]; samples[i] = samples[j]; samples[j] = tmp;
+      [samples[i], samples[j]] = [samples[j], samples[i]];
     }
-
     let totalLoss = 0;
     for (const s of samples) {
       const act  = net.forward(s.inp);
       totalLoss -= s.weight * Math.log(Math.max(act.probs[s.target], 1e-9));
-      const grads = net.backward(s.inp, act, s.target, l2);
-      opt.step(grads);
+      opt.step(net.backward(s.inp, act, s.target, l2));
     }
-
     if (onProgress && ep % 20 === 0) {
       onProgress(ep / epochs, totalLoss / samples.length);
       await new Promise(r => setTimeout(r, 0));
@@ -347,27 +337,34 @@ export async function trainGeoImplicit(boreholes, geoUnits, context, options = {
   }
 
   if (onProgress) onProgress(1, 0);
-  return { net, fourierEnc, kwVec, localDim, bounds, nUnits, unitCodes };
+  return { net, fourierEnc, conceptStore, warpedBounds, bounds, nUnits, unitCodes, CONCEPT_DIM };
 }
 
 // ── Infer voxel grid from trained model ─────────────────────────────────────
 // grid must have { nx, ny, nz, cellSize, cellHeight, origin: {x,y,z} }
 // options.sectionPlanes: [{fence, localKwVec}] for spatially-local section context
-// options.computeLocalContext: function(x, y, planes) from section-interpreter
-export function inferGeoImplicit(trained, grid, geoUnits, options = {}) {
-  const sectionPlanes = Array.isArray(options) ? [] : (options.sectionPlanes ?? []);
-  const computeLC     = Array.isArray(options) ? null : (options.computeLocalContext ?? null);
-  const { net, fourierEnc, kwVec, localDim, bounds, unitCodes } = trained;
-  const zeroLocal = new Float32Array(localDim ?? 0);
-  const { nx, ny, nz, cellSize, cellHeight, origin } = grid;
-  const kwLen  = kwVec?.length ?? 0;
-  const locLen = localDim ?? 0;
-  const nIn    = fourierEnc.outDim + kwLen + locLen;
+// conceptStore: ConceptStore instance (or null) — same store passed to trainGeoImplicit.
+// At each voxel the store's computeAt() returns the concept context that warps coordinates
+// exactly as during training, ensuring inference geometry matches the trained distribution.
+export function inferGeoImplicit(trained, grid, geoUnits, conceptStore) {
+  // Backward compat: if old options object passed, ignore options silently
+  if (conceptStore && typeof conceptStore !== 'object') conceptStore = null;
+  if (conceptStore && typeof conceptStore.computeAt !== 'function') conceptStore = null;
 
-  const unitIds      = new Uint8Array(nx * ny * nz);
-  const certainty    = new Float32Array(nx * ny * nz);
-  const blendUnitIds = new Uint8Array(nx * ny * nz);
-  const blendRatios  = new Float32Array(nx * ny * nz);
+  const { net, fourierEnc, warpedBounds, bounds, unitCodes, CONCEPT_DIM } = trained;
+  const cdim      = CONCEPT_DIM ?? 32;
+  const nIn       = fourierEnc.outDim + cdim;
+  const zeroCtx   = new Float32Array(cdim);
+  const gTensor   = conceptStore?.globalTensor() ?? { Ax: 1, Ay: 1, Az: 1 };
+  const useBounds = warpedBounds ?? bounds; // use warped bounds if available
+
+  const { nx, ny, nz, cellSize, cellHeight, origin } = grid;
+  const total = nx * ny * nz;
+
+  const unitIds      = new Uint8Array(total);
+  const certainty    = new Float32Array(total);
+  const blendUnitIds = new Uint8Array(total);
+  const blendRatios  = new Float32Array(total);
 
   const codeToId = {};
   geoUnits.forEach(u => { codeToId[u.code] = u.id; });
@@ -380,19 +377,24 @@ export function inferGeoImplicit(trained, grid, geoUnits, options = {}) {
         const worldX = origin.x + ix * cellSize + cellSize * 0.5;
         const idx    = ix + iy * nx + iz * nx * ny;
 
-        const pos = fourierEnc.encode(worldX, worldY, worldZ, bounds);
+        // Compute per-voxel concept context and anisotropy tensor
+        const ctx    = conceptStore ? conceptStore.computeAt(worldX, worldY, worldZ) : null;
+        const ctxVec = ctx?.vec ?? zeroCtx;
+        const tensor = ctx?.tensor ?? gTensor;
+
+        // Warp coordinates by concept anisotropy tensor, then Fourier encode
+        const wx  = worldX / tensor.Ax;
+        const wy  = worldY / tensor.Ay;
+        const wz  = worldZ / tensor.Az;
+        const pos = fourierEnc.encode(wx, wy, wz, useBounds);
+
         const inp = new Float32Array(nIn);
         inp.set(pos);
-        if (kwVec) inp.set(kwVec, fourierEnc.outDim);
-        // Local context from section planes — spatially blended by proximity
-        if (computeLC && sectionPlanes.length && locLen > 0) {
-          const local = computeLC(worldX, worldY, sectionPlanes);
-          inp.set(local, fourierEnc.outDim + kwLen);
-        }
+        inp.set(ctxVec, fourierEnc.outDim);
 
         const probs = net.predict(inp);
 
-        // Find top-1 and top-2 classes
+        // Top-1 and top-2 classes
         let b1 = 0, b2 = 1;
         if (probs[1] > probs[0]) { b1 = 1; b2 = 0; }
         for (let u = 2; u < probs.length; u++) {

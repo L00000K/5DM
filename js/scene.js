@@ -792,11 +792,20 @@ class SceneManager {
           <div class="tooltip-row"><span>Top of unit</span><span class="tooltip-val">${unitTopStr}</span></div>
           <div class="tooltip-row"><span>Certainty</span><span class="tooltip-val">${cert}</span></div>
           <div class="tooltip-row"><span>Pos</span><span class="tooltip-val">(${hit.point.x.toFixed(0)}, ${hit.point.y.toFixed(0)}, ${hit.point.z.toFixed(0)})</span></div>`;
+
+        // Emit hover event for traceability panel
+        window.dispatchEvent(new CustomEvent('geomodel:voxel-hover', {
+          detail: { worldX: hit.point.x, worldY: hit.point.z, worldZ: hit.point.y, unitCode: hit.object.userData.unitCode },
+        }));
       } else {
         tooltip.hidden = true;
+        window.dispatchEvent(new CustomEvent('geomodel:voxel-hover', { detail: null }));
       }
     });
-    this._canvas.addEventListener('mouseleave', () => { if (tooltip) tooltip.hidden = true; });
+    this._canvas.addEventListener('mouseleave', () => {
+      if (tooltip) tooltip.hidden = true;
+      window.dispatchEvent(new CustomEvent('geomodel:voxel-hover', { detail: null }));
+    });
   }
 
   // ── Middle-mouse centres view ─────────────────────────────────────────────

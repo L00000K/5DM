@@ -30,10 +30,12 @@ import { computeOrientations, orientationStats, renderStereonet, renderRoseDiagr
 import { bishopAnalysis, renderSlopeSection } from './slope-stability.js';
 import { assessLiquefaction, renderLiquefactionProfile, summarizeCPTLiquefaction } from './liquefaction.js';
 import { computeMohrCircle, renderMohrCircle } from './mohr-circle.js';
-import { parseSectionFromText, sectionToVirtualBoreholes, sectionToTrainingSamples,
-         computeLocalContext, sketchToVirtualBoreholes, fenceLength } from './section-interpreter.js';
+import { parseSectionFromText, sectionToVirtualBoreholes,
+         sketchToVirtualBoreholes, fenceLength } from './section-interpreter.js';
 import { SectionSketch } from './section-sketch.js';
-import { FourierEncoder, GeoKeywordEncoder } from './geo-implicit.js';
+import { FourierEncoder } from './geo-implicit.js';
+import { ConceptStore, CONCEPT_AXES } from './concept-store.js';
+import { encodeGeologicalConcept } from './claude-client.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -78,8 +80,7 @@ export const AppState = {
   faultPlanes: [],
   shapeBoreholes: [],
   sectionBoreholes: [],   // virtual BHs from section descriptions/sketches
-  sectionSamples: [],     // neural implicit training samples from sections
-  sectionPlanes: [],      // [{fence, localKwVec}] for inference-time local context
+  conceptStore: null,     // ConceptStore — geological concept embeddings for neural field
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
@@ -715,7 +716,12 @@ function initBuildModel() {
       // Inject section boreholes (described or sketched cross-sections)
       if (AppState.sectionBoreholes?.length) {
         bhForModel = [...bhForModel, ...AppState.sectionBoreholes];
-        log(`Injecting ${AppState.sectionBoreholes.length} section virtual boreholes (${AppState.sectionPlanes?.length ?? 0} section plane(s))`, 'info');
+        log(`Injecting ${AppState.sectionBoreholes.length} section virtual boreholes`, 'info');
+      }
+
+      // Log concept store status
+      if (AppState.conceptStore && !AppState.conceptStore.isEmpty) {
+        log(`Conceptual model: ${AppState.conceptStore.concepts.length} concept(s) will shape neural field geometry`, 'info');
       }
 
       // Extract fault planes from constraint text before building
@@ -750,9 +756,7 @@ function initBuildModel() {
         varSill:   AppState.varSill,
         varNugget: AppState.varNugget,
         faultPlanes: AppState.faultPlanes,
-        sectionSamples:      AppState.sectionSamples ?? [],
-        sectionPlanes:       AppState.sectionPlanes  ?? [],
-        computeLocalContext: AppState.sectionPlanes?.length ? computeLocalContext : null,
+        conceptStore: AppState.conceptStore ?? null,
         onProgress: p => setBuildProgress(p),
       };
 
@@ -3074,6 +3078,7 @@ async function init() {
   initLiquefaction();
   initMohrCircle();
   initSectionInterpreter();
+  initConceptPanel();
 
   // Sample tile buttons (left panel)
   document.querySelectorAll('.sample-tile').forEach(btn => {
@@ -3084,6 +3089,20 @@ async function init() {
     AppState.apiKey = e.detail.key;
     AppState.demoMode = !e.detail.key;
     log(e.detail.key ? '✓ API key configured' : 'Demo mode active', 'ok');
+  });
+
+  // Traceability: show concept + BH attribution when hovering a voxel
+  window.addEventListener('geomodel:voxel-hover', e => {
+    const panel   = document.getElementById('traceability-panel');
+    const content = document.getElementById('trace-content');
+    if (!panel || !content) return;
+    const d = e.detail;
+    if (!d) { panel.classList.add('hidden'); return; }
+    if (!AppState.conceptStore || AppState.conceptStore.isEmpty) return;
+
+    const attr = _computeAttribution(d.worldX, d.worldY, d.worldZ);
+    panel.classList.remove('hidden');
+    content.innerHTML = _renderAttribution(attr, d.unitCode);
   });
 
   const scene = await initScene('three-canvas');
@@ -3420,37 +3439,37 @@ function initSectionInterpreter() {
         AppState.apiKey, AppState.demoMode,
       );
 
-      const gl = Math.max(...AppState.classifiedBH.map(b => b.groundLevel ?? 0), 0);
+      const gl   = Math.max(...AppState.classifiedBH.map(b => b.groundLevel ?? 0), 0);
       const vbhs = sectionToVirtualBoreholes(parsed, fence, AppState.geoUnits, gl);
-
-      // Build neural implicit section training samples
-      const fourierEnc = new FourierEncoder();
-      const xs = AppState.classifiedBH.map(b => b.x);
-      const ys = AppState.classifiedBH.map(b => b.y);
-      const bounds = {
-        minX: Math.min(...xs) - 10, maxX: Math.max(...xs) + 10,
-        minY: Math.min(...ys) - 10, maxY: Math.max(...ys) + 10,
-        minZ: gl - 40, maxZ: gl + 2,
-      };
-      const secSamples = sectionToTrainingSamples(
-        parsed, fence, AppState.geoUnits, fourierEnc, bounds, text, gl,
-      );
-
-      // Store section's local keyword vector for inference-time context
-      const kwEnc2 = new GeoKeywordEncoder();
-      const localKwVec = kwEnc2.encode([
-        text, ...(parsed.semantic_keywords ?? [])
-      ].join(' '));
-
       AppState.sectionBoreholes = [...(AppState.sectionBoreholes ?? []), ...vbhs];
-      AppState.sectionSamples   = [...(AppState.sectionSamples   ?? []), ...secSamples];
-      AppState.sectionPlanes    = [...(AppState.sectionPlanes    ?? []), { fence, localKwVec }];
 
-      const kws = (parsed.semantic_keywords ?? []).join(', ') || '—';
+      // Extract conceptual statements and encode them into the ConceptStore.
+      // This is the core semantic pathway: descriptions → dense embeddings that
+      // warp the neural field's coordinate space, shaping the output geometry.
+      if (!AppState.conceptStore) AppState.conceptStore = new ConceptStore();
+      const statements = parsed.conceptual_statements ?? parsed.semantic_keywords ?? [];
+      const conceptIds = [];
+      for (const stmt of statements) {
+        if (!stmt?.trim()) continue;
+        try {
+          const emb = await encodeGeologicalConcept(stmt, AppState.apiKey, AppState.demoMode);
+          const id  = AppState.conceptStore.add({
+            description: stmt,
+            embedding:   emb,
+            confidence:  parsed.confidence ?? 0.72,
+            domain:      { type: 'global' },
+          });
+          conceptIds.push(id);
+        } catch (e) { log(`Concept encode warning: ${e.message}`, 'warn'); }
+      }
+      _renderConceptList();
+
+      const kws = statements.join(', ') || '—';
       parseResult.innerHTML =
-        `<span style="color:#4ae87a">✓ ${vbhs.length} virtual boreholes injected · ${secSamples.length} neural samples · keywords: ${kws}</span><br>
+        `<span style="color:#4ae87a">✓ ${vbhs.length} virtual boreholes · ${conceptIds.length} concepts encoded</span><br>
+         <span style="color:var(--text-mid)">Concepts: ${kws.slice(0,120)}</span><br>
          <span style="color:var(--text-mid)">Rebuild the 3D model to apply.</span>`;
-      log(`Section parsed: ${vbhs.length} virtual BHs · ${secSamples.length} neural training samples · keywords: ${kws}`, 'ok');
+      log(`Section parsed: ${vbhs.length} virtual BHs · ${conceptIds.length} concepts added to ConceptStore`, 'ok');
       setEnabled('btn-build-model', true);
 
     } catch (err) {
@@ -3600,3 +3619,222 @@ function initMohrCircle() {
 initLayerControls();
 initExporter();
 init();
+
+// ── Conceptual Model Panel ────────────────────────────────────────────────────
+// Users enter free-text geological concepts (palaeochannel E-W, stepped rockhead,
+// River Terrace morphology, fault NE-SW). Claude encodes each as a 32-dim embedding
+// on CONCEPT_AXES. The embeddings are stored in AppState.conceptStore and warp the
+// neural implicit field's coordinate space, making output geometry reflect conceptual input.
+
+function initConceptPanel() {
+  if (!AppState.conceptStore) AppState.conceptStore = new ConceptStore();
+  _loadDemoConceptsIfEmpty();
+
+  const textarea   = document.getElementById('concept-description');
+  const confidence = document.getElementById('concept-confidence');
+  const confLabel  = document.getElementById('concept-confidence-val');
+  const domainSel  = document.getElementById('concept-domain');
+  const encodeBtn  = document.getElementById('btn-encode-concept');
+  const clearBtn   = document.getElementById('btn-clear-concepts');
+  const listEl     = document.getElementById('concept-list');
+
+  confidence?.addEventListener('input', () => {
+    if (confLabel) confLabel.textContent = parseFloat(confidence.value).toFixed(2);
+  });
+
+  encodeBtn?.addEventListener('click', async () => {
+    const text = textarea?.value?.trim();
+    if (!text) return;
+
+    encodeBtn.disabled   = true;
+    encodeBtn.textContent = '⟳ Encoding…';
+    try {
+      const emb  = await encodeGeologicalConcept(text, AppState.apiKey, AppState.demoMode);
+      const conf = parseFloat(confidence?.value ?? 0.7);
+      const domain = _buildDomain(domainSel?.value ?? 'global');
+      AppState.conceptStore.add({ description: text, embedding: emb, confidence: conf, domain });
+      _renderConceptList();
+      if (textarea) textarea.value = '';
+      log(`Concept encoded: "${text.slice(0, 60)}" — ${AppState.conceptStore.concepts.length} total`, 'ok');
+    } catch (err) {
+      log(`Concept encode error: ${err.message}`, 'error');
+    } finally {
+      encodeBtn.disabled   = false;
+      encodeBtn.textContent = '✦ Encode Concept →';
+    }
+  });
+
+  clearBtn?.addEventListener('click', () => {
+    AppState.conceptStore.clear();
+    _renderConceptList();
+    log('Conceptual model cleared', 'info');
+  });
+
+  _renderConceptList();
+}
+
+function _buildDomain(type) {
+  if (type === 'global') return { type: 'global' };
+  // BBox from current plan view bounds if available
+  if (type === 'site' && AppState.classifiedBH.length) {
+    const xs = AppState.classifiedBH.map(b => b.x);
+    const ys = AppState.classifiedBH.map(b => b.y);
+    return {
+      type: 'bbox',
+      minX: Math.min(...xs), maxX: Math.max(...xs),
+      minY: Math.min(...ys), maxY: Math.max(...ys),
+      sigma: 30,
+    };
+  }
+  return { type: 'global' };
+}
+
+export function _renderConceptList() {
+  const listEl = document.getElementById('concept-list');
+  if (!listEl || !AppState.conceptStore) return;
+  const concepts = AppState.conceptStore.concepts;
+  if (!concepts.length) {
+    listEl.innerHTML = '<div class="concept-empty">No concepts encoded yet.</div>';
+    return;
+  }
+  listEl.innerHTML = concepts.map(c => {
+    const bars = Array.from(c.embedding).map((v, i) => {
+      const pct  = Math.round(Math.abs(v) * 100);
+      const col  = v >= 0 ? 'var(--accent)' : 'var(--red)';
+      return `<div class="concept-bar-wrap" title="${CONCEPT_AXES[i]}: ${v.toFixed(2)}">
+        <div class="concept-bar" style="width:${pct}%;background:${col}"></div>
+      </div>`;
+    }).join('');
+    const dom = c.domain?.type === 'bbox' ? ' [site bbox]' : ' [global]';
+    return `<div class="concept-entry" data-id="${c.id}">
+      <div class="concept-header">
+        <span class="concept-desc" title="${c.description}">${c.description.slice(0, 60)}${c.description.length > 60 ? '…' : ''}</span>
+        <span class="concept-conf">conf ${(c.confidence * 100).toFixed(0)}%${dom}</span>
+        <button class="concept-remove" onclick="_removeConcept('${c.id}')">×</button>
+      </div>
+      <div class="concept-axes">${bars}</div>
+    </div>`;
+  }).join('');
+}
+
+window._removeConcept = function(id) {
+  AppState.conceptStore?.remove(id);
+  _renderConceptList();
+  log(`Concept removed`, 'info');
+};
+
+function _loadDemoConceptsIfEmpty() {
+  if (!AppState.conceptStore.isEmpty) return;
+  // Pre-encode two demo concepts so the app works in demo mode immediately
+  const { _demoEmb } = _demoConcepts();
+  for (const c of _demoEmb) {
+    AppState.conceptStore.add(c);
+  }
+  setTimeout(_renderConceptList, 0);
+}
+
+function _demoConcepts() {
+  const palaeochannel = new Float32Array(32);
+  palaeochannel[0]=-0.8; palaeochannel[3]=0.9; palaeochannel[4]=-0.7;
+  palaeochannel[5]=1.0;  palaeochannel[8]=0.9; palaeochannel[19]=0.6;
+  palaeochannel[22]=0.5; palaeochannel[23]=0.8; palaeochannel[26]=0.7;
+  palaeochannel[27]=0.9; palaeochannel[29]=0.8;
+
+  const terrace = new Float32Array(32);
+  terrace[0]=0.7; terrace[8]=0.6; terrace[9]=0.8;
+  terrace[22]=0.4; terrace[23]=0.7; terrace[26]=0.8;
+
+  return { _demoEmb: [
+    { description: 'Palaeochannel trending E-W, gravel-filled, with erosional base', embedding: palaeochannel, confidence: 0.75, domain: { type: 'global' } },
+    { description: 'River Terrace Deposits — laterally continuous gravel and sand', embedding: terrace, confidence: 0.80, domain: { type: 'global' } },
+  ]};
+}
+
+// ── Traceability: compute attribution for a world position ────────────────────
+// Called from scene.js on voxel hover. Returns object for tooltip rendering.
+export function getVoxelAttribution(worldX, worldY, worldZ) {
+  const concepts = AppState.conceptStore
+    ? AppState.conceptStore.computeAt(worldX, worldY, worldZ)
+    : { weights: [], tensor: { Ax: 1, Ay: 1, Az: 1 }, totalWeight: 0 };
+
+  // Nearest boreholes at this depth (IDW attribution)
+  const depth = (AppState.voxelGrid ? AppState.voxelGrid.origin?.y ?? 0 : 0) - worldZ;
+  const bhWeights = _nearestBHWeights(worldX, worldY, worldZ, depth, 3);
+
+  const tensor = concepts.tensor;
+  return {
+    conceptWeights:    concepts.weights.slice(0, 4),
+    bhWeights,
+    tensor:            { Ax: tensor.Ax.toFixed(2), Ay: tensor.Ay.toFixed(2), Az: tensor.Az.toFixed(2) },
+    semanticDominance: concepts.totalWeight > 0 ? Math.min(1, concepts.totalWeight) : 0,
+  };
+}
+
+function _nearestBHWeights(wx, wy, wz, depth, k) {
+  const bhs = AppState.classifiedBH ?? [];
+  const candidates = bhs
+    .map(bh => {
+      const dist = Math.hypot(bh.x - wx, bh.y - wy);
+      const layer = bh.layers?.find(l => {
+        const d = (bh.groundLevel ?? 0) - wz;
+        return d >= l.top && d <= l.base;
+      });
+      return { id: bh.id, dist, hasLayer: !!layer };
+    })
+    .filter(c => c.dist < 500)
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, k);
+
+  if (!candidates.length) return [];
+  const wSum = candidates.reduce((s, c) => s + 1 / (c.dist * c.dist + 0.01), 0);
+  return candidates.map(c => ({
+    id:     c.id,
+    weight: (1 / (c.dist * c.dist + 0.01)) / wSum,
+  }));
+}
+
+// Internal alias for traceability (same as exported getVoxelAttribution)
+function _computeAttribution(worldX, worldY, worldZ) {
+  return getVoxelAttribution(worldX, worldY, worldZ);
+}
+
+function _renderAttribution(attr, unitCode) {
+  if (!attr) return '';
+  const { conceptWeights, bhWeights, tensor, semanticDominance } = attr;
+
+  const semPct = (semanticDominance * 100).toFixed(0);
+  const datPct = Math.max(0, 100 - semPct).toFixed(0);
+
+  const conceptRows = conceptWeights.length
+    ? conceptWeights.map(c =>
+        `<div class="trace-row">
+          <span class="trace-label" title="${c.description}">${c.description.slice(0, 40)}${c.description.length > 40 ? '…' : ''}</span>
+          <span class="trace-weight">${(c.weight * 100).toFixed(0)}%</span>
+        </div>`).join('')
+    : '<div class="trace-row"><span class="trace-label" style="color:var(--text-dim)">No active concepts</span></div>';
+
+  const bhRows = bhWeights.length
+    ? bhWeights.map(b =>
+        `<div class="trace-row">
+          <span class="trace-label">${b.id}</span>
+          <span class="trace-weight">${(b.weight * 100).toFixed(0)}%</span>
+        </div>`).join('')
+    : '<div class="trace-row"><span class="trace-label" style="color:var(--text-dim)">No boreholes nearby</span></div>';
+
+  return `
+    <div class="trace-section">
+      <div class="trace-section-hdr">Semantic influence: ${semPct}% · Data: ${datPct}%</div>
+    </div>
+    <div class="trace-section">
+      <div class="trace-section-hdr">Concepts</div>
+      ${conceptRows}
+    </div>
+    <div class="trace-section">
+      <div class="trace-section-hdr">Nearest Boreholes</div>
+      ${bhRows}
+    </div>
+    <div class="trace-section">
+      <div class="trace-section-hdr">Coordinate Warp (concept anisotropy)</div>
+      <div class="trace-warp">E-W ×${tensor.Ax} · N-S ×${tensor.Ay} · Z ×${tensor.Az}</div>
+    </div>`;
+}
