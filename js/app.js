@@ -2400,6 +2400,7 @@ function initParameterView() {
     N_spt: 'SPT N — Blow Count',
     boundary:           'Boundary uncertainty (blend ratio 0–1)',
     concept_influence:  'Concept semantic influence (0=data, 1=concept)',
+    coverage_density:   'Borehole coverage density (0=sparse, 1=data-dense)',
   };
 
   document.getElementById('btn-param-apply')?.addEventListener('click', () => {
@@ -2428,11 +2429,27 @@ function initParameterView() {
       document.getElementById('param-scale-mid').textContent = '0.5';
       document.getElementById('param-scale-max').textContent = '1.0';
       document.getElementById('param-scale-label').textContent = 'Concept semantic influence — purple=data-driven, amber=concept-driven';
-      // Override gradient to match HSL purple→amber
       const cs = document.getElementById('param-colorscale');
       cs.querySelector('div').style.background = 'linear-gradient(to right,#6a2fce,#3070cc,#1ab8b8,#40cc40,#e0b020)';
       cs.style.display = 'block';
       log('Parameter view: concept semantic influence', 'ok');
+      return;
+    }
+
+    if (paramName === 'coverage_density') {
+      const ok = AppState.scene.colorByCoverage();
+      if (!ok) {
+        log('Coverage density not available — rebuild the model using Neural Implicit method.', 'warn');
+        return;
+      }
+      document.getElementById('param-scale-min').textContent = '0.0';
+      document.getElementById('param-scale-mid').textContent = '0.5';
+      document.getElementById('param-scale-max').textContent = '1.0';
+      document.getElementById('param-scale-label').textContent = 'Borehole coverage density — red=sparse/extrapolated, green=data-dense';
+      const cs = document.getElementById('param-colorscale');
+      cs.querySelector('div').style.background = 'linear-gradient(to right,#cc2222,#e08020,#e0cc00,#40cc40)';
+      cs.style.display = 'block';
+      log('Parameter view: borehole coverage density', 'ok');
       return;
     }
 
@@ -4108,6 +4125,105 @@ function _renderScenarioList() {
   }).join('');
 }
 
+// ── Concept conflict detection ────────────────────────────────────────────────
+// Returns an array of conflict objects describing contradictions within or
+// between active concepts. Each entry has:
+//   type: 'intra' | 'inter'
+//   description: human-readable explanation
+//   severity: 'warning' | 'error'
+//   conceptIds: array of involved concept IDs
+export function detectConceptConflicts() {
+  const store = AppState.conceptStore;
+  if (!store || store.isEmpty) return [];
+
+  const conflicts = [];
+  const concepts  = store.concepts.filter(c => c.confidence >= 0.15);
+
+  // ── 1. Intra-concept contradictions ─────────────────────────────────────────
+  // Axes that are geometrically incompatible within the same concept embedding.
+  const INTRA_PAIRS = [
+    { a: 0,  b: 5,  label: 'horizontal_layering vs channel_morphology',
+      desc: 'Flat-bedded (axis 0) and concave-up channel (axis 5) are geometrically incompatible. One should be negative.' },
+    { a: 6,  b: 0,  label: 'dome_anticline vs horizontal_layering',
+      desc: 'A dome/anticline (axis 6) and strong horizontal layering (axis 0) conflict — domed bodies are not flat.' },
+    { a: 7,  b: 5,  label: 'fault_controlled vs channel_morphology',
+      desc: 'Fault-controlled geometry (axis 7) and channel morphology (axis 5) have different spatial scales and styles.' },
+    { a: 14, b: 15, label: 'deepens_east vs deepens_west',
+      desc: 'Cannot deepen in both east and west simultaneously — these are opposing dip directions.' },
+    { a: 16, b: 17, label: 'deepens_north vs deepens_south',
+      desc: 'Cannot deepen in both north and south simultaneously — these are opposing dip directions.' },
+    { a: 10, b: 11, label: 'thinning_east vs thinning_west',
+      desc: 'Cannot thin in both east and west simultaneously.' },
+    { a: 12, b: 13, label: 'thinning_north vs thinning_south',
+      desc: 'Cannot thin in both north and south simultaneously.' },
+    { a: 21, b: 22, label: 'coarsening_upward vs fining_upward',
+      desc: 'A sequence cannot simultaneously coarsen and fine upward.' },
+  ];
+
+  for (const c of concepts) {
+    const emb = c.embedding;
+
+    // Check intra-pairs: both strongly positive (same direction) = contradiction
+    for (const { a, b, label, desc } of INTRA_PAIRS) {
+      if (emb[a] > 0.45 && emb[b] > 0.45) {
+        conflicts.push({
+          type: 'intra', severity: 'warning',
+          conceptIds: [c.id],
+          description: `"${c.description.slice(0, 40)}": ${label} — ${desc}`,
+        });
+      }
+    }
+
+    // E-W and N-S elongation both strongly positive → isotropic (concept has no directional effect)
+    if (emb[3] > 0.5 && emb[4] > 0.5) {
+      conflicts.push({
+        type: 'intra', severity: 'warning',
+        conceptIds: [c.id],
+        description: `"${c.description.slice(0, 40)}": both E-W and N-S elongation are high — body will be isotropic, not directionally elongated. Choose the dominant direction.`,
+      });
+    }
+  }
+
+  // ── 2. Inter-concept contradictions ──────────────────────────────────────────
+  // Between pairs of concepts: axes where embeddings strongly oppose.
+  // Only flag when both concepts have the same (or nearby) spatial domain and
+  // both have significant weight (confidence × relevance).
+  const CONFLICT_AXES = [3, 4, 0, 6, 5, 7, 14, 15, 16, 17]; // key geometry axes
+  for (let i = 0; i < concepts.length; i++) {
+    for (let j = i + 1; j < concepts.length; j++) {
+      const ca = concepts[i], cb = concepts[j];
+      // Skip if domains are spatially separated (both bbox with no overlap)
+      const aGlobal = !ca.domain || ca.domain.type === 'global';
+      const bGlobal = !cb.domain || cb.domain.type === 'global';
+      if (!aGlobal && !bGlobal) {
+        const ad = ca.domain, bd = cb.domain;
+        // Simple AABB overlap check
+        if (ad.maxX < bd.minX || bd.maxX < ad.minX || ad.maxY < bd.minY || bd.maxY < ad.minY) continue;
+      }
+
+      const opposingAxes = [];
+      for (const ax of CONFLICT_AXES) {
+        const va = ca.embedding[ax], vb = cb.embedding[ax];
+        if (va * vb < 0 && Math.abs(va) > 0.4 && Math.abs(vb) > 0.4) {
+          opposingAxes.push({ ax, axName: CONCEPT_AXES[ax], va, vb });
+        }
+      }
+      // Only flag when 2+ axes conflict, or 1 axis conflicts at high magnitude
+      const strongConflicts = opposingAxes.filter(o => Math.abs(o.va) > 0.6 && Math.abs(o.vb) > 0.6);
+      if (opposingAxes.length >= 2 || strongConflicts.length >= 1) {
+        const axNames = opposingAxes.slice(0, 3).map(o => o.axName).join(', ');
+        conflicts.push({
+          type: 'inter', severity: strongConflicts.length ? 'error' : 'warning',
+          conceptIds: [ca.id, cb.id],
+          description: `"${ca.description.slice(0, 25)}" vs "${cb.description.slice(0, 25)}": opposing values on [${axNames}] — their combined effect will partially cancel. Consider separating to different spatial domains.`,
+        });
+      }
+    }
+  }
+
+  return conflicts;
+}
+
 // ── Concept coherence scoring ─────────────────────────────────────────────────
 // Computes how well the built voxel model's spatial geometry agrees with each
 // concept's stated axes. Checks E-W elongation, N-S elongation, and layering.
@@ -4273,8 +4389,29 @@ export function _renderConceptList() {
     </div>`;
   }).join('');
   _updateConceptInfluenceBar();
+  // Conflict detection: run live after every concept change so warnings appear inline
+  _renderConceptConflicts();
   // Update 3D scene concept domain boxes (only bbox concepts show a 3D marker)
   AppState.scene?.drawConceptDomains?.(AppState.conceptStore);
+}
+
+function _renderConceptConflicts() {
+  const el = document.getElementById('concept-conflicts');
+  if (!el) return;
+  const conflicts = detectConceptConflicts();
+  if (!conflicts.length) {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    return;
+  }
+  el.style.display = 'block';
+  el.innerHTML = conflicts.map(cf => {
+    const icon = cf.severity === 'error' ? '⚠' : '△';
+    const col  = cf.severity === 'error' ? 'var(--red)' : '#e0a020';
+    return `<div class="conflict-row" style="border-left:2px solid ${col};padding:3px 6px;margin-bottom:4px;font-size:9.5px;color:var(--text-mid)">
+      <span style="color:${col};margin-right:4px">${icon}</span>${escHtml(cf.description)}
+    </div>`;
+  }).join('');
 }
 
 window._removeConcept = function(id) {
@@ -4322,6 +4459,19 @@ export function getVoxelAttribution(worldX, worldY, worldZ, unitCode = null) {
   const depth = (AppState.voxelGrid ? AppState.voxelGrid.origin?.y ?? 0 : 0) - worldZ;
   const bhWeights = _nearestBHWeights(worldX, worldY, worldZ, depth, 3);
 
+  // Coverage density at this (x,y) position from the voxel grid
+  let coverageDensityVal = null;
+  const grid = AppState.voxelGrid;
+  if (grid?.coverageDensity) {
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O } = grid;
+    const ix = Math.floor((worldX - O.x) / cs);
+    const iy = Math.floor((worldY - O.z) / cs);
+    const iz = Math.floor((worldZ - O.y) / ch);
+    if (ix >= 0 && ix < nx && iy >= 0 && iy < ny && iz >= 0 && iz < nz) {
+      coverageDensityVal = grid.coverageDensity[ix + iy * nx + iz * nx * ny];
+    }
+  }
+
   const tensor = concepts.tensor;
   const trend  = concepts.trend ?? { dz_dxN: 0, dz_dyN: 0 };
   return {
@@ -4331,6 +4481,7 @@ export function getVoxelAttribution(worldX, worldY, worldZ, unitCode = null) {
     semanticDominance: concepts.totalWeight > 0 ? Math.min(1, concepts.totalWeight) : 0,
     activeAxes:        concepts.activeAxes ?? [],
     trend:             { dz_dxN: trend.dz_dxN, dz_dyN: trend.dz_dyN },
+    coverageDensity:   coverageDensityVal,
   };
 }
 
@@ -4364,10 +4515,11 @@ function _computeAttribution(worldX, worldY, worldZ) {
 
 function _renderAttribution(attr, unitCode) {
   if (!attr) return '';
-  const { conceptWeights, bhWeights, tensor, semanticDominance, activeAxes, trend } = attr;
+  const { conceptWeights, bhWeights, tensor, semanticDominance, activeAxes, trend, coverageDensity } = attr;
 
   const semPct = (semanticDominance * 100).toFixed(0);
   const datPct = Math.max(0, 100 - semPct).toFixed(0);
+  const covPct = coverageDensity != null ? (coverageDensity * 100).toFixed(0) : null;
 
   const conceptRows = conceptWeights.length
     ? conceptWeights.map(c =>
@@ -4406,9 +4558,17 @@ function _renderAttribution(attr, unitCode) {
       }).join('')
     : '<div class="trace-row"><span class="trace-label" style="color:var(--text-dim)">No significant axes</span></div>';
 
+  const covBar = covPct != null
+    ? `<div class="trace-cov-bar-wrap" title="Borehole coverage density">
+        <div class="trace-cov-fill" style="width:${covPct}%;background:hsl(${covPct * 1.2},75%,38%)"></div>
+      </div><span class="trace-weight">${covPct}%</span>`
+    : '';
+
   return `
     <div class="trace-section">
-      <div class="trace-section-hdr">Semantic influence: ${semPct}% · Data: ${datPct}%</div>
+      <div class="trace-section-hdr">Semantic influence: ${semPct}% · Data: ${datPct}%
+        ${covPct != null ? `· Coverage: ${covBar}` : ''}
+      </div>
     </div>
     <div class="trace-section">
       <div class="trace-section-hdr">Concepts</div>

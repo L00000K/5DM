@@ -473,6 +473,9 @@
         </div>
         <div id="concept-list" class="concept-list"></div>
 
+        <!-- Concept conflict warnings — auto-populated by detectConceptConflicts() -->
+        <div id="concept-conflicts" style="display:none;margin-top:6px"></div>
+
         <!-- Global concept influence summary -->
         <div id="concept-global-tensor" class="concept-global-tensor" style="display:none"></div>
 
@@ -913,6 +916,7 @@
             <option value="N_spt">SPT N — blow count</option>
             <option value="boundary">Boundary uncertainty (blend ratio)</option>
             <option value="concept_influence">Concept semantic influence</option>
+            <option value="coverage_density">Borehole coverage density</option>
           </select>
         </div>
         <div style="display:flex;gap:4px;margin-top:5px">

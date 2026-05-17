@@ -377,6 +377,27 @@ export class VoxelBuilder {
     return true;
   }
 
+  // Color voxels by borehole coverage density [0=sparse, 1=well-constrained].
+  // Red (0 – sparse, extrapolated) → yellow → green (1 – data-dense).
+  colorByCoverage() {
+    if (!this.grid?.coverageDensity) return false;
+    const { coverageDensity } = this.grid;
+    const col = new THREE.Color();
+    for (const [code, mesh] of Object.entries(this.meshes)) {
+      const flatIdx = this._unitFlatIdx?.[code];
+      if (!flatIdx) continue;
+      const colorAttr = mesh.geometry.getAttribute('voxelColor');
+      for (let i = 0; i < flatIdx.length; i++) {
+        const t = Math.min(1, Math.max(0, coverageDensity[flatIdx[i]] ?? 0));
+        // Red (t=0) → orange → yellow → green (t=1)
+        col.setHSL(t * 0.33, 0.85, 0.38 + t * 0.14);
+        colorAttr.setXYZ(i, col.r, col.g, col.b);
+      }
+      colorAttr.needsUpdate = true;
+    }
+    return true;
+  }
+
   // Restore original unit colours after parameter coloring.
   resetUnitColors() {
     for (const [code, mesh] of Object.entries(this.meshes)) {

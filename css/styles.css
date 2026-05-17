@@ -2208,6 +2208,16 @@ kbd {
 .trace-weight { color: var(--accent); font-family: var(--font-mono); font-size: 10px; text-align: right; }
 .trace-warp   { color: var(--text-mid); font-family: var(--font-mono); font-size: 10px; grid-column: 1/-1; }
 
+/* Coverage density inline bar in traceability header */
+.trace-cov-bar-wrap {
+  display: inline-block; width: 40px; height: 5px; background: var(--bg-surface);
+  border-radius: 2px; overflow: hidden; vertical-align: middle; margin: 0 2px;
+}
+.trace-cov-fill { height: 100%; border-radius: 2px; }
+
+/* Concept conflict warnings */
+.conflict-row { border-radius: 3px; background: rgba(200,80,40,0.07); }
+
 /* Concept coherence scoring */
 .coherence-row {
   display: grid; grid-template-columns: 1fr 60px 28px; gap: 4px; align-items: center;

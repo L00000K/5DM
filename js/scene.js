@@ -311,6 +311,10 @@ class SceneManager {
     this._builder?.colorByBoundaryUncertainty();
   }
 
+  colorByCoverage() {
+    return this._builder?.colorByCoverage() ?? false;
+  }
+
   colorByConceptInfluence() {
     return this._builder?.colorByConceptInfluence() ?? false;
   }

@@ -656,6 +656,64 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
         }
       }
 
+      // ── Borehole coverage density ─────────────────────────────────────────
+      // For each (ix,iy) column compute how well-constrained by real borehole
+      // data this horizontal position is: sum of exp(-dist²/σ²) for each BH.
+      // σ = mean inter-borehole spacing (or site span / √N if <3 BHs).
+      // Stored as a 3D Float32Array (same for all iz) for uniform access in
+      // the voxel builder and traceability panel.
+      const coverageDensity = (() => {
+        const realBHs = allBoreholes.filter(b => !b.synthetic && b.layers?.length);
+        if (!realBHs.length) return null;
+        // Estimate σ from mean nearest-neighbour distance
+        let sigmaSq = 0;
+        if (realBHs.length >= 2) {
+          let totalNN = 0;
+          for (const a of realBHs) {
+            let minD = Infinity;
+            for (const b of realBHs) {
+              if (a === b) continue;
+              const d = Math.hypot(a.x - b.x, a.y - b.y);
+              if (d < minD) minD = d;
+            }
+            totalNN += minD;
+          }
+          const meanNN = totalNN / realBHs.length;
+          sigmaSq = meanNN * meanNN * 1.5; // 1.5× mean NN gives smooth falloff
+        } else {
+          // Single borehole — use quarter of site span
+          const span = Math.max(nx * cellSize, ny * cellSize) * 0.25;
+          sigmaSq = span * span;
+        }
+        sigmaSq = Math.max(sigmaSq, 1); // avoid zero sigma
+
+        const arr = new Float32Array(nx * ny * nz);
+        let maxVal = 0;
+        // Compute 2D density first (only varies horizontally)
+        const density2d = new Float32Array(nx * ny);
+        for (let iy = 0; iy < ny; iy++) {
+          const worldY = oy + iy * cellSize + cellSize * 0.5;
+          for (let ix = 0; ix < nx; ix++) {
+            const worldX = ox + ix * cellSize + cellSize * 0.5;
+            let sum = 0;
+            for (const bh of realBHs) {
+              const dx = bh.x - worldX, dy = bh.y - worldY;
+              sum += Math.exp(-(dx * dx + dy * dy) / sigmaSq);
+            }
+            density2d[ix + iy * nx] = sum;
+            if (sum > maxVal) maxVal = sum;
+          }
+        }
+        // Normalise and replicate vertically
+        if (maxVal > 0) {
+          for (let iz = 0; iz < nz; iz++) {
+            const base = iz * nx * ny;
+            for (let i = 0; i < nx * ny; i++) arr[base + i] = density2d[i] / maxVal;
+          }
+        }
+        return arr;
+      })();
+
       if (onProgress) onProgress(1);
       return {
         nx, ny, nz,
@@ -666,6 +724,7 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
         worldDepth:  ny * cellSize,
         unitIds, certainty, blendUnitIds, blendRatios,
         ...(conceptInfluence ? { conceptInfluence } : {}),
+        ...(coverageDensity   ? { coverageDensity }  : {}),
       };
     }
   }

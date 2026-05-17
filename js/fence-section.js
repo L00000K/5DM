@@ -142,7 +142,57 @@ export class FenceSection {
       ctx.fillText(`${ev.toFixed(0)}`, PAD_L - 6, yPx + 3);
     }
 
-    // ── BH ticks ──────────────────────────────────────────────────────────
+    // ── Geological contact lines ──────────────────────────────────────────
+    // Trace unit boundaries horizontally: for each column, detect where the
+    // unit changes from iz-1 to iz and draw a thin line at that elevation.
+    // Use a semi-transparent dark line so the contacts are readable but subtle.
+    // Group collinear segments and draw one path per contact elevation for speed.
+    {
+      // colContacts[ci] = array of {iz, uid_above} where unit changes
+      const contactY = new Map(); // key: iz → [ci,...] columns where contact occurs
+      for (let ci = 0; ci < N_COLS; ci++) {
+        const t   = (ci / (N_COLS - 1)) - 0.5;
+        const wx  = sx0 + along.x * t * worldW;
+        const wz  = sz0 + along.z * t * worldW;
+        const ix  = Math.floor((wx - O.x) / cs);
+        const iy  = Math.floor((wz - O.z) / cs);
+        if (ix < 0 || ix >= nx || iy < 0 || iy >= ny) continue;
+        for (let iz = 1; iz < nz; iz++) {
+          const uid0 = unitIds[ix + iy * nx + (iz - 1) * nx * ny];
+          const uid1 = unitIds[ix + iy * nx + iz * nx * ny];
+          if (uid0 !== uid1 && uid0 && uid1) {
+            if (!contactY.has(iz)) contactY.set(iz, []);
+            contactY.get(iz).push(ci);
+          }
+        }
+      }
+
+      ctx.strokeStyle = 'rgba(20,30,45,0.55)';
+      ctx.lineWidth   = 0.75;
+      for (const [iz, cols] of contactY) {
+        const yPx = PAD_T + drawH - ((iz * ch) / worldH) * drawH;
+        // Draw a connected segment for each run of consecutive columns
+        let runStart = null;
+        for (let k = 0; k <= cols.length; k++) {
+          const ci = cols[k];
+          if (ci === undefined || (k > 0 && ci !== cols[k - 1] + 1)) {
+            // End of run — draw it
+            if (runStart !== null) {
+              const x0 = PAD_L + runStart * colPx;
+              const x1 = PAD_L + (cols[k - 1] + 1) * colPx;
+              ctx.beginPath();
+              ctx.moveTo(x0, yPx); ctx.lineTo(x1, yPx);
+              ctx.stroke();
+            }
+            runStart = ci ?? null;
+          } else if (k === 0) {
+            runStart = ci;
+          }
+        }
+      }
+    }
+
+    // ── BH ticks with SPT N-value bars ───────────────────────────────────
     (boreholes ?? []).filter(b => !b.synthetic).forEach(bh => {
       const distToPlane = Math.abs(normal.x * bh.x + normal.z * bh.y - centerD);
       if (distToPlane > thickness * 0.55) return;
@@ -155,9 +205,25 @@ export class FenceSection {
       const gl     = bh.groundLevel ?? topY;
       const colYPx = PAD_T + drawH - ((gl - botY) / worldH) * drawH;
 
+      // BH stick
       ctx.strokeStyle = '#1c2a38';
       ctx.lineWidth   = 1.5;
       ctx.beginPath(); ctx.moveTo(bhX, colYPx); ctx.lineTo(bhX, PAD_T + drawH); ctx.stroke();
+
+      // SPT N-value bars: if any layer has sptN, draw small horizontal bars
+      // Max bar width = 18px at N=50, clipped to colPx*3
+      const sptLayers = (bh.layers ?? []).filter(l => l.sptN != null && l.sptN > 0);
+      if (sptLayers.length) {
+        const maxSPT = Math.max(...sptLayers.map(l => l.sptN), 1);
+        const BAR_SCALE = Math.min(18, colPx * 4) / Math.max(maxSPT, 50);
+        for (const layer of sptLayers) {
+          const zMid   = bh.groundLevel - (layer.top + layer.base) / 2;
+          const yMid   = PAD_T + drawH - ((zMid - botY) / worldH) * drawH;
+          const barW   = layer.sptN * BAR_SCALE;
+          ctx.fillStyle   = 'rgba(60,120,200,0.65)';
+          ctx.fillRect(bhX + 2, yMid - 1.5, barW, 3);
+        }
+      }
 
       ctx.fillStyle = '#ffffff';
       ctx.beginPath(); ctx.arc(bhX, colYPx, 4, 0, Math.PI * 2); ctx.fill();
