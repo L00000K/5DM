@@ -42,10 +42,60 @@ export const CONCEPT_AXES = [
 ];
 
 // Indices of axes used to derive the anisotropy tensor for coordinate warping
-const AX_EW   = 3;   // east_west_elongation   → scale x
-const AX_NS   = 4;   // north_south_elongation  → scale y
+const AX_EW   = 3;   // east_west_elongation   → major axis if EW dominant
+const AX_NS   = 4;   // north_south_elongation  → major axis if NS dominant
 const AX_VERT = 29;  // incision_depth_ratio    → scale z
 const AX_CHAN = 5;   // channel_morphology      → additional vertical compression
+
+// ── Standalone warp utilities (importable without a ConceptStore instance) ──
+
+/**
+ * Warp world coordinates (wx, wy, wz) using an anisotropy tensor.
+ * For axis-aligned tensors: divides each axis by Ax/Ay/Az.
+ * For rotated tensors: rotates to principal-axis frame first (major/minor), then scales.
+ * The warped space is NOT rotated back — it remains in the principal-axis frame.
+ * This is intentional: Fourier features are computed consistently in this warped space.
+ */
+export function warpPoint(wx, wy, wz, tensor) {
+  const { theta, cosT, sinT, Amaj = 1, Amin = 1, Az = 1, Ax = 1, Ay = 1 } = tensor;
+  if (theta !== undefined && Math.abs(theta) > 0.05 && (Amaj ?? 1) > 1.1) {
+    // Rotate world coords onto major/minor axes, then scale
+    const major =  wx * cosT + wy * sinT;
+    const minor = -wx * sinT + wy * cosT;
+    return { x: major / Amaj, y: minor / Amin, z: wz / Az };
+  }
+  return { x: wx / Ax, y: wy / Ay, z: wz / Az };
+}
+
+/**
+ * Compute the bounding box of the warped coordinate space for a given site extent.
+ * Required because the Fourier encoder normalises positions within these bounds;
+ * rotation can shift the warped extents away from axis-aligned extrema.
+ */
+export function computeWarpedBounds(bounds, tensor) {
+  const { theta, cosT, sinT, Amaj = 1, Amin = 1, Az = 1, Ax = 1, Ay = 1 } = tensor;
+  const zMin = bounds.minZ / Az, zMax = bounds.maxZ / Az;
+  if (theta !== undefined && Math.abs(theta) > 0.05 && (Amaj ?? 1) > 1.1) {
+    // Evaluate all four XY corners to find true warped extent
+    const wXs = [], wYs = [];
+    for (const wx of [bounds.minX, bounds.maxX]) {
+      for (const wy of [bounds.minY, bounds.maxY]) {
+        wXs.push((wx * cosT + wy * sinT) / Amaj);
+        wYs.push((-wx * sinT + wy * cosT) / Amin);
+      }
+    }
+    return {
+      minX: Math.min(...wXs), maxX: Math.max(...wXs),
+      minY: Math.min(...wYs), maxY: Math.max(...wYs),
+      minZ: zMin, maxZ: zMax,
+    };
+  }
+  return {
+    minX: bounds.minX / Ax, maxX: bounds.maxX / Ax,
+    minY: bounds.minY / Ay, maxY: bounds.maxY / Ay,
+    minZ: zMin, maxZ: zMax,
+  };
+}
 
 export class ConceptStore {
   constructor() {
@@ -158,40 +208,55 @@ export class ConceptStore {
   }
 
   /**
-   * Derive anisotropy scale factors from a 32-dim composite embedding.
+   * Derive anisotropy tensor from a 32-dim composite embedding.
    *
-   * Semantics: Ax, Ay, Az > 1 → divide world coordinates → field changes slowly
-   * in that direction → bodies are elongated in that direction.
-   * Ax = 1 (neutral), Ax = 4 (strongly E-W elongated), Ax = 0.25 (strongly compressed E-W)
+   * Supports both axis-aligned and diagonally-rotated elongation:
+   * — Pure E-W (ew=1, ns=0): Amaj along East, theta=0
+   * — Pure N-S (ew=0, ns=1): Amaj along North, theta=π/2
+   * — NE-SW (ew=0.6, ns=0.6): Amaj at 45°, strong elongation along NE diagonal
+   * — NW-SE (ew=−0.3, ns=0.6): handled by signed projections
+   *
+   * Ax, Ay are kept as the display-facing axis-aligned scales (for traceability UI).
+   * Amaj, Amin, theta, cosT, sinT govern the actual coordinate warp used in training/inference.
    */
   _embeddingToTensor(vec) {
-    const ew   = vec[AX_EW]   ?? 0;   // east_west_elongation
-    const ns   = vec[AX_NS]   ?? 0;   // north_south_elongation
-    const vert = vec[AX_VERT] ?? 0;   // incision_depth_ratio
-    const chan = vec[AX_CHAN]  ?? 0;   // channel_morphology — adds vertical compression
+    const ew   = Math.max(-1, Math.min(1, vec[AX_EW]   ?? 0));
+    const ns   = Math.max(-1, Math.min(1, vec[AX_NS]   ?? 0));
+    const vert = vec[AX_VERT] ?? 0;
+    const chan = vec[AX_CHAN]  ?? 0;
 
-    // exp scale: 0→1.0 (neutral), +1→e^1.4≈4.1 (elongated), −1→e^−1.4≈0.25 (compressed)
-    // Clamped to [0.1, 10] to prevent numerical instability
-    const Ax = Math.max(0.1, Math.min(10, Math.exp(+ew   * 1.4)));
-    const Ay = Math.max(0.1, Math.min(10, Math.exp(+ns   * 1.4)));
-    // Channel morphology sharpens vertical boundaries (compresses z → fast variation → sharp)
+    // Axis-aligned display scales — kept for backward compat with traceability / geometry reports
+    const Ax = Math.max(0.1, Math.min(10, Math.exp(+ew * 1.4)));
+    const Ay = Math.max(0.1, Math.min(10, Math.exp(+ns * 1.4)));
     const Az = Math.max(0.1, Math.min(10, Math.exp(-vert * 1.0 - Math.max(0, chan) * 0.5)));
 
-    return { Ax, Ay, Az };
+    // Rotated anisotropy: use positive ew/ns components as a 2D elongation vector
+    const ewPos = Math.max(0, ew);
+    const nsPos = Math.max(0, ns);
+    const magnitude = Math.hypot(ewPos, nsPos);
+
+    if (magnitude > 0.05) {
+      // Angle of major axis measured from East, counterclockwise toward North
+      // ew=1,ns=0 → 0° (E-W)  |  ew=0,ns=1 → 90° (N-S)  |  ew=0.6,ns=0.6 → 45° (NE-SW)
+      const theta = Math.atan2(nsPos, ewPos);
+      const cosT  = Math.cos(theta);
+      const sinT  = Math.sin(theta);
+      // Major: elongated in principal direction; Minor: compressed perpendicular to it
+      const Amaj = Math.max(0.5, Math.min(10, Math.exp(magnitude * 1.4)));
+      const Amin = Math.max(0.1, Math.min(2,  1 / Math.max(0.3, Amaj * 0.25)));
+      return { Ax, Ay, Az, Amaj, Amin, theta, cosT, sinT };
+    }
+
+    // No significant positive horizontal elongation: axis-aligned neutral warp
+    return { Ax, Ay, Az, Amaj: Math.max(Ax, Ay), Amin: Math.min(Ax, Ay), theta: 0, cosT: 1, sinT: 0 };
   }
 
   /**
    * Warp world coordinates using the anisotropy tensor before Fourier encoding.
-   * Compressing a coordinate (dividing by Ax) makes the Fourier features change
-   * more slowly in that direction → implicit field changes slowly → unit bodies
-   * are elongated in that direction.
+   * Delegates to the exported standalone warpPoint() for rotation-aware warping.
    */
   warpCoords(wx, wy, wz, tensor) {
-    return {
-      x: wx / tensor.Ax,
-      y: wy / tensor.Ay,
-      z: wz / tensor.Az,
-    };
+    return warpPoint(wx, wy, wz, tensor);
   }
 
   /**

@@ -6,6 +6,8 @@
 // Training: Adam + cosine-annealed LR, cross-entropy + L2
 // Oracle:   BFS cluster detection → Claude reasons over uncertain regions
 
+import { warpPoint, computeWarpedBounds } from './concept-store.js';
+
 const L_FOURIER = 6; // Fourier frequency bands → 3 + 3×2×6 = 39 features
 
 // ~60-term geological vocabulary: materials, geometry, direction, properties, processes
@@ -389,12 +391,8 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
   // Compute global anisotropy tensor for the warped bounds used by the Fourier encoder.
   // Using a global average tensor keeps the normalisation bounds consistent while still
   // allowing per-point local warping to vary.
-  const gTensor = conceptStore?.globalTensor() ?? { Ax: 1, Ay: 1, Az: 1 };
-  const warpedBounds = {
-    minX: bounds.minX / gTensor.Ax, maxX: bounds.maxX / gTensor.Ax,
-    minY: bounds.minY / gTensor.Ay, maxY: bounds.maxY / gTensor.Ay,
-    minZ: bounds.minZ / gTensor.Az, maxZ: bounds.maxZ / gTensor.Az,
-  };
+  const gTensor = conceptStore?.globalTensor() ?? { Ax: 1, Ay: 1, Az: 1, Amaj: 1, Amin: 1, theta: 0, cosT: 1, sinT: 0 };
+  const warpedBounds = computeWarpedBounds(bounds, gTensor);
 
   const zeroCtx = new Float32Array(CONCEPT_DIM);
 
@@ -421,7 +419,7 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
         // Boost sample weight in concept-active zones: concept relevance provides
         // extra semantic certainty, so we want stronger gradient signal there.
         const conceptBoost = ctx ? Math.min(0.5, ctx.totalWeight * 0.3) : 0;
-        const warped = { x: bh.x / tensor.Ax, y: bh.y / tensor.Ay, z: wz / tensor.Az };
+        const warped = warpPoint(bh.x, bh.y, wz, tensor);
         // Apply depth trend: deepening axes tilt the Z coordinate in normalised space.
         // This makes the implicit field naturally learn dipping contacts without extra samples.
         let warpedZ = warped.z;
@@ -503,7 +501,7 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
             const ctx    = conceptStore ? conceptStore.computeAt(sx, sy, wz, codeA) : null;
             const ctxVec = ctx?.vec ?? zeroCtx;
             const tensor = ctx?.tensor ?? gTensor;
-            const warped = { x: sx / tensor.Ax, y: sy / tensor.Ay, z: wz / tensor.Az };
+            const warped = warpPoint(sx, sy, wz, tensor);
             let warpedZ = warped.z;
             const trend = ctx?.trend;
             if (trend && (Math.abs(trend.dz_dxN) > 0.005 || Math.abs(trend.dz_dyN) > 0.005)) {
@@ -524,7 +522,7 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
             const ctx    = conceptStore ? conceptStore.computeAt(sx, sy, wz, codeB) : null;
             const ctxVec = ctx?.vec ?? zeroCtx;
             const tensor = ctx?.tensor ?? gTensor;
-            const warped = { x: sx / tensor.Ax, y: sy / tensor.Ay, z: wz / tensor.Az };
+            const warped = warpPoint(sx, sy, wz, tensor);
             let warpedZ = warped.z;
             const trend = ctx?.trend;
             if (trend && (Math.abs(trend.dz_dxN) > 0.005 || Math.abs(trend.dz_dyN) > 0.005)) {
@@ -554,7 +552,9 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
   //  The cap prevents virtual samples from outnumbering real samples by more than 3×.
   if (conceptStore && !conceptStore.isEmpty) {
     const gT = conceptStore.globalTensor();
-    if (Math.max(gT.Ax, gT.Ay) > 1.3) {
+    // Use Amaj (major axis elongation) to determine whether concept warp is significant
+    const gAmaj = gT.Amaj ?? Math.max(gT.Ax, gT.Ay);
+    if (gAmaj > 1.3) {
       const unitBHs = {};  // { unitIdx → [{x, y, z, unitCode, top, base}] }
       for (const bh of boreholes) {
         for (const layer of (bh.layers ?? [])) {
@@ -568,15 +568,16 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
         }
       }
 
-      const N_SYNTH = Math.min(5, Math.ceil(Math.max(gT.Ax, gT.Ay) / 1.2) + 1);
+      const N_SYNTH = Math.min(5, Math.ceil(gAmaj / 1.2) + 1);
 
       // Helper: encode one virtual sample and push to samples
       const addVirtual = (sx, sy, sz, tiInt, unitCode, w) => {
         const ctx = conceptStore.computeAt(sx, sy, sz, unitCode);
         if (ctx.totalWeight < 0.15) return;
         const tensor = ctx.tensor;
-        const wx = sx / tensor.Ax, wy = sy / tensor.Ay;
-        let wz = sz / tensor.Az;
+        const warpedPt = warpPoint(sx, sy, sz, tensor);
+        const wx = warpedPt.x, wy = warpedPt.y;
+        let wz = warpedPt.z;
         const vTrend = ctx.trend;
         if (vTrend && (Math.abs(vTrend.dz_dxN) > 0.005 || Math.abs(vTrend.dz_dyN) > 0.005)) {
           const xN = 2 * (wx - warpedBounds.minX) / Math.max(1e-6, warpedBounds.maxX - warpedBounds.minX) - 1;
@@ -593,10 +594,13 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
       for (const [ti, pts] of Object.entries(unitBHs)) {
         if (!pts.length) continue;
         const tiInt = parseInt(ti);
-        // Elongation direction: prefer the axis with higher anisotropy
-        const elongX = gT.Ax > gT.Ay; // true = E-W, false = N-S
-        const spanX = (bounds.maxX - bounds.minX) / gT.Ax;
-        const spanY = (bounds.maxY - bounds.minY) / gT.Ay;
+        // Elongation direction: use concept major-axis angle (theta) for directional guidance
+        const gTheta = gT.theta ?? (gT.Ax > gT.Ay ? 0 : Math.PI / 2);
+        const gCosT  = gT.cosT  ?? Math.cos(gTheta);
+        const gSinT  = gT.sinT  ?? Math.sin(gTheta);
+        // Effective span along major axis direction for proximity filtering
+        const spanX = (bounds.maxX - bounds.minX) / Math.max(1, gAmaj * Math.abs(gCosT) + 0.1);
+        const spanY = (bounds.maxY - bounds.minY) / Math.max(1, gAmaj * Math.abs(gSinT) + 0.1);
         const maxDist = Math.max(spanX, spanY) * 0.8;
 
         // (A) Interpolation between pairs
@@ -617,16 +621,18 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
           }
         }
 
-        // (B) Extrapolation beyond the outermost BH in the concept's elongation direction
-        // Project each BH observation outward along the concept axis by up to 0.5× site span
+        // (B) Extrapolation beyond the outermost BH along concept's major axis direction
+        // Step direction follows theta (concept elongation angle), not just E-W or N-S
         if (pts.length >= 2) {
-          const extendDist = (elongX
-            ? (bounds.maxX - bounds.minX) * 0.35
-            : (bounds.maxY - bounds.minY) * 0.35);
+          const extendDist = Math.max(
+            (bounds.maxX - bounds.minX) * 0.35 * Math.abs(gCosT),
+            (bounds.maxY - bounds.minY) * 0.35 * Math.abs(gSinT),
+            Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) * 0.15,
+          );
           const avgZ = pts.reduce((s, p) => s + p.z, 0) / pts.length;
           for (const p of pts) {
-            const stepX = elongX ? extendDist / N_SYNTH : 0;
-            const stepY = elongX ? 0 : extendDist / N_SYNTH;
+            const stepX = gCosT * extendDist / N_SYNTH;
+            const stepY = gSinT * extendDist / N_SYNTH;
             for (let s = 1; s <= N_SYNTH; s++) {
               // Extend in both positive and negative directions
               for (const sign of [+1, -1]) {
@@ -733,8 +739,9 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore) {
   const cdim      = CONCEPT_DIM ?? 32;
   const nIn       = fourierEnc.outDim + cdim;
   const zeroCtx   = new Float32Array(cdim);
-  const gTensor   = conceptStore?.globalTensor() ?? { Ax: 1, Ay: 1, Az: 1 };
-  const useBounds = warpedBounds ?? bounds; // use warped bounds if available
+  const gTensor   = conceptStore?.globalTensor() ?? { Ax: 1, Ay: 1, Az: 1, Amaj: 1, Amin: 1, theta: 0, cosT: 1, sinT: 0 };
+  // Recompute warped bounds using rotation-aware helper if conceptStore is available
+  const useBounds = conceptStore ? computeWarpedBounds(bounds, gTensor) : (warpedBounds ?? bounds);
 
   const { nx, ny, nz, cellSize, cellHeight, origin } = grid;
   const total = nx * ny * nz;
@@ -774,9 +781,10 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore) {
         const tensor = ctx?.tensor ?? gTensor;
 
         // Warp coordinates by concept anisotropy tensor, then Fourier encode
-        const wx  = worldX / tensor.Ax;
-        const wy  = worldY / tensor.Ay;
-        let   wz  = worldZ / tensor.Az;
+        const warpedInf = warpPoint(worldX, worldY, worldZ, tensor);
+        const wx  = warpedInf.x;
+        const wy  = warpedInf.y;
+        let   wz  = warpedInf.z;
         // Apply depth trend: tilt Z so the field naturally dips in the predicted direction
         const iTrend = ctx?.trend;
         if (iTrend && (Math.abs(iTrend.dz_dxN) > 0.005 || Math.abs(iTrend.dz_dyN) > 0.005)) {
