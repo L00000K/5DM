@@ -1141,7 +1141,14 @@
         <p class="hint" style="font-size:10px;margin-bottom:6px">Compares predicted voxel units against observed BH layer positions.</p>
         <button id="btn-validate-model" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:6px">⚙ Validate vs BH Data</button>
         <div id="validation-results" class="quality-stats"></div>
-        <div style="margin-top:8px">
+        <div style="margin-top:6px">
+          <button id="btn-loocv" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:4px"
+            title="Leave-one-out cross-validation: remove each BH one at a time and check prediction accuracy. Uses IDW for speed. Takes ~N × build time.">
+            ⚙ LOO Cross-Validate (IDW)
+          </button>
+          <div id="loocv-results" style="display:none;margin-top:4px"></div>
+        </div>
+        <div style="margin-top:4px">
           <button id="btn-compare-methods" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:4px" title="Run all interpolation methods and compare accuracy">⚡ Compare All Methods</button>
           <div id="method-comparison-results" style="display:none;margin-top:4px"></div>
         </div>
