@@ -49,6 +49,9 @@ export class FenceSection {
     const args = this._lastArgs;
     if (!args || !this._canvas || !this._ctx) return;
 
+    const showUnc  = document.getElementById('fence-show-uncertainty')?.checked ?? false;
+    const showCov  = document.getElementById('fence-show-coverage')?.checked ?? false;
+
     const { grid, geoUnits, normal, centerD, thickness, boreholes } = args;
     const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty, blendRatios } = grid;
 
@@ -127,6 +130,69 @@ export class FenceSection {
       }
     }
     ctx.globalAlpha = 1;
+
+    // ── Uncertainty / coverage overlay ────────────────────────────────────
+    if ((showUnc || showCov) && (certainty || grid.coverageDensity)) {
+      const coverageData = grid.coverageDensity;
+      const LOG2 = Math.log(2);
+      const nUnits = Math.max(2, geoUnits.length);
+      const maxH_ent = Math.log2(nUnits);
+
+      for (let ci = 0; ci < N_COLS; ci++) {
+        const t  = (ci / (N_COLS - 1)) - 0.5;
+        const wx = sx0 + along.x * t * worldW;
+        const wz = sz0 + along.z * t * worldW;
+        const ix = Math.floor((wx - O.x) / cs);
+        const iy = Math.floor((wz - O.z) / cs);
+        if (ix < 0 || ix >= nx || iy < 0 || iy >= ny) continue;
+        const colX = PAD_L + ci * colPx;
+
+        for (let iz = 0; iz < nz; iz++) {
+          const flat  = ix + iy * nx + iz * nx * ny;
+          if (!unitIds[flat]) continue;
+          const yPx = PAD_T + drawH - ((iz * ch + ch * 0.5) / worldH) * drawH;
+          const hPx = Math.max(1, (ch / worldH) * drawH);
+
+          if (showUnc && certainty && blendRatios) {
+            const p1 = Math.max(0.001, Math.min(0.999, certainty[flat]));
+            const p2 = Math.max(0, Math.min(1 - p1, blendRatios[flat] ?? 0));
+            const xE = (p) => p > 0 && p < 1 ? -p * Math.log(p) / LOG2 : 0;
+            const ent  = xE(p1) + xE(p2) + xE(Math.max(0, 1 - p1 - p2));
+            const t_unc = Math.min(1, ent / maxH_ent);
+            // Red tint proportional to uncertainty
+            ctx.globalAlpha = t_unc * 0.45;
+            ctx.fillStyle = `hsl(${(1 - t_unc) * 120},80%,45%)`;
+            ctx.fillRect(colX, yPx - hPx, Math.ceil(colPx + 0.5), Math.ceil(hPx + 0.5));
+          }
+
+          if (showCov && coverageData) {
+            const cov   = coverageData[flat] ?? 0;
+            const t_cov = Math.min(1, cov);
+            // Blue tint proportional to data coverage
+            ctx.globalAlpha = (1 - t_cov) * 0.35;
+            ctx.fillStyle = 'rgba(40,60,180,1)';
+            ctx.fillRect(colX, yPx - hPx, Math.ceil(colPx + 0.5), Math.ceil(hPx + 0.5));
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+
+      // Overlay legend
+      const legY = PAD_T + 6;
+      if (showUnc) {
+        const grd = ctx.createLinearGradient(PAD_L, 0, PAD_L + 80, 0);
+        grd.addColorStop(0, 'hsla(120,80%,45%,0.5)');
+        grd.addColorStop(0.5, 'hsla(60,80%,45%,0.5)');
+        grd.addColorStop(1, 'hsla(0,80%,45%,0.5)');
+        ctx.fillStyle = grd;
+        ctx.fillRect(PAD_L, legY, 80, 8);
+        ctx.fillStyle = '#333'; ctx.font = '8px monospace'; ctx.textAlign = 'left';
+        ctx.fillText('certain', PAD_L + 1, legY + 17);
+        ctx.textAlign = 'right';
+        ctx.fillText('uncertain', PAD_L + 80, legY + 17);
+        ctx.textAlign = 'left';
+      }
+    }
 
     // ── Elevation grid lines ──────────────────────────────────────────────
     ctx.strokeStyle = '#dde1e7';

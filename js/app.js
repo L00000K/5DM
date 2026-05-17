@@ -510,6 +510,7 @@ function initReset() {
     setEnabled('btn-validate-model', false);
     setEnabled('btn-compare-methods', false);
     setEnabled('btn-assess-risk', false);
+    setEnabled('btn-drill-plan', false);
     setEnabled('btn-plan-view', false);
     setEnabled('btn-export-contacts', false);
     setEnabled('btn-export-surfaces', false);
@@ -802,6 +803,7 @@ function initBuildModel() {
       setEnabled('btn-validate-model', true);
       setEnabled('btn-compare-methods', true);
       setEnabled('btn-assess-risk', true);
+      setEnabled('btn-drill-plan', true);
       setEnabled('btn-plan-view', true);
       setEnabled('btn-export-contacts', true);
       setEnabled('btn-export-surfaces', true);
@@ -2015,6 +2017,13 @@ function initFenceSection() {
     AppState.fenceSection.exportDXF();
     log('Cross-section exported as DXF.', 'ok');
   });
+
+  // Redraw when overlay toggles change
+  ['fence-show-uncertainty', 'fence-show-coverage'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', () => {
+      if (AppState.fenceSection?.visible) AppState.fenceSection._redraw();
+    });
+  });
 }
 
 // ── Screenshot ────────────────────────────────────────────────────────────────
@@ -2710,6 +2719,108 @@ function initRiskAssessment() {
       log(`Risk assessment: ${report.zones.length} hazard zone(s) · Overall ${report.overallLevel}.`,
         hc > 0 ? 'warn' : 'ok');
     }
+  });
+
+  // ── Investigation Planning — suggest drill locations ──────────────────────
+  document.getElementById('btn-drill-plan')?.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('Build the 3D model first.', 'warn'); return; }
+    const nSuggest = parseInt(document.getElementById('drill-plan-n')?.value ?? '5') || 5;
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty, blendRatios } = grid;
+    const LOG2 = Math.log(2);
+    const nUnits = Math.max(2, AppState.geoUnits.length);
+
+    // Compute per-column mean entropy
+    const colEntropy = new Float32Array(nx * ny);
+    for (let iy = 0; iy < ny; iy++) {
+      for (let ix = 0; ix < nx; ix++) {
+        let sumH = 0, cnt = 0;
+        for (let iz = 0; iz < nz; iz++) {
+          const flat = ix + iy * nx + iz * nx * ny;
+          if (!unitIds[flat]) continue;
+          const p1 = Math.max(0.001, Math.min(0.999, certainty[flat]));
+          const p2 = Math.max(0, Math.min(1 - p1, blendRatios ? (blendRatios[flat] ?? 0) : 0));
+          const pR = Math.max(0, 1 - p1 - p2);
+          const xE = (p) => p > 0 && p < 1 ? -p * Math.log(p) / LOG2 : 0;
+          sumH += xE(p1) + xE(p2) + xE(pR);
+          cnt++;
+        }
+        colEntropy[ix + iy * nx] = cnt > 0 ? sumH / cnt : 0;
+      }
+    }
+
+    // Compute distance penalty: existing boreholes reduce priority of nearby cells
+    const realBHs = AppState.classifiedBH.filter(b => !b.synthetic && b.layers?.length);
+    const SIGMA_SQ = Math.pow(nx * cs * 0.2, 2); // 20% of site width
+    const distPenalty = new Float32Array(nx * ny);
+    for (let iy = 0; iy < ny; iy++) {
+      for (let ix = 0; ix < nx; ix++) {
+        const wx = O.x + (ix + 0.5) * cs;
+        const wy = O.z + (iy + 0.5) * cs;
+        let pen = 0;
+        for (const bh of realBHs) {
+          const d2 = (bh.x - wx) ** 2 + (bh.y - wy) ** 2;
+          pen = Math.max(pen, Math.exp(-d2 / SIGMA_SQ));
+        }
+        distPenalty[ix + iy * nx] = pen;
+      }
+    }
+
+    // Score = entropy × (1 − proximity_to_existing_BH)
+    const scores = [];
+    for (let iy = 0; iy < ny; iy++) {
+      for (let ix = 0; ix < nx; ix++) {
+        const col = ix + iy * nx;
+        const score = colEntropy[col] * (1 - distPenalty[col]);
+        if (score > 0) scores.push({ ix, iy, score, entropy: colEntropy[col] });
+      }
+    }
+    scores.sort((a, b) => b.score - a.score);
+
+    // Select top N with min spacing (greedy diverse selection)
+    const selected = [];
+    const minSpacing = cs * Math.max(2, Math.floor(Math.min(nx, ny) / (nSuggest + 1)));
+    for (const s of scores) {
+      if (selected.length >= nSuggest) break;
+      const wx = O.x + (s.ix + 0.5) * cs;
+      const wy = O.z + (s.iy + 0.5) * cs;
+      if (selected.every(sel => Math.hypot(sel.wx - wx, sel.wy - wy) >= minSpacing)) {
+        selected.push({ ...s, wx, wy });
+      }
+    }
+
+    const out = document.getElementById('drill-plan-results');
+    if (!out) return;
+    out.style.display = 'block';
+    if (!selected.length) {
+      out.innerHTML = '<p class="hint" style="font-size:10px">No high-uncertainty locations found.</p>';
+      return;
+    }
+
+    const maxEnt = Math.log2(nUnits);
+    out.innerHTML = `<table style="width:100%;font-size:10px;border-collapse:collapse">
+      <thead><tr style="color:var(--text-muted)">
+        <th style="text-align:left;padding:2px 4px">Location</th>
+        <th style="padding:2px 4px">E (m)</th>
+        <th style="padding:2px 4px">N (m)</th>
+        <th style="padding:2px 4px">Uncertainty</th>
+      </tr></thead>
+      <tbody>
+        ${selected.map((s, i) => {
+          const pct = (s.entropy / maxEnt * 100).toFixed(0);
+          const bar = '▓'.repeat(Math.round(pct / 10)) + '░'.repeat(10 - Math.round(pct / 10));
+          return `<tr style="border-top:1px solid var(--border)">
+            <td style="padding:2px 4px;color:var(--accent);font-weight:600">BH-${i+1}</td>
+            <td style="padding:2px 4px;font-family:var(--font-mono)">${s.wx.toFixed(0)}</td>
+            <td style="padding:2px 4px;font-family:var(--font-mono)">${s.wy.toFixed(0)}</td>
+            <td style="padding:2px 4px;font-family:var(--font-mono);font-size:9px" title="${pct}% of max entropy">${bar} ${pct}%</td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    <p class="hint" style="font-size:9px;margin-top:4px">Ranked by classification entropy weighted by distance from existing BHs. Drilling in these locations will provide maximum information gain.</p>`;
+
+    log(`Investigation planning: ${selected.length} suggested locations. Top location: E${selected[0].wx.toFixed(0)} N${selected[0].wy.toFixed(0)} (${(selected[0].entropy / maxEnt * 100).toFixed(0)}% max entropy)`, 'ok');
   });
 }
 

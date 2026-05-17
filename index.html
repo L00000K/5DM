@@ -837,7 +837,13 @@
       <div id="fence-panel" class="fence-panel" hidden>
         <div class="fence-panel-hdr">
           <span id="fence-title" class="fence-title">Geological Cross-Section</span>
-          <div style="display:flex;gap:6px;align-items:center">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <label style="font-size:10px;display:flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-mid)">
+              <input type="checkbox" id="fence-show-uncertainty"> Uncertainty
+            </label>
+            <label style="font-size:10px;display:flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-mid)">
+              <input type="checkbox" id="fence-show-coverage"> Coverage
+            </label>
             <button id="fence-export" class="btn-ghost btn-sm" title="Export as PNG">⬇ PNG</button>
             <button id="fence-export-dxf" class="btn-ghost btn-sm" title="Export cross-section as DXF for AutoCAD">⬇ DXF</button>
             <button id="fence-close" class="slicer-close-btn" title="Close">✕</button>
@@ -1144,6 +1150,22 @@
         <p class="hint" style="font-size:10px;margin-bottom:6px">Identifies settlement, bearing, liquefaction and uncertainty hazards from the model.</p>
         <button id="btn-assess-risk" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:6px">⚠ Assess Risk Zones</button>
         <div id="risk-results"></div>
+      </div>
+
+      <div class="panel-section">
+        <h3>Investigation Planning</h3>
+        <p class="hint" style="font-size:10px;margin-bottom:6px">
+          Identify locations where new boreholes would most reduce model uncertainty.
+          Based on per-column classification entropy and distance from existing BH data.
+        </p>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+          <label style="font-size:10px;color:var(--text-mid)">No. of locations:</label>
+          <input type="number" id="drill-plan-n" value="5" min="1" max="20" step="1" class="cell-size-input" style="width:48px">
+        </div>
+        <button id="btn-drill-plan" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:4px">
+          ⊕ Suggest Drill Locations
+        </button>
+        <div id="drill-plan-results" style="display:none;margin-top:4px"></div>
       </div>
 
       <div class="panel-section">
