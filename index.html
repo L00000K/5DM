@@ -696,6 +696,7 @@
             <select id="plan-view-mode" class="isopach-select">
               <option value="unit">Geology</option>
               <option value="cert">Certainty</option>
+              <option value="depth">Depth to Unit</option>
               <option value="probability">Unit Probability</option>
               <option value="cu">Cu — Shear Strength</option>
               <option value="N_spt">SPT N</option>
@@ -705,6 +706,10 @@
             </select>
             <span id="plan-view-prob-unit-wrap" style="display:none;align-items:center;gap:4px">
               <select id="plan-view-prob-unit" class="isopach-select"></select>
+            </span>
+            <span id="plan-view-depth-unit-wrap" style="display:none;align-items:center;gap:4px">
+              <span style="font-size:10px;color:#8898a8">Top of:</span>
+              <select id="plan-view-depth-unit" class="isopach-select"></select>
             </span>
             <span style="font-size:11px;color:#8898a8">Z:</span>
             <input type="range" id="plan-view-elevation" class="plan-view-slider" style="width:90px">

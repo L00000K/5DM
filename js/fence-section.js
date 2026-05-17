@@ -25,9 +25,9 @@ export class FenceSection {
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
-  draw(grid, geoUnits, normal, centerD, thickness, boreholes) {
+  draw(grid, geoUnits, normal, centerD, thickness, boreholes, conceptStore = null) {
     if (!grid) return;
-    this._lastArgs = { grid, geoUnits, normal, centerD, thickness, boreholes };
+    this._lastArgs = { grid, geoUnits, normal, centerD, thickness, boreholes, conceptStore };
     this.show();
     this._redraw();
   }
@@ -212,6 +212,37 @@ export class FenceSection {
       ctx.textAlign = 'center';
       ctx.fillText(u.code, lx + (lgW - 3) * 0.5, lgY + 22);
     });
+
+    // ── Concept influence overlay on section ──────────────────────────────────
+    // Translucent blue ribbon per column proportional to active concept weight at
+    // that horizontal position. Drawn before legend so it stays behind text.
+    if (conceptStore && !conceptStore.isEmpty) {
+      const midElev = O.y + (nz * ch) * 0.5;
+      let maxW = 0;
+      const wts = new Float32Array(N_COLS);
+      for (let ci = 0; ci < N_COLS; ci++) {
+        const t    = (ci / Math.max(N_COLS - 1, 1)) - 0.5;
+        const dist = t * worldW;
+        const wx   = sx0 + along.x * dist;
+        const wz   = sz0 + along.z * dist;
+        const ctxC = conceptStore.computeAt(wx, midElev, wz);
+        wts[ci] = ctxC.totalWeight;
+        if (ctxC.totalWeight > maxW) maxW = ctxC.totalWeight;
+      }
+      if (maxW > 0.01) {
+        for (let ci = 0; ci < N_COLS; ci++) {
+          const tt = wts[ci] / maxW;
+          const px = PAD_L + ci * colPx;
+          ctx.fillStyle = `rgba(64,180,255,${(tt * 0.22).toFixed(3)})`;
+          ctx.fillRect(px, PAD_T, Math.ceil(colPx + 0.5), drawH);
+        }
+        // Label at top-right of section
+        ctx.fillStyle = 'rgba(64,180,255,0.75)';
+        ctx.font      = '8px Inter, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText('concept influence', PAD_L + drawW - 2, PAD_T + 9);
+      }
+    }
 
     if (this._titleEl) this._titleEl.textContent = 'Geological Cross-Section';
   }

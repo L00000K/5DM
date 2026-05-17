@@ -800,6 +800,14 @@ function initBuildModel() {
       setEnabled('btn-stereonet', true);
       setEnabled('btn-slope-stability', true);
       window.dispatchEvent(new CustomEvent('geomodel:model-built'));
+      // Refresh fence section with new grid data if it's currently visible
+      if (AppState.fenceSection?.visible && AppState.fenceSection._lastArgs) {
+        const fa = AppState.fenceSection._lastArgs;
+        AppState.fenceSection.draw(
+          AppState.voxelGrid, AppState.geoUnits,
+          fa.normal, fa.centerD, fa.thickness, AppState.classifiedBH, AppState.conceptStore
+        );
+      }
       setEnabled('btn-param-apply', true);
       setEnabled('btn-param-reset', true);
       setEnabled('btn-build-isosurfaces', true);
@@ -1589,14 +1597,22 @@ function initPlanView() {
 
   // Show/hide unit probability selector when mode changes
   document.getElementById('plan-view-mode')?.addEventListener('change', e => {
-    const wrap = document.getElementById('plan-view-prob-unit-wrap');
-    if (wrap) wrap.style.display = e.target.value === 'probability' ? 'flex' : 'none';
+    const probWrap  = document.getElementById('plan-view-prob-unit-wrap');
+    const depthWrap = document.getElementById('plan-view-depth-unit-wrap');
+    if (probWrap)  probWrap.style.display  = e.target.value === 'probability' ? 'flex' : 'none';
+    if (depthWrap) depthWrap.style.display = e.target.value === 'depth'       ? 'flex' : 'none';
     if (AppState.voxelGrid && AppState.planView?.visible) {
       AppState.planView.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH, AppState.conceptStore);
     }
   });
 
   document.getElementById('plan-view-prob-unit')?.addEventListener('change', () => {
+    if (AppState.voxelGrid && AppState.planView?.visible) {
+      AppState.planView.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH, AppState.conceptStore);
+    }
+  });
+
+  document.getElementById('plan-view-depth-unit')?.addEventListener('change', () => {
     if (AppState.voxelGrid && AppState.planView?.visible) {
       AppState.planView.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH, AppState.conceptStore);
     }
@@ -1904,7 +1920,8 @@ function initFenceSection() {
       slicer._normal,
       slicer._centerD,
       slicer._thickness,
-      AppState.classifiedBH
+      AppState.classifiedBH,
+      AppState.conceptStore
     );
     window.dispatchEvent(new CustomEvent('geomodel:fence-updated'));
   });

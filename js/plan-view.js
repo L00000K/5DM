@@ -156,8 +156,9 @@ export class PlanView {
     const unitMap = {};
     geoUnits.forEach(u => { unitMap[u.id] = u; });
 
-    // Populate / show probability unit selector
-    const probUnitSel = document.getElementById('plan-view-prob-unit');
+    // Populate / show probability / depth unit selectors
+    const probUnitSel  = document.getElementById('plan-view-prob-unit');
+    const depthUnitSel = document.getElementById('plan-view-depth-unit');
     if (probUnitSel) {
       const show = mode === 'probability';
       probUnitSel.parentElement.style.display = show ? 'flex' : 'none';
@@ -167,7 +168,17 @@ export class PlanView {
         if (cur) probUnitSel.value = cur;
       }
     }
-    const probUnitCode = probUnitSel?.value ?? geoUnits[0]?.code;
+    if (depthUnitSel) {
+      const show = mode === 'depth';
+      depthUnitSel.parentElement.style.display = show ? 'flex' : 'none';
+      if (show && depthUnitSel.options.length !== geoUnits.length) {
+        const cur = depthUnitSel.value;
+        depthUnitSel.innerHTML = geoUnits.map(u => `<option value="${u.code}">${u.code} — ${u.name}</option>`).join('');
+        if (cur) depthUnitSel.value = cur;
+      }
+    }
+    const probUnitCode  = probUnitSel?.value  ?? geoUnits[0]?.code;
+    const depthUnitCode = depthUnitSel?.value ?? geoUnits[0]?.code;
 
     const PAD = 40;
     const W = this._canvas.parentElement?.clientWidth  ?? 420;
@@ -230,6 +241,32 @@ export class PlanView {
     const nRange   = Math.max(maxN   - minN,   1);
     const ccRange  = Math.max(maxCc  - minCc,  0.001);
 
+    // ── Depth-to-top-of-unit pre-pass ─────────────────────────────────────────
+    // For each (ix,iy) column, find the highest Z where the target unit appears.
+    let colDepth = null, minDepth = Infinity, maxDepth = -Infinity;
+    if (mode === 'depth') {
+      colDepth = new Float32Array(nx * ny).fill(NaN);
+      const targetUnitId = geoUnits.find(u => u.code === depthUnitCode)?.id;
+      if (targetUnitId != null) {
+        for (let iy = 0; iy < ny; iy++) {
+          for (let ix = 0; ix < nx; ix++) {
+            // Scan top-to-bottom; find highest iz where this unit appears
+            for (let jz = nz - 1; jz >= 0; jz--) {
+              const flat = ix + iy * nx + jz * nx * ny;
+              if (unitIds[flat] === targetUnitId) {
+                const topElev = O.y + jz * ch + ch;
+                colDepth[ix + iy * nx] = topElev;
+                if (topElev < minDepth) minDepth = topElev;
+                if (topElev > maxDepth) maxDepth = topElev;
+                break;
+              }
+            }
+          }
+        }
+      }
+      if (minDepth === Infinity) { minDepth = O.y; maxDepth = O.y + nz * ch; }
+    }
+
     let paramMin = 0, paramMax = 100, paramLabel = '';
 
     for (let iy = 0; iy < ny; iy++) {
@@ -288,6 +325,19 @@ export class PlanView {
             color = `rgba(${r},${g},${b},${Math.max(0.05, p)})`;
             paramMin = 0; paramMax = 100;
             paramLabel = `P(${probUnitCode}) %`;
+          }
+        } else if (mode === 'depth' && colDepth) {
+          const topElev = colDepth[ix + iy * nx];
+          if (isNaN(topElev)) { color = 'rgba(180,180,180,0.2)'; }
+          else {
+            const t = (topElev - minDepth) / Math.max(maxDepth - minDepth, 0.1);
+            // Colormap: deep = dark blue, shallow = warm orange-red
+            const r = Math.round(30  + t * 225);
+            const g = Math.round(80  + t * 90);
+            const b = Math.round(200 - t * 170);
+            color = `rgb(${r},${g},${b})`;
+            paramMin = minDepth; paramMax = maxDepth;
+            paramLabel = `Top of ${depthUnitCode} (mAOD)`;
           }
         } else if (mode === 'concept' && conceptStore) {
           // Concept influence heatmap — rendered after main cells below
@@ -478,7 +528,8 @@ export class PlanView {
 
     const MODE_LABELS = { unit: 'Geology', cert: 'Certainty', cu: 'Undrained Strength (Cu)',
       N_spt: 'SPT N', settlement: 'Settlement Risk (Cc)', bearing: 'Bearing Capacity Risk (Cu)',
-      probability: `P(${probUnitCode})`, concept: 'Concept Influence (semantic warp)' };
+      probability: `P(${probUnitCode})`, concept: 'Concept Influence (semantic warp)',
+      depth: `Top of ${depthUnitCode} (mAOD)` };
     const modeLabel = MODE_LABELS[mode] ?? mode;
     ctx.fillStyle = '#8898a8';
     ctx.font = 'bold 11px Inter, sans-serif';
