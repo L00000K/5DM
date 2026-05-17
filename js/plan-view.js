@@ -283,6 +283,23 @@ export class PlanView {
           const cert = certainty[flat];
           const g = Math.round(cert * 200);
           color = `rgb(${Math.round(255 - cert * 150)},${g + 55},${Math.round(cert * 100 + 50)})`;
+        } else if (mode === 'entropy') {
+          const { blendRatios: br } = grid;
+          const LOG2 = Math.log(2);
+          const nU   = Math.max(2, geoUnits.length);
+          const p1 = Math.max(0.001, Math.min(0.999, certainty[flat]));
+          const p2 = Math.max(0, Math.min(1 - p1, br ? (br[flat] ?? 0) : 0));
+          const pR = Math.max(0, 1 - p1 - p2);
+          const xE = (p) => p > 0 && p < 1 ? -p * Math.log(p) / LOG2 : 0;
+          const ent = xE(p1) + xE(p2) + xE(pR);
+          const t   = Math.min(1, ent / Math.log2(nU));
+          // Blue (certain) → green → yellow → red (uncertain)
+          color = PlanView._jet(t);
+          paramMin = 0; paramMax = Math.log2(nU).toFixed(2);
+          paramLabel = 'Classification entropy (bits)';
+        } else if (mode === 'drill_targets') {
+          // Show per-column drill priority score (entropy × distance-from-BH)
+          color = null; // rendered in post-pass below
         } else if (mode === 'cu' || mode === 'bearing') {
           const v = colCu?.[ix + iy*nx] ?? -1;
           if (v < 0) { color = '#cccccc'; }
@@ -413,6 +430,73 @@ export class PlanView {
       });
 
       paramLabel = 'Concept Influence';
+      paramMin = 0; paramMax = 100;
+    }
+
+    // Drill target priority heatmap — post-pass
+    if (mode === 'drill_targets') {
+      const LOG2 = Math.log(2);
+      const nU   = Math.max(2, geoUnits.length);
+      const maxEnt = Math.log2(nU);
+      const { blendRatios: br, coverageDensity } = grid;
+
+      // Per-column entropy (mean over depth) + proximity penalty
+      const colEnt = new Float32Array(nx * ny);
+      for (let ciy = 0; ciy < ny; ciy++) {
+        for (let cix = 0; cix < nx; cix++) {
+          let sumH = 0, cnt = 0;
+          for (let ciz = 0; ciz < nz; ciz++) {
+            const f = cix + ciy * nx + ciz * nx * ny;
+            if (!unitIds[f]) continue;
+            const p1 = Math.max(0.001, Math.min(0.999, certainty[f]));
+            const p2 = Math.max(0, Math.min(1 - p1, br ? (br[f] ?? 0) : 0));
+            const pR = Math.max(0, 1 - p1 - p2);
+            const xE = (p) => p > 0 && p < 1 ? -p * Math.log(p) / LOG2 : 0;
+            sumH += xE(p1) + xE(p2) + xE(pR);
+            cnt++;
+          }
+          colEnt[cix + ciy * nx] = cnt > 0 ? sumH / cnt : 0;
+        }
+      }
+
+      // Distance penalty from existing BHs (reuse coverageDensity if available)
+      let maxScore = 0;
+      const scores = new Float32Array(nx * ny);
+      const SIGMA_SQ = Math.pow(Math.max(nx, ny) * cs * 0.2, 2);
+      for (let ciy = 0; ciy < ny; ciy++) {
+        for (let cix = 0; cix < nx; cix++) {
+          let pen = 0;
+          const wx = O.x + (cix + 0.5) * cs;
+          const wy = O.z + (ciy + 0.5) * cs;
+          for (const bh of boreholes) {
+            if (!bh.layers?.length) continue;
+            const d2 = (bh.x - wx) ** 2 + (bh.y - wy) ** 2;
+            pen = Math.max(pen, Math.exp(-d2 / SIGMA_SQ));
+          }
+          const s = colEnt[cix + ciy * nx] * (1 - pen) / maxEnt;
+          scores[cix + ciy * nx] = s;
+          if (s > maxScore) maxScore = s;
+        }
+      }
+      if (maxScore < 0.001) maxScore = 0.001;
+
+      // Render heatmap
+      for (let ciy = 0; ciy < ny; ciy++) {
+        for (let cix = 0; cix < nx; cix++) {
+          const t = scores[cix + ciy * nx] / maxScore;
+          // Cool blue (low priority) → hot red (high priority)
+          ctx.fillStyle = PlanView._jet(t);
+          ctx.globalAlpha = 0.7 + t * 0.3;
+          ctx.fillRect(
+            PAD + cix * cellPxW,
+            PAD + (ny - 1 - ciy) * cellPxH,
+            Math.ceil(cellPxW + 0.5),
+            Math.ceil(cellPxH + 0.5)
+          );
+        }
+      }
+      ctx.globalAlpha = 1;
+      paramLabel = 'Drill priority — red=highest info gain';
       paramMin = 0; paramMax = 100;
     }
 
