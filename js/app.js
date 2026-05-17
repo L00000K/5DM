@@ -623,7 +623,7 @@ function initReset() {
     setEnabled('btn-param-reset', false);
     setEnabled('btn-build-isosurfaces', false);
     setEnabled('btn-grade-apply', false);
-    setEnabled('btn-crossplot-draw', false);
+    setEnabled('btn-crossplot-draw', false); setEnabled('btn-depthplot-draw', false);
     setEnabled('btn-formation-stats', false);
     setEnabled('btn-semantic-model', false);
     updateStratColumn();
@@ -694,8 +694,8 @@ async function loadDemoSite(demoName) {
     setEnabled('btn-run-ai', true);
     setEnabled('btn-build-model', true);
     setEnabled('btn-export-bh-csv', true); setEnabled('btn-export-las', true);
-      setEnabled('btn-export-ags', true);
-    setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true); setEnabled('btn-crossplot-draw', true);
+      setEnabled('btn-export-ags', true); setEnabled('btn-export-geojson-tops', true);
+    setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true); setEnabled('btn-crossplot-draw', true); setEnabled('btn-depthplot-draw', true);
     setEnabled('btn-auto-params', true);
     setEnabled('btn-interpret-geology', true);
     setEnabled('btn-semantic-model', true);
@@ -762,8 +762,8 @@ function initRunAI() {
       AppState.geoUnits = units;
       AppState.classifiedBH = classified;
       setEnabled('btn-export-bh-csv', true); setEnabled('btn-export-las', true);
-      setEnabled('btn-export-ags', true);
-      setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true); setEnabled('btn-crossplot-draw', true);
+      setEnabled('btn-export-ags', true); setEnabled('btn-export-geojson-tops', true);
+      setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true); setEnabled('btn-crossplot-draw', true); setEnabled('btn-depthplot-draw', true);
       setEnabled('btn-auto-params', true);
       setEnabled('btn-strat-corr', classified.filter(b => !b.synthetic).length >= 2);
       updateLegend();
@@ -920,6 +920,7 @@ function initBuildModel() {
       setEnabled('btn-export-contacts', true);
       setEnabled('btn-export-surfaces', true);
       setEnabled('btn-export-stl', true);
+      setEnabled('btn-export-geojson', true);
       setEnabled('btn-stereonet', true);
       setEnabled('btn-slope-stability', true);
       window.dispatchEvent(new CustomEvent('geomodel:model-built'));
@@ -1604,12 +1605,171 @@ function initLogSubTabs() {
       document.querySelectorAll('.log-sub-tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const key = btn.dataset.logTab;
-      document.getElementById('log-sub-bh').hidden  = (key !== 'bh');
-      document.getElementById('log-sub-cpt').hidden = (key !== 'cpt');
-      document.getElementById('log-sub-spt').hidden = (key !== 'spt');
+      document.getElementById('log-sub-bh').hidden        = (key !== 'bh');
+      document.getElementById('log-sub-cpt').hidden       = (key !== 'cpt');
+      document.getElementById('log-sub-spt').hidden       = (key !== 'spt');
+      document.getElementById('log-sub-depthplot').hidden = (key !== 'depthplot');
       if (key === 'spt') drawSPTProfile();
     });
   });
+
+  document.getElementById('btn-depthplot-draw')?.addEventListener('click', drawDepthPlot);
+  document.getElementById('depthplot-param')?.addEventListener('change', () => {
+    if (!document.getElementById('log-sub-depthplot')?.hidden) drawDepthPlot();
+  });
+}
+
+function drawDepthPlot() {
+  const canvas   = document.getElementById('depthplot-canvas');
+  const hintEl   = document.getElementById('depthplot-hint');
+  const legendEl = document.getElementById('depthplot-legend');
+  if (!canvas) return;
+
+  const paramKey = document.getElementById('depthplot-param')?.value ?? 'N_spt';
+  const PARAM_LABELS = {
+    N_spt: 'SPT N', cu: 'Cu (kPa)', phi: 'φ′ (°)',
+    E: 'E (MPa)', gamma: 'γ (kN/m³)',
+  };
+
+  const bhs = AppState.classifiedBH.filter(b => !b.synthetic && b.layers?.length);
+  if (!bhs.length) { if (hintEl) hintEl.hidden = false; return; }
+  if (hintEl) hintEl.hidden = true;
+
+  // Collect data: for each BH, array of {depth, value}
+  const bhData = [];
+  let maxDepth = 0, maxVal = 0;
+
+  // Assign a distinct colour to each BH
+  const COLORS = [
+    '#e05050','#3080e8','#30b860','#e89020','#9848e0',
+    '#20b8c8','#e84080','#40c840','#8060e0','#e86020',
+  ];
+
+  for (let bi = 0; bi < bhs.length; bi++) {
+    const bh = bhs[bi];
+    const pts = [];
+    for (const layer of bh.layers) {
+      const depth = (layer.top + layer.base) / 2;
+      let v = null;
+      if (paramKey === 'N_spt') v = layer.sptN;
+      else {
+        const unit = AppState.geoUnits.find(u => u.code === layer.unitCode);
+        v = unit?.params?.[paramKey] ?? null;
+      }
+      if (v != null && isFinite(v)) {
+        pts.push({ depth, value: v });
+        maxDepth = Math.max(maxDepth, layer.base);
+        maxVal   = Math.max(maxVal, v);
+      }
+    }
+    if (pts.length) {
+      bhData.push({ id: bh.id, color: COLORS[bi % COLORS.length], pts });
+    }
+  }
+
+  if (!bhData.length) {
+    log(`No "${PARAM_LABELS[paramKey] ?? paramKey}" data in borehole layers.`, 'warn');
+    return;
+  }
+
+  const W = 260, H = 340, PAD_L = 44, PAD_R = 10, PAD_T = 18, PAD_B = 28;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  const plotW = W - PAD_L - PAD_R;
+  const plotH = H - PAD_T - PAD_B;
+
+  const toX = (v)  => PAD_L + (v / (maxVal || 1)) * plotW;
+  const toY = (d)  => PAD_T + (d / (maxDepth || 1)) * plotH;
+
+  // Unit colour bands (optional)
+  const showBands = document.getElementById('depthplot-unit-bands')?.checked ?? true;
+  if (showBands) {
+    const unitDepths = [];
+    for (const bh of bhs.slice(0, 1)) { // use first BH for band extents
+      for (const layer of bh.layers) {
+        const unit = AppState.geoUnits.find(u => u.code === layer.unitCode);
+        if (unit) unitDepths.push({ top: layer.top, base: layer.base, color: unit.color });
+      }
+    }
+    for (const ud of unitDepths) {
+      ctx.fillStyle = ud.color + '22';
+      ctx.fillRect(PAD_L, toY(ud.top), plotW, toY(ud.base) - toY(ud.top));
+    }
+  }
+
+  // Grid lines
+  ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 0.5;
+  const nXTicks = 5;
+  for (let i = 0; i <= nXTicks; i++) {
+    const x = PAD_L + i / nXTicks * plotW;
+    ctx.beginPath(); ctx.moveTo(x, PAD_T); ctx.lineTo(x, PAD_T + plotH); ctx.stroke();
+  }
+  const nYTicks = 6;
+  for (let i = 0; i <= nYTicks; i++) {
+    const y = PAD_T + i / nYTicks * plotH;
+    ctx.beginPath(); ctx.moveTo(PAD_L, y); ctx.lineTo(PAD_L + plotW, y); ctx.stroke();
+  }
+
+  // Axes
+  ctx.strokeStyle = '#888'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(PAD_L, PAD_T); ctx.lineTo(PAD_L, PAD_T + plotH);
+  ctx.moveTo(PAD_L, PAD_T + plotH); ctx.lineTo(PAD_L + plotW, PAD_T + plotH);
+  ctx.stroke();
+
+  // Axis labels
+  ctx.fillStyle = '#555'; ctx.font = '8px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(PARAM_LABELS[paramKey] ?? paramKey, PAD_L + plotW / 2, H - 4);
+  ctx.save(); ctx.translate(10, PAD_T + plotH / 2);
+  ctx.rotate(-Math.PI / 2); ctx.fillText('Depth (m bgl)', 0, 0); ctx.restore();
+
+  // Tick values
+  ctx.fillStyle = '#888'; ctx.font = '7px sans-serif';
+  for (let i = 0; i <= nXTicks; i++) {
+    ctx.textAlign = 'center';
+    ctx.fillText((i / nXTicks * maxVal).toFixed(0), PAD_L + i / nXTicks * plotW, PAD_T + plotH + 10);
+  }
+  for (let i = 0; i <= nYTicks; i++) {
+    ctx.textAlign = 'right';
+    ctx.fillText((i / nYTicks * maxDepth).toFixed(0), PAD_L - 3, PAD_T + i / nYTicks * plotH + 3);
+  }
+
+  // Draw each BH as a step/line plot
+  for (const bh of bhData) {
+    ctx.strokeStyle = bh.color; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    let first = true;
+    for (const pt of bh.pts) {
+      const x = toX(pt.value);
+      const y = toY(pt.depth);
+      if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // Dots at data points
+    ctx.fillStyle = bh.color;
+    for (const pt of bh.pts) {
+      ctx.beginPath();
+      ctx.arc(toX(pt.value), toY(pt.depth), 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Legend
+  if (legendEl) {
+    legendEl.innerHTML = bhData.map(bh =>
+      `<span style="display:flex;align-items:center;gap:3px">
+        <span style="width:14px;height:2px;background:${bh.color};display:inline-block"></span>
+        <span style="font-size:9px">${escHtml(bh.id)}</span>
+      </span>`
+    ).join('');
+  }
+
+  log(`Depth plot: ${PARAM_LABELS[paramKey] ?? paramKey} for ${bhData.length} boreholes`, 'ok');
 }
 
 // ── CPT data import ───────────────────────────────────────────────────────────
@@ -2121,8 +2281,8 @@ function initSession() {
     setEnabled('btn-run-ai', AppState.classifiedBH.length > 0);
     setEnabled('btn-build-model', AppState.classifiedBH.length > 0);
     setEnabled('btn-export-bh-csv', true); setEnabled('btn-export-las', true);
-      setEnabled('btn-export-ags', true);
-    setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true); setEnabled('btn-crossplot-draw', true);
+      setEnabled('btn-export-ags', true); setEnabled('btn-export-geojson-tops', true);
+    setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true); setEnabled('btn-crossplot-draw', true); setEnabled('btn-depthplot-draw', true);
     setEnabled('btn-auto-params', true);
     hideWelcome();
     log(`Session restored — ${AppState.classifiedBH.length} BH, ${AppState.geoUnits.length} units. Click "Build 3D Model" to regenerate.`, 'ok');
@@ -4684,7 +4844,7 @@ function parseGeoMapFile(file, infoEl) {
       <span class="file-name">${escHtml(file.name)}</span>
       <span class="file-size">${count} pts</span></div>`;
     setEnabled('btn-export-bh-csv', true); setEnabled('btn-export-las', true);
-      setEnabled('btn-export-ags', true);
+      setEnabled('btn-export-ags', true); setEnabled('btn-export-geojson-tops', true);
     log(`Geological map: ${count} constraint points added (${skipped} skipped).`, 'ok');
   };
   reader.readAsText(file);

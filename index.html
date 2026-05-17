@@ -781,10 +781,11 @@
 
       <!-- BH LOG STRIPS TAB -->
       <div class="tab-content" id="tab-logs" role="tabpanel">
-        <div style="display:flex;gap:4px;padding:6px 8px;border-bottom:1px solid var(--border)">
+        <div style="display:flex;gap:4px;padding:6px 8px;border-bottom:1px solid var(--border);flex-wrap:wrap">
           <button class="log-sub-tab active" data-log-tab="bh">BH Logs</button>
           <button class="log-sub-tab" data-log-tab="cpt">CPT Profiles</button>
           <button class="log-sub-tab" data-log-tab="spt">SPT Profile</button>
+          <button class="log-sub-tab" data-log-tab="depthplot">Depth Plot</button>
         </div>
 
         <div id="log-sub-bh">
@@ -824,6 +825,31 @@
           <div id="spt-profile-wrap" style="padding:0 4px 8px">
             <canvas id="spt-profile-canvas" style="display:block;max-width:100%"></canvas>
             <p id="spt-profile-hint" class="hint" style="padding:8px">Load classified borehole data with SPT N values to see the profile.</p>
+          </div>
+        </div>
+
+        <!-- Multi-BH parameter depth plot -->
+        <div id="log-sub-depthplot" hidden>
+          <p class="hint" style="padding:6px 8px 2px">Overlay any measured parameter vs depth for multiple boreholes. Each BH plotted as a colored line.</p>
+          <div style="padding:4px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <label style="font-size:11px;color:var(--text-mid)">Parameter:
+              <select id="depthplot-param" style="font-size:11px;background:var(--bg-deep);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px">
+                <option value="N_spt">SPT N</option>
+                <option value="cu">Cu (kPa)</option>
+                <option value="phi">φ′ (°)</option>
+                <option value="E">E (MPa)</option>
+                <option value="gamma">γ (kN/m³)</option>
+              </select>
+            </label>
+            <label style="font-size:11px;color:var(--text-mid)">
+              <input type="checkbox" id="depthplot-unit-bands" checked> Unit colour bands
+            </label>
+            <button id="btn-depthplot-draw" class="btn-secondary btn-sm" disabled>Draw</button>
+          </div>
+          <div id="depthplot-wrap" style="padding:0 4px 8px">
+            <canvas id="depthplot-canvas" style="display:block;width:100%;border:1px solid var(--border);border-radius:4px;background:#fff;margin-top:4px"></canvas>
+            <div id="depthplot-legend" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;padding:0 4px;font-size:9px"></div>
+            <p id="depthplot-hint" class="hint" style="padding:8px">Load borehole data and select a parameter above.</p>
           </div>
         </div>
 
@@ -1613,6 +1639,12 @@
         <button id="btn-export-pointcloud" class="btn-secondary" disabled>⬇ Point Cloud CSV</button>
         <button id="btn-export-stats" class="btn-secondary" disabled>⬇ Model Statistics CSV</button>
         <button id="btn-export-blockmodel" class="btn-secondary" disabled title="Full voxel block model with centroids, unit codes and engineering parameters — compatible with Leapfrog, Vulcan, Datamine">⬇ Block Model CSV</button>
+        <div style="display:flex;gap:4px;align-items:center;margin-top:3px">
+          <button id="btn-export-geojson" class="btn-secondary" disabled title="Export geological unit boundaries at a specified depth as GeoJSON polygons (for QGIS, ArcGIS, Mapbox)">⬇ GeoJSON</button>
+          <input type="number" id="geojson-depth" class="cell-size-input" value="5" min="0" step="0.5" title="Depth (m bgl) for plan-slice export" style="width:52px" placeholder="depth">
+          <span style="font-size:9px;color:var(--text-dim)">m bgl</span>
+        </div>
+        <button id="btn-export-geojson-tops" class="btn-secondary" disabled title="Export formation top elevations as GeoJSON FeatureCollection with unit code and depth-to-top attributes">⬇ Formation Tops GeoJSON</button>
         <div class="settings-divider">Unit Properties</div>
         <button id="btn-export-props" class="btn-secondary" disabled>⬇ Unit Properties CSV</button>
       </div>

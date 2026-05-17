@@ -625,4 +625,103 @@ export function initExporter() {
       `block-model-${new Date().toISOString().slice(0,10)}.csv`);
     log(`Block model CSV exported — ${total.toLocaleString()} cells.`, 'ok');
   });
+
+  // ── GeoJSON plan-slice export ──────────────────────────────────────────────
+  document.getElementById('btn-export-geojson')?.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('Build the 3D model first.', 'warn'); return; }
+    const sliceDepth = parseFloat(document.getElementById('geojson-depth')?.value ?? '5');
+    const { nx, ny, nz, unitIds, certainty, cellSize: cs, cellHeight: ch, origin: O } = grid;
+
+    const unitById = {};
+    AppState.geoUnits.forEach(u => { unitById[u.id] = u; });
+
+    // Find the Z slice corresponding to the requested depth
+    // Depth from ground: need the top ground elevation
+    const maxElev = AppState.classifiedBH.reduce((m, b) => Math.max(m, b.groundLevel ?? 0), O.y + nz * ch);
+    const targetElev = maxElev - sliceDepth;
+    const iz = Math.max(0, Math.min(nz - 1, Math.round((targetElev - O.y) / ch)));
+    const actualDepth = (maxElev - (O.y + iz * ch + ch * 0.5)).toFixed(1);
+
+    const features = [];
+    for (let iy = 0; iy < ny; iy++) {
+      for (let ix = 0; ix < nx; ix++) {
+        const flat = ix + iy * nx + iz * nx * ny;
+        const uid  = unitIds[flat];
+        if (!uid) continue;
+        const unit = unitById[uid];
+        const cert = certainty[flat];
+        // Cell corners (local project coordinates)
+        const x0 = O.x + ix * cs, x1 = x0 + cs;
+        const y0 = O.z + iy * cs, y1 = y0 + cs;
+        // GeoJSON uses [longitude, latitude] → here we use [easting, northing]
+        features.push({
+          type: 'Feature',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[x0,y0],[x1,y0],[x1,y1],[x0,y1],[x0,y0]]],
+          },
+          properties: {
+            unit_code: unit?.code ?? '',
+            unit_name: unit?.name ?? '',
+            unit_color: unit?.color ?? '#888888',
+            certainty: Math.round(cert * 100),
+            depth_m: parseFloat(actualDepth),
+            elev_mAOD: parseFloat((O.y + iz * ch + ch * 0.5).toFixed(2)),
+          },
+        });
+      }
+    }
+
+    const geojson = { type: 'FeatureCollection', features };
+    downloadBlob(
+      new Blob([JSON.stringify(geojson, null, 0)], { type: 'application/json' }),
+      `geomodel-slice-${actualDepth}m-${new Date().toISOString().slice(0,10)}.geojson`
+    );
+    log(`GeoJSON exported — ${features.length} cells at ${actualDepth} m bgl.`, 'ok');
+  });
+
+  // ── GeoJSON formation tops export ─────────────────────────────────────────
+  document.getElementById('btn-export-geojson-tops')?.addEventListener('click', () => {
+    const bhs = AppState.classifiedBH.filter(b => !b.synthetic && b.layers?.length);
+    if (!bhs.length) { log('Load borehole data first.', 'warn'); return; }
+
+    const unitById = {};
+    AppState.geoUnits.forEach(u => { unitById[u.code] = u; });
+
+    const features = [];
+    for (const bh of bhs) {
+      for (const layer of bh.layers) {
+        const unit = unitById[layer.unitCode];
+        const topElev = (bh.groundLevel ?? 0) - layer.top;
+        const baseElev = (bh.groundLevel ?? 0) - layer.base;
+        features.push({
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [bh.x, bh.y, topElev],
+          },
+          properties: {
+            borehole_id: bh.id,
+            unit_code: layer.unitCode ?? '',
+            unit_name: unit?.name ?? '',
+            unit_color: unit?.color ?? '#888888',
+            depth_to_top_m: parseFloat(layer.top.toFixed(2)),
+            depth_to_base_m: parseFloat(layer.base.toFixed(2)),
+            thickness_m: parseFloat((layer.base - layer.top).toFixed(2)),
+            top_elev_mAOD: parseFloat(topElev.toFixed(2)),
+            base_elev_mAOD: parseFloat(baseElev.toFixed(2)),
+            certainty: layer.certainty ?? null,
+          },
+        });
+      }
+    }
+
+    const geojson = { type: 'FeatureCollection', features };
+    downloadBlob(
+      new Blob([JSON.stringify(geojson, null, 0)], { type: 'application/json' }),
+      `formation-tops-${new Date().toISOString().slice(0,10)}.geojson`
+    );
+    log(`Formation tops GeoJSON exported — ${features.length} layer intervals from ${bhs.length} boreholes.`, 'ok');
+  });
 }
