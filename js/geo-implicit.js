@@ -673,12 +673,12 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
     }
 
     if (onProgress && ep % 20 === 0) {
-      onProgress(ep / epochs, totalLoss / allSamples.length);
+      onProgress(ep / epochs, totalLoss / allSamples.length, { epoch: ep, epochs });
       await new Promise(r => setTimeout(r, 0));
     }
   }
 
-  if (onProgress) onProgress(1, 0);
+  if (onProgress) onProgress(1, 0, { epoch: epochs, epochs });
   return { net, fourierEnc, conceptStore, warpedBounds, bounds, nUnits, unitCodes, CONCEPT_DIM, fourierDim: fourierEnc.outDim };
 }
 

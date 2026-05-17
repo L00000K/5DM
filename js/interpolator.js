@@ -623,8 +623,8 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
         samplesPerLayer: 8,
         stratOrder:      options.stratOrder ?? null,
         onProgress: (frac, loss, info) => {
-          if (onProgress) onProgress(0.02 + frac * 0.7);
-          if (frac < 1) log(`  …epoch ${Math.round(frac * (options.niEpochs ?? 400))} loss=${loss?.toFixed(4) ?? '–'}`, 'info');
+          if (onProgress) onProgress(0.02 + frac * 0.7, loss, info);
+          if (frac < 1 && info?.epoch != null) log(`  …epoch ${info.epoch} loss=${loss?.toFixed(4) ?? '–'}`, 'info');
           if (info?.stratContactsFound) log(`  Stratigraphic contacts used for training: ${info.stratContactsFound}`, 'info');
         },
       },

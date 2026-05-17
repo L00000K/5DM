@@ -2793,9 +2793,108 @@ function updateUnitStats() {
 }
 
 // ── Build progress bar helpers ─────────────────────────────────────────────────
+// Ring buffer for loss curve (max 120 points)
+const _lossHistory = { data: [], maxLen: 120 };
+
 function showBuildProgress(visible) {
   const el = document.getElementById('build-progress-wrap');
   if (el) el.hidden = !visible;
+  if (!visible) {
+    // Clear loss history when hiding so next build starts fresh
+    _lossHistory.data = [];
+    const canvas = document.getElementById('build-loss-canvas');
+    const meta   = document.getElementById('build-loss-meta');
+    if (canvas) canvas.hidden = true;
+    if (meta)   meta.hidden   = true;
+  }
+}
+
+function _drawLossCurve() {
+  const canvas = document.getElementById('build-loss-canvas');
+  if (!canvas) return;
+  const pts = _lossHistory.data;
+  if (pts.length < 2) return;
+
+  canvas.hidden = false;
+  const dpr = window.devicePixelRatio || 1;
+  const W   = canvas.offsetWidth  || 260;
+  const H   = canvas.offsetHeight || 48;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  // Background gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#f0f4ff');
+  bg.addColorStop(1, '#f8f9fa');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const losses = pts.map(p => p.loss);
+  const minL = Math.min(...losses);
+  const maxL = Math.max(...losses);
+  const range = maxL - minL || 1;
+
+  const pad = { t: 6, b: 14, l: 6, r: 6 };
+  const plotW = W - pad.l - pad.r;
+  const plotH = H - pad.t - pad.b;
+
+  const toX = i  => pad.l + (i / (pts.length - 1)) * plotW;
+  const toY = l  => pad.t + (1 - (l - minL) / range) * plotH;
+
+  // Horizontal guide lines (3 levels)
+  ctx.strokeStyle = 'rgba(180,190,220,0.5)';
+  ctx.lineWidth = 0.5;
+  for (let k = 0; k <= 2; k++) {
+    const y = pad.t + (k / 2) * plotH;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + plotW, y); ctx.stroke();
+  }
+
+  // Area fill under curve
+  const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + plotH);
+  grad.addColorStop(0, 'rgba(79,140,255,0.25)');
+  grad.addColorStop(1, 'rgba(79,140,255,0.02)');
+  ctx.beginPath();
+  ctx.moveTo(toX(0), toY(losses[0]));
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(toX(i), toY(losses[i]));
+  ctx.lineTo(toX(pts.length - 1), pad.t + plotH);
+  ctx.lineTo(toX(0), pad.t + plotH);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Loss line
+  ctx.beginPath();
+  ctx.moveTo(toX(0), toY(losses[0]));
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(toX(i), toY(losses[i]));
+  ctx.strokeStyle = '#4f8cff';
+  ctx.lineWidth = 1.5;
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+
+  // Endpoint dot
+  const lastX = toX(pts.length - 1);
+  const lastY = toY(losses[pts.length - 1]);
+  ctx.beginPath();
+  ctx.arc(lastX, lastY, 2.5, 0, Math.PI * 2);
+  ctx.fillStyle = '#4f8cff';
+  ctx.fill();
+
+  // Axis labels (min/max loss and epoch)
+  ctx.fillStyle = 'rgba(80,90,110,0.85)';
+  ctx.font = `${9 * dpr / dpr}px var(--font-mono, monospace)`;
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(maxL.toFixed(3), pad.l + 1, pad.t + plotH - 1);
+  ctx.textBaseline = 'top';
+  ctx.fillText(minL.toFixed(3), pad.l + 1, pad.t + 1);
+  ctx.textBaseline = 'bottom';
+  ctx.textAlign = 'right';
+  ctx.fillText(`ep ${pts[pts.length - 1].epoch}`, pad.l + plotW, pad.t + plotH + 12);
+  ctx.textAlign = 'left';
+  ctx.fillText(`ep ${pts[0].epoch}`, pad.l, pad.t + plotH + 12);
 }
 
 function setBuildProgress(fraction, loss, meta) {
@@ -2809,6 +2908,21 @@ function setBuildProgress(fraction, loss, meta) {
       ? ` · ${meta.nVirtual} concept-virtual`
       : '';
     log(`Training: ${meta.nReal} BH samples${conceptInfo} · ${meta.nSamples} total`, 'info');
+  }
+  // Accumulate loss history and redraw sparkline
+  if (loss != null && meta?.epoch != null) {
+    const buf = _lossHistory.data;
+    buf.push({ epoch: meta.epoch, loss });
+    if (buf.length > _lossHistory.maxLen) buf.shift();
+    _drawLossCurve();
+    // Update meta line
+    const metaEl = document.getElementById('build-loss-meta');
+    if (metaEl) {
+      const first = buf[0].loss;
+      const pctDrop = first > 0 ? ((first - loss) / first * 100).toFixed(0) : '—';
+      metaEl.hidden = false;
+      metaEl.innerHTML = `<span>loss ${loss.toFixed(4)}</span><span>↓ ${pctDrop}%</span>`;
+    }
   }
 }
 
