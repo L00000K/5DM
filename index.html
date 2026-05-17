@@ -835,6 +835,26 @@
         </div>
       </div>
 
+      <!-- Stratigraphic correlation panel -->
+      <div id="strat-corr-panel" class="fence-panel" hidden>
+        <div class="fence-panel-hdr">
+          <span class="fence-title">Stratigraphic Correlation</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <label style="font-size:10px;display:flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-mid)">
+              <input type="checkbox" id="strat-corr-elev" checked> Elevation datum
+            </label>
+            <label style="font-size:10px;display:flex;align-items:center;gap:3px;cursor:pointer;color:var(--text-mid)">
+              <input type="checkbox" id="strat-corr-lines" checked> Correlation lines
+            </label>
+            <button id="strat-corr-export" class="btn-ghost btn-sm" title="Export as PNG">⬇ PNG</button>
+            <button id="strat-corr-close" class="slicer-close-btn" title="Close">✕</button>
+          </div>
+        </div>
+        <div class="fence-canvas-wrap" style="overflow-x:auto">
+          <canvas id="strat-corr-canvas" class="fence-canvas"></canvas>
+        </div>
+      </div>
+
       <!-- Fence / cross-section panel -->
       <div id="fence-panel" class="fence-panel" hidden>
         <div class="fence-panel-hdr">
@@ -1111,6 +1131,7 @@
         </div>
         <button id="btn-isopach" class="btn-secondary btn-sm" disabled style="margin-top:8px;width:100%">⊞ Isopach Map</button>
         <button id="btn-plan-view" class="btn-secondary btn-sm" disabled style="margin-top:4px;width:100%">⊟ Plan View</button>
+        <button id="btn-strat-corr" class="btn-secondary btn-sm" disabled style="margin-top:4px;width:100%" title="Stratigraphic correlation panel — BH logs side by side with connecting lines">⊟ Correlation Panel</button>
       </div>
 
       <div class="panel-section">

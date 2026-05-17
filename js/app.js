@@ -12,6 +12,7 @@ import { parseConstraints, applyConstraints, constraintSummary } from './constra
 import { compositeBH } from './semantic-engine.js';
 import { parseGeoMap } from './geo-map.js';
 import { FenceSection } from './fence-section.js';
+import { StratCorrelation } from './strat-correlation.js';
 import { IsopachMap  } from './isopach.js';
 import { ModelReport } from './report.js';
 import { PlanView } from './plan-view.js';
@@ -82,6 +83,7 @@ export const AppState = {
   sectionBoreholes: [],   // virtual BHs from section descriptions/sketches
   conceptStore: null,     // ConceptStore — geological concept embeddings for neural field
   geoEvents: [],          // Geological event timeline (oldest first)
+  stratCorr: null,        // StratCorrelation panel
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
@@ -512,6 +514,7 @@ function initReset() {
     setEnabled('btn-compare-methods', false);
     setEnabled('btn-assess-risk', false);
     setEnabled('btn-drill-plan', false);
+    setEnabled('btn-strat-corr', false);
     setEnabled('btn-plan-view', false);
     setEnabled('btn-export-contacts', false);
     setEnabled('btn-export-surfaces', false);
@@ -658,6 +661,7 @@ function initRunAI() {
       setEnabled('btn-export-ags', true);
       setEnabled('btn-export-props', true);
       setEnabled('btn-auto-params', true);
+      setEnabled('btn-strat-corr', classified.filter(b => !b.synthetic).length >= 2);
       updateLegend();
       updateBHTable();
       updateBHChart();
@@ -806,6 +810,7 @@ function initBuildModel() {
       setEnabled('btn-compare-methods', true);
       setEnabled('btn-assess-risk', true);
       setEnabled('btn-drill-plan', true);
+      setEnabled('btn-strat-corr', AppState.classifiedBH.filter(b => !b.synthetic).length >= 2);
       setEnabled('btn-plan-view', true);
       setEnabled('btn-export-contacts', true);
       setEnabled('btn-export-surfaces', true);
@@ -1655,6 +1660,17 @@ function initPlanView() {
     if (AppState.voxelGrid && AppState.planView?.visible) {
       AppState.planView.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH, AppState.conceptStore);
     }
+  });
+}
+
+// ── Stratigraphic correlation panel ──────────────────────────────────────────
+function initStratCorrelation() {
+  AppState.stratCorr = new StratCorrelation();
+
+  document.getElementById('btn-strat-corr')?.addEventListener('click', () => {
+    const bhs = AppState.classifiedBH.filter(b => !b.synthetic && b.layers?.length);
+    if (!bhs.length) { log('No classified boreholes available.', 'warn'); return; }
+    AppState.stratCorr.draw(bhs, AppState.geoUnits);
   });
 }
 
@@ -3586,6 +3602,7 @@ async function init() {
   initModelReport();
   initAnnotations();
   initPlanView();
+  initStratCorrelation();
   initPropertiesTab();
   initLegendRename();
   initTopoClip();
