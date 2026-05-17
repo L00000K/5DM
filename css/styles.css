@@ -2358,3 +2358,15 @@ kbd {
   font-size: 12px; line-height: 1; padding: 0 2px; flex-shrink: 0;
 }
 .scenario-del:hover { color: var(--red); }
+
+/* ── SPT Depth Profile ─────────────────────────────────────────────────────── */
+#spt-profile-wrap { overflow-x: auto; }
+#spt-profile-canvas { border: 1px solid var(--border); border-radius: 4px; background: #f8fafb; }
+
+/* ── Concept radar ─────────────────────────────────────────────────────────── */
+.concept-radar-btn {
+  background: none; border: none; color: var(--text-dim); cursor: pointer;
+  font-size: 12px; line-height: 1; padding: 0 2px; flex-shrink: 0;
+}
+.concept-radar-btn:hover { color: var(--accent); }
+.concept-radar-canvas { display: block; }

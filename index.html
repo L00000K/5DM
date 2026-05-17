@@ -630,6 +630,18 @@
         <div id="bh-chart-wrap" class="bh-chart-wrap" hidden>
           <canvas id="bh-chart-canvas" class="bh-chart-canvas"></canvas>
         </div>
+
+        <!-- Model certainty histogram -->
+        <div id="certainty-hist-wrap" style="display:none;padding:4px 8px 0">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+            <span style="font-size:10px;font-weight:600;color:var(--text-mid)">Model Certainty Distribution</span>
+            <select id="cert-hist-unit" style="font-size:10px;background:var(--bg-deep);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px">
+              <option value="__all__">All units</option>
+            </select>
+          </div>
+          <canvas id="certainty-hist-canvas" style="display:block;max-width:100%;border:1px solid var(--border);border-radius:4px;background:#f8fafb"></canvas>
+        </div>
+
         <div id="analysis-log" class="analysis-log">
           <div class="log-entry log-info">Run AI Analysis to see results here.</div>
         </div>
@@ -652,6 +664,23 @@
           <button id="btn-auto-params" class="btn-secondary btn-sm" disabled title="Use Claude (or demo heuristics) to fill in missing geotechnical parameters for each unit">🧠 Auto Params</button>
           <button id="btn-bs5930-colors" class="btn-secondary btn-sm">⬡ BS5930 Colours</button>
           <button id="btn-export-props" class="btn-secondary btn-sm" disabled>⬇ Props CSV</button>
+          <button id="btn-formation-stats" class="btn-secondary btn-sm" disabled title="Show depth and thickness statistics per geological unit">📊 Formation Stats</button>
+        </div>
+
+        <!-- Formation statistics panel — hidden until requested -->
+        <div id="formation-stats-panel" style="display:none;padding:6px 8px 0">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <span style="font-size:10px;font-weight:600;color:var(--text-mid)">Formation Statistics</span>
+            <div style="display:flex;gap:4px">
+              <select id="fstat-metric" style="font-size:10px;background:var(--bg-deep);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px">
+                <option value="thickness">Thickness</option>
+                <option value="depth">Depth to top</option>
+                <option value="volume">Model volume</option>
+              </select>
+              <button id="btn-fstat-export" class="btn-secondary btn-sm" style="font-size:9px;padding:1px 6px">⬇ CSV</button>
+            </div>
+          </div>
+          <canvas id="fstat-canvas" style="display:block;max-width:100%;border:1px solid var(--border);border-radius:4px;background:#f8fafb"></canvas>
         </div>
       </div>
 
@@ -660,6 +689,7 @@
         <div style="display:flex;gap:4px;padding:6px 8px;border-bottom:1px solid var(--border)">
           <button class="log-sub-tab active" data-log-tab="bh">BH Logs</button>
           <button class="log-sub-tab" data-log-tab="cpt">CPT Profiles</button>
+          <button class="log-sub-tab" data-log-tab="spt">SPT Profile</button>
         </div>
 
         <div id="log-sub-bh">
@@ -674,6 +704,31 @@
           <div id="bh-log-wrap" style="overflow:auto;max-height:420px;padding:0 4px 8px">
             <svg id="bh-log-svg" xmlns="http://www.w3.org/2000/svg" style="display:block"></svg>
             <p id="bh-log-hint" class="hint" style="padding:8px">Load classified borehole data to see log strips.</p>
+          </div>
+        </div>
+
+        <!-- SPT depth envelope profile -->
+        <div id="log-sub-spt" hidden>
+          <p class="hint" style="padding:6px 8px 2px">Composite SPT N-value profile: all BHs overlaid with min/mean/max envelope.</p>
+          <div style="padding:4px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <label style="font-size:11px;color:var(--text-mid)">
+              <input type="checkbox" id="spt-show-bhs" checked> Individual BHs
+            </label>
+            <label style="font-size:11px;color:var(--text-mid)">
+              <input type="checkbox" id="spt-show-units"> Unit bands
+            </label>
+            <label style="font-size:11px;color:var(--text-mid)">Bin (m):
+              <select id="spt-bin-size" style="font-size:11px">
+                <option value="0.5">0.5</option>
+                <option value="1" selected>1</option>
+                <option value="2">2</option>
+              </select>
+            </label>
+            <button id="btn-spt-export" class="btn-secondary btn-sm" disabled>⬇ PNG</button>
+          </div>
+          <div id="spt-profile-wrap" style="padding:0 4px 8px">
+            <canvas id="spt-profile-canvas" style="display:block;max-width:100%"></canvas>
+            <p id="spt-profile-hint" class="hint" style="padding:8px">Load classified borehole data with SPT N values to see the profile.</p>
           </div>
         </div>
 

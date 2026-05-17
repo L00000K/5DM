@@ -591,7 +591,7 @@ async function loadDemoSite(demoName) {
     setEnabled('btn-build-model', true);
     setEnabled('btn-export-bh-csv', true);
       setEnabled('btn-export-ags', true);
-    setEnabled('btn-export-props', true);
+    setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true);
     setEnabled('btn-auto-params', true);
     setEnabled('btn-interpret-geology', true);
     setEnabled('btn-semantic-model', true);
@@ -659,7 +659,7 @@ function initRunAI() {
       AppState.classifiedBH = classified;
       setEnabled('btn-export-bh-csv', true);
       setEnabled('btn-export-ags', true);
-      setEnabled('btn-export-props', true);
+      setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true);
       setEnabled('btn-auto-params', true);
       setEnabled('btn-strat-corr', classified.filter(b => !b.synthetic).length >= 2);
       updateLegend();
@@ -667,6 +667,7 @@ function initRunAI() {
       updateBHChart();
       updateBHUnitStats();
       AppState.bhLogView?.draw(classified.filter(b => !b.synthetic), units);
+      if (!document.getElementById('log-sub-spt')?.hidden) drawSPTProfile();
       log(`Analysis complete — ${units.length} units classified.`, 'ok');
       // Auto-fit variogram so kriging has sensible initial params
       _renderVariogram(classified);
@@ -818,6 +819,8 @@ function initBuildModel() {
       setEnabled('btn-stereonet', true);
       setEnabled('btn-slope-stability', true);
       window.dispatchEvent(new CustomEvent('geomodel:model-built'));
+      _initCertaintyHistUnit();
+      if (!document.getElementById('tab-analysis')?.hidden) drawCertaintyHistogram();
       // Refresh fence section with new grid data if it's currently visible
       if (AppState.fenceSection?.visible && AppState.fenceSection._lastArgs) {
         const fa = AppState.fenceSection._lastArgs;
@@ -1036,7 +1039,7 @@ function initProjectConfig() {
       setEnabled('btn-run-ai', true);
       setEnabled('btn-build-model', AppState.classifiedBH.length > 0);
       setEnabled('btn-export-bh-csv', AppState.classifiedBH.length > 0);
-      setEnabled('btn-export-props', AppState.geoUnits.length > 0);
+      setEnabled('btn-export-props', AppState.geoUnits.length > 0); setEnabled('btn-formation-stats', AppState.geoUnits.length > 0);
       setEnabled('btn-auto-params', AppState.geoUnits.length > 0);
       hideWelcome();
       log(`Project loaded: ${AppState.geoUnits.length} units, ${AppState.classifiedBH.length} BH. Click "Build 3D Model".`, 'ok');
@@ -1386,7 +1389,7 @@ function initUnitEditor() {
     renderPropertiesTable(AppState.geoUnits, () => updateLegend());
     setEnabled('btn-run-ai', AppState.geoUnits.length > 0 && AppState.classifiedBH.length === 0);
     setEnabled('btn-auto-params', AppState.geoUnits.length > 0);
-    setEnabled('btn-export-props', AppState.geoUnits.length > 0);
+    setEnabled('btn-export-props', AppState.geoUnits.length > 0); setEnabled('btn-formation-stats', AppState.geoUnits.length > 0);
     log(`Unit definitions updated — ${AppState.geoUnits.length} unit(s).`, 'ok');
     modal.hidden = true;
   }
@@ -1432,7 +1435,7 @@ function initUnitEditor() {
   });
 }
 
-// ── Log sub-tab switcher (BH / CPT) ───────────────────────────────────────────
+// ── Log sub-tab switcher (BH / CPT / SPT) ────────────────────────────────────
 function initLogSubTabs() {
   document.querySelectorAll('.log-sub-tab').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1441,6 +1444,8 @@ function initLogSubTabs() {
       const key = btn.dataset.logTab;
       document.getElementById('log-sub-bh').hidden  = (key !== 'bh');
       document.getElementById('log-sub-cpt').hidden = (key !== 'cpt');
+      document.getElementById('log-sub-spt').hidden = (key !== 'spt');
+      if (key === 'spt') drawSPTProfile();
     });
   });
 }
@@ -1489,6 +1494,269 @@ function initCPTImport() {
     process(Array.from(e.dataTransfer?.files ?? []));
   });
   file?.addEventListener('change', () => { if (file.files.length) process(Array.from(file.files)); });
+}
+
+// ── SPT Depth Envelope Profile ────────────────────────────────────────────────
+function drawSPTProfile() {
+  const canvas  = document.getElementById('spt-profile-canvas');
+  const hint    = document.getElementById('spt-profile-hint');
+  const expBtn  = document.getElementById('btn-spt-export');
+  if (!canvas) return;
+
+  const bhs = AppState.classifiedBH.filter(b => !b.synthetic && b.layers?.length);
+  if (!bhs.length) { hint && (hint.hidden = false); canvas.hidden = true; return; }
+
+  const hasSPT = bhs.some(b => b.layers.some(l => l.sptN != null));
+  if (!hasSPT) { hint && (hint.hidden = false); canvas.hidden = true; return; }
+
+  hint && (hint.hidden = true);
+  canvas.hidden = false;
+  if (expBtn) expBtn.disabled = false;
+
+  const showBHs   = document.getElementById('spt-show-bhs')?.checked ?? true;
+  const showUnits = document.getElementById('spt-show-units')?.checked ?? false;
+  const binSize   = parseFloat(document.getElementById('spt-bin-size')?.value ?? '1');
+
+  // Find total depth range
+  let maxDepth = 0;
+  bhs.forEach(b => {
+    b.layers.forEach(l => { if (l.base > maxDepth) maxDepth = l.base; });
+  });
+  if (maxDepth < 1) maxDepth = 20;
+
+  // Build depth bins: 0 → maxDepth
+  const nBins = Math.ceil(maxDepth / binSize);
+  const bins  = Array.from({ length: nBins }, (_, i) => ({
+    depth: (i + 0.5) * binSize,
+    vals: [],
+  }));
+
+  // Collect SPT values into bins from layer midpoint depth
+  bhs.forEach(b => {
+    b.layers.forEach(l => {
+      if (l.sptN == null || l.sptN <= 0) return;
+      const midDepth = ((l.top ?? 0) + (l.base ?? 0)) / 2;
+      const bi = Math.floor(midDepth / binSize);
+      if (bi >= 0 && bi < nBins) bins[bi].vals.push(l.sptN);
+    });
+  });
+
+  // Statistical summary per bin
+  const binStats = bins.map(b => {
+    if (!b.vals.length) return { depth: b.depth, min: null, mean: null, max: null, p25: null, p75: null };
+    const sorted = [...b.vals].sort((a, c) => a - c);
+    const n = sorted.length;
+    const mean = sorted.reduce((s, v) => s + v, 0) / n;
+    const p25  = sorted[Math.floor(n * 0.25)];
+    const p75  = sorted[Math.floor(n * 0.75)];
+    return { depth: b.depth, min: sorted[0], max: sorted[n - 1], mean, p25, p75 };
+  });
+
+  // Individual BH traces: depth vs sptN per BH
+  const bhTraces = bhs.map(b => {
+    const pts = [];
+    b.layers.forEach(l => {
+      if (l.sptN == null || l.sptN <= 0) return;
+      const midDepth = ((l.top ?? 0) + (l.base ?? 0)) / 2;
+      pts.push({ depth: midDepth, n: l.sptN });
+    });
+    pts.sort((a, c) => a.depth - c.depth);
+    return { id: b.id, pts };
+  });
+
+  // Canvas sizing
+  const PAD_L = 52, PAD_R = 20, PAD_T = 30, PAD_B = 24;
+  const UNIT_BAND_W = showUnits ? 16 : 0;
+  const W = 320;
+  const H = Math.max(380, nBins * Math.max(6, 320 / nBins));
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#f8fafb';
+  ctx.fillRect(0, 0, W, H);
+
+  const maxN    = 60;
+  const drawW   = W - PAD_L - PAD_R - UNIT_BAND_W;
+  const drawH   = H - PAD_T - PAD_B;
+
+  const toX = n => PAD_L + UNIT_BAND_W + (Math.min(n, maxN) / maxN) * drawW;
+  const toY = d => PAD_T + (d / maxDepth) * drawH;
+
+  // ── Unit color bands on left ──
+  if (showUnits && AppState.geoUnits.length) {
+    const unitByCode = {};
+    AppState.geoUnits.forEach(u => { unitByCode[u.code] = u; });
+    // Collect depth ranges per unit across all BHs
+    const unitDepths = {};
+    bhs.forEach(b => {
+      b.layers.forEach(l => {
+        const u = unitByCode[l.unitCode];
+        if (!u) return;
+        if (!unitDepths[u.code]) unitDepths[u.code] = { top: Infinity, base: -Infinity, color: u.color };
+        unitDepths[u.code].top  = Math.min(unitDepths[u.code].top, l.top ?? 0);
+        unitDepths[u.code].base = Math.max(unitDepths[u.code].base, l.base ?? 0);
+      });
+    });
+    Object.values(unitDepths).forEach(ud => {
+      const y1 = toY(ud.top), y2 = toY(ud.base);
+      ctx.fillStyle = ud.color ?? '#ccc';
+      ctx.globalAlpha = 0.55;
+      ctx.fillRect(PAD_L, y1, UNIT_BAND_W - 1, Math.max(1, y2 - y1));
+      ctx.globalAlpha = 1;
+    });
+    // Band border
+    ctx.strokeStyle = '#ccc'; ctx.lineWidth = 0.5;
+    ctx.strokeRect(PAD_L, PAD_T, UNIT_BAND_W - 1, drawH);
+  }
+
+  // ── Grid lines (vertical N-value) ──
+  ctx.strokeStyle = '#dde3ea'; ctx.lineWidth = 0.5;
+  ctx.fillStyle = '#7a8a9a'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  for (let n = 0; n <= 60; n += 10) {
+    const x = toX(n);
+    ctx.beginPath(); ctx.moveTo(x, PAD_T); ctx.lineTo(x, PAD_T + drawH); ctx.stroke();
+    ctx.fillText(`${n}`, x, PAD_T + drawH + 3);
+  }
+  // Grid lines horizontal (depth ticks)
+  ctx.fillStyle = '#7a8a9a'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+  const depthTick = maxDepth <= 10 ? 1 : maxDepth <= 30 ? 5 : maxDepth <= 80 ? 10 : 20;
+  for (let d = 0; d <= maxDepth + 0.01; d += depthTick) {
+    const y = toY(d);
+    ctx.strokeStyle = '#dde3ea'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(PAD_L, y); ctx.lineTo(PAD_L + UNIT_BAND_W + drawW, y); ctx.stroke();
+    ctx.fillStyle = '#7a8a9a';
+    ctx.fillText(`${d.toFixed(0)}m`, PAD_L - 4, y);
+  }
+
+  // ── Axis labels ──
+  ctx.fillStyle = '#334455'; ctx.font = 'bold 9px Inter, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  ctx.fillText('SPT N (blows/300mm)', PAD_L + UNIT_BAND_W + drawW / 2, PAD_T + drawH + 14);
+  ctx.save();
+  ctx.translate(11, PAD_T + drawH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('Depth below GL (m)', 0, 0);
+  ctx.restore();
+
+  // ── Individual BH traces ──
+  if (showBHs) {
+    bhTraces.forEach((bh, i) => {
+      if (!bh.pts.length) return;
+      ctx.strokeStyle = `hsla(${(i * 47) % 360},60%,50%,0.45)`;
+      ctx.lineWidth = 0.8;
+      ctx.setLineDash([2, 2]);
+      ctx.beginPath();
+      bh.pts.forEach((p, j) => {
+        const x = toX(p.n), y = toY(p.depth);
+        if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Dot per observation
+      ctx.fillStyle = `hsla(${(i * 47) % 360},55%,45%,0.7)`;
+      bh.pts.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(toX(p.n), toY(p.depth), 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    });
+  }
+
+  // ── IQR band (p25–p75) ──
+  const validBins = binStats.filter(b => b.mean != null);
+  if (validBins.length >= 2) {
+    ctx.fillStyle = 'rgba(66,114,196,0.18)';
+    ctx.beginPath();
+    validBins.forEach((b, i) => {
+      const x = toX(b.p25), y = toY(b.depth);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    [...validBins].reverse().forEach(b => ctx.lineTo(toX(b.p75), toY(b.depth)));
+    ctx.closePath(); ctx.fill();
+
+    // Min–Max envelope (outer, faint)
+    ctx.fillStyle = 'rgba(66,114,196,0.07)';
+    ctx.beginPath();
+    validBins.forEach((b, i) => {
+      const x = toX(b.min), y = toY(b.depth);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    [...validBins].reverse().forEach(b => ctx.lineTo(toX(b.max), toY(b.depth)));
+    ctx.closePath(); ctx.fill();
+
+    // Mean line
+    ctx.strokeStyle = '#2255aa';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    validBins.forEach((b, i) => {
+      const x = toX(b.mean), y = toY(b.depth);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  // ── Legend ──
+  const legX = PAD_L + UNIT_BAND_W + drawW - 110;
+  const legY = PAD_T + 6;
+  ctx.fillStyle = 'rgba(248,250,251,0.88)';
+  ctx.fillRect(legX - 4, legY - 4, 115, showBHs ? 68 : 48);
+  ctx.strokeStyle = '#cdd5dd'; ctx.lineWidth = 0.5;
+  ctx.strokeRect(legX - 4, legY - 4, 115, showBHs ? 68 : 48);
+  ctx.font = '8.5px Inter, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+
+  // Mean
+  ctx.strokeStyle = '#2255aa'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(legX, legY + 6); ctx.lineTo(legX + 22, legY + 6); ctx.stroke();
+  ctx.fillStyle = '#334455'; ctx.fillText('Mean', legX + 26, legY + 6);
+
+  // IQR band
+  ctx.fillStyle = 'rgba(66,114,196,0.25)';
+  ctx.fillRect(legX, legY + 18, 22, 10);
+  ctx.fillStyle = '#334455'; ctx.fillText('IQR (25–75%)', legX + 26, legY + 23);
+
+  // Min-Max
+  ctx.fillStyle = 'rgba(66,114,196,0.10)';
+  ctx.fillRect(legX, legY + 34, 22, 10);
+  ctx.fillStyle = '#334455'; ctx.fillText('Min–Max range', legX + 26, legY + 39);
+
+  if (showBHs) {
+    ctx.strokeStyle = 'rgba(120,120,180,0.6)'; ctx.lineWidth = 1;
+    ctx.setLineDash([2, 2]);
+    ctx.beginPath(); ctx.moveTo(legX, legY + 54); ctx.lineTo(legX + 22, legY + 54); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#334455'; ctx.fillText('Individual BHs', legX + 26, legY + 54);
+  }
+
+  // ── Title ──
+  ctx.fillStyle = '#223344'; ctx.font = 'bold 10px Inter, sans-serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillText(`SPT N Profile  (${bhs.length} BHs, bin=${binSize}m)`, PAD_L + UNIT_BAND_W, 8);
+
+  // ── Chart border ──
+  ctx.strokeStyle = 'rgba(40,60,80,0.15)'; ctx.lineWidth = 0.7;
+  ctx.strokeRect(PAD_L + UNIT_BAND_W, PAD_T, drawW, drawH);
+}
+
+function initSPTProfile() {
+  ['spt-show-bhs', 'spt-show-units'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', () => {
+      if (!document.getElementById('log-sub-spt')?.hidden) drawSPTProfile();
+    });
+  });
+  document.getElementById('spt-bin-size')?.addEventListener('change', () => {
+    if (!document.getElementById('log-sub-spt')?.hidden) drawSPTProfile();
+  });
+  document.getElementById('btn-spt-export')?.addEventListener('click', () => {
+    const canvas = document.getElementById('spt-profile-canvas');
+    if (!canvas) return;
+    const a = document.createElement('a');
+    a.href = canvas.toDataURL('image/png');
+    a.download = 'spt-profile.png';
+    a.click();
+  });
 }
 
 // ── Borehole Log Strip View ────────────────────────────────────────────────────
@@ -1614,7 +1882,7 @@ function initSession() {
     setEnabled('btn-build-model', AppState.classifiedBH.length > 0);
     setEnabled('btn-export-bh-csv', true);
       setEnabled('btn-export-ags', true);
-    setEnabled('btn-export-props', true);
+    setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true);
     setEnabled('btn-auto-params', true);
     hideWelcome();
     log(`Session restored — ${AppState.classifiedBH.length} BH, ${AppState.geoUnits.length} units. Click "Build 3D Model" to regenerate.`, 'ok');
@@ -1685,6 +1953,359 @@ function initPropertiesTab() {
   document.getElementById('btn-export-props')?.addEventListener('click', () => {
     // handled in exporter.js
   });
+
+  document.getElementById('btn-formation-stats')?.addEventListener('click', () => {
+    const panel = document.getElementById('formation-stats-panel');
+    if (!panel) return;
+    const wasHidden = panel.style.display === 'none';
+    panel.style.display = wasHidden ? 'block' : 'none';
+    if (wasHidden) drawFormationStats();
+  });
+
+  document.getElementById('fstat-metric')?.addEventListener('change', () => {
+    if (document.getElementById('formation-stats-panel')?.style.display !== 'none') {
+      drawFormationStats();
+    }
+  });
+
+  document.getElementById('btn-fstat-export')?.addEventListener('click', () => {
+    exportFormationStatsCSV();
+  });
+}
+
+function drawFormationStats() {
+  const canvas  = document.getElementById('fstat-canvas');
+  if (!canvas || !AppState.geoUnits.length) return;
+
+  const bhs     = AppState.classifiedBH.filter(b => !b.synthetic && b.layers?.length);
+  const metric  = document.getElementById('fstat-metric')?.value ?? 'thickness';
+  const units   = AppState.geoUnits;
+  const grid    = AppState.voxelGrid;
+
+  // Build per-unit data from boreholes
+  const unitByCode = {};
+  units.forEach(u => { unitByCode[u.code] = u; });
+
+  const unitData = {}; // code → { thickArr, depthArr, volume }
+  units.forEach(u => { unitData[u.code] = { thickArr: [], depthArr: [], volume: 0 }; });
+
+  bhs.forEach(b => {
+    b.layers.forEach(l => {
+      const d = unitData[l.unitCode];
+      if (!d) return;
+      const thick = (l.base ?? 0) - (l.top ?? 0);
+      if (thick > 0) d.thickArr.push(thick);
+      d.depthArr.push(l.top ?? 0);
+    });
+  });
+
+  // Volume from voxel grid
+  if (grid) {
+    const { nx, ny, nz, cellSize: cs, unitIds } = grid;
+    const voxVol = cs * cs * (grid.cellH ?? cs);
+    unitIds.forEach(uid => {
+      if (uid > 0 && uid <= units.length) {
+        unitData[units[uid - 1].code].volume += voxVol;
+      }
+    });
+  }
+
+  // Quantile helper
+  const quantile = (arr, q) => {
+    if (!arr.length) return null;
+    const s = [...arr].sort((a, b) => a - b);
+    const pos = (s.length - 1) * q;
+    const lo  = Math.floor(pos);
+    const hi  = Math.ceil(pos);
+    return s[lo] + (s[hi] - s[lo]) * (pos - lo);
+  };
+  const stats = (arr) => ({
+    n: arr.length,
+    min: quantile(arr, 0),
+    p25: quantile(arr, 0.25),
+    med: quantile(arr, 0.5),
+    p75: quantile(arr, 0.75),
+    max: quantile(arr, 1),
+    mean: arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : null,
+  });
+
+  // Canvas layout
+  const ROW_H  = 28;
+  const PAD_L  = 52;
+  const PAD_R  = 80;
+  const PAD_T  = 28;
+  const PAD_B  = 20;
+  const W      = 320;
+  const nUnits = units.length;
+  const H      = PAD_T + nUnits * ROW_H + PAD_B;
+
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#f8fafb';
+  ctx.fillRect(0, 0, W, H);
+
+  // Determine axis range
+  const allVals = units.flatMap(u => {
+    const d = unitData[u.code];
+    if (metric === 'thickness') return d.thickArr;
+    if (metric === 'depth') return d.depthArr;
+    return [];
+  });
+  const maxVal = metric === 'volume'
+    ? Math.max(...units.map(u => unitData[u.code].volume), 1)
+    : (allVals.length ? Math.max(...allVals) * 1.05 : 20);
+  const minVal = 0;
+  const drawW  = W - PAD_L - PAD_R;
+
+  const toX = v => PAD_L + ((v - minVal) / (maxVal - minVal)) * drawW;
+
+  // Axis ticks
+  ctx.strokeStyle = '#dde3ea'; ctx.lineWidth = 0.5;
+  ctx.fillStyle = '#7a8a9a'; ctx.font = '8.5px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  const tickCount = 5;
+  for (let i = 0; i <= tickCount; i++) {
+    const v = minVal + (maxVal - minVal) * (i / tickCount);
+    const x = toX(v);
+    ctx.beginPath(); ctx.moveTo(x, PAD_T); ctx.lineTo(x, PAD_T + nUnits * ROW_H); ctx.stroke();
+    const lbl = metric === 'volume' ? (v >= 1000 ? `${(v/1000).toFixed(0)}k` : v.toFixed(0)) : v.toFixed(1);
+    ctx.fillText(lbl, x, PAD_T + nUnits * ROW_H + 4);
+  }
+
+  // Title
+  const titles = { thickness: 'Thickness (m)', depth: 'Depth to Top (m)', volume: 'Model Volume (m³)' };
+  ctx.fillStyle = '#334455'; ctx.font = 'bold 9px Inter, sans-serif';
+  ctx.textAlign = 'center'; ctx.fillText(titles[metric], PAD_L + drawW / 2, 8);
+
+  // Per-unit rows
+  units.forEach((u, i) => {
+    const d  = unitData[u.code];
+    const cy = PAD_T + i * ROW_H + ROW_H / 2;
+
+    // Unit color swatch + label
+    ctx.fillStyle = u.color ?? '#888';
+    ctx.fillRect(2, cy - 6, 10, 12);
+    ctx.fillStyle = '#334455'; ctx.font = 'bold 8.5px Inter, sans-serif';
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.fillText(u.code.slice(0, 6), PAD_L - 4, cy);
+
+    if (metric === 'volume') {
+      // Bar chart
+      const vol = d.volume;
+      if (vol > 0) {
+        ctx.fillStyle = (u.color ?? '#4472c4') + 'bb';
+        ctx.fillRect(toX(0), cy - 7, toX(vol) - toX(0), 14);
+        ctx.fillStyle = '#334455'; ctx.font = '8px monospace'; ctx.textAlign = 'left';
+        ctx.fillText(
+          vol >= 1000 ? `${(vol / 1000).toFixed(1)}k m³` : `${vol.toFixed(0)} m³`,
+          toX(vol) + 3, cy
+        );
+      } else {
+        ctx.fillStyle = '#aaa'; ctx.font = '8px monospace'; ctx.textAlign = 'left';
+        ctx.fillText('— no model', toX(0) + 3, cy);
+      }
+    } else {
+      const arr  = metric === 'thickness' ? d.thickArr : d.depthArr;
+      if (!arr.length) {
+        ctx.fillStyle = '#aaa'; ctx.font = '8px Inter, sans-serif'; ctx.textAlign = 'left';
+        ctx.fillText('no data', toX(0) + 3, cy); return;
+      }
+      const st = stats(arr);
+
+      // Min–Max whisker line
+      ctx.strokeStyle = (u.color ?? '#4472c4'); ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(toX(st.min), cy); ctx.lineTo(toX(st.max), cy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(toX(st.min), cy - 4); ctx.lineTo(toX(st.min), cy + 4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(toX(st.max), cy - 4); ctx.lineTo(toX(st.max), cy + 4); ctx.stroke();
+
+      // IQR box
+      ctx.fillStyle = (u.color ?? '#4472c4') + '55';
+      ctx.fillRect(toX(st.p25), cy - 6, toX(st.p75) - toX(st.p25), 12);
+      ctx.strokeRect(toX(st.p25), cy - 6, toX(st.p75) - toX(st.p25), 12);
+
+      // Median tick
+      ctx.strokeStyle = u.color ?? '#4472c4'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(toX(st.med), cy - 6); ctx.lineTo(toX(st.med), cy + 6); ctx.stroke();
+
+      // Right label: n, mean
+      ctx.fillStyle = '#556677'; ctx.font = '8px monospace'; ctx.textAlign = 'left';
+      ctx.fillText(`n=${st.n} μ=${st.mean?.toFixed(1)}`, W - PAD_R + 4, cy);
+    }
+  });
+
+  // Legend for box-plot key (only for non-volume metrics)
+  if (metric !== 'volume') {
+    const lx = PAD_L, ly = PAD_T - 18;
+    ctx.fillStyle = 'rgba(80,100,130,0.15)';
+    ctx.fillRect(lx, ly + 2, 18, 8);
+    ctx.strokeStyle = '#556677'; ctx.lineWidth = 0.8;
+    ctx.strokeRect(lx, ly + 2, 18, 8);
+    ctx.beginPath(); ctx.moveTo(lx + 9, ly + 2); ctx.lineTo(lx + 9, ly + 10); ctx.stroke();
+    ctx.fillStyle = '#556677'; ctx.font = '7.5px Inter, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    ctx.fillText('IQR box | median | whiskers = min/max', lx + 22, ly + 3);
+  }
+}
+
+// ── Certainty Histogram ───────────────────────────────────────────────────────
+function _initCertaintyHistUnit() {
+  const sel = document.getElementById('cert-hist-unit');
+  if (!sel) return;
+  sel.innerHTML = '<option value="__all__">All units</option>'
+    + AppState.geoUnits.map(u => `<option value="${u.id}">${u.code} — ${u.name}</option>`).join('');
+  sel.onchange = () => drawCertaintyHistogram();
+
+  const wrap = document.getElementById('certainty-hist-wrap');
+  if (wrap) wrap.style.display = AppState.voxelGrid ? 'block' : 'none';
+}
+
+function drawCertaintyHistogram() {
+  const canvas = document.getElementById('certainty-hist-canvas');
+  const wrap   = document.getElementById('certainty-hist-wrap');
+  const grid   = AppState.voxelGrid;
+  if (!canvas || !grid) { if (wrap) wrap.style.display = 'none'; return; }
+  if (wrap) wrap.style.display = 'block';
+
+  const { unitIds, certainty, nx, ny, nz } = grid;
+  const selVal = document.getElementById('cert-hist-unit')?.value ?? '__all__';
+  const filterUid = selVal === '__all__' ? null : parseInt(selVal, 10);
+
+  // Collect certainty values
+  const vals = [];
+  for (let i = 0; i < unitIds.length; i++) {
+    if (!unitIds[i]) continue;
+    if (filterUid !== null && unitIds[i] !== filterUid) continue;
+    vals.push(certainty[i]);
+  }
+  if (!vals.length) return;
+
+  // Build histogram: 20 bins 0→1
+  const nBins = 20;
+  const counts = new Int32Array(nBins);
+  vals.forEach(v => {
+    const b = Math.min(nBins - 1, Math.floor(v * nBins));
+    counts[b]++;
+  });
+  const maxCount = Math.max(...counts, 1);
+  const meanCert = vals.reduce((s, v) => s + v, 0) / vals.length;
+
+  const W = 300, H = 140;
+  const PAD_L = 38, PAD_R = 12, PAD_T = 20, PAD_B = 22;
+  canvas.width  = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#f8fafb'; ctx.fillRect(0, 0, W, H);
+
+  const drawW = W - PAD_L - PAD_R;
+  const drawH = H - PAD_T - PAD_B;
+  const barW  = drawW / nBins;
+  const toY   = c => PAD_T + drawH - (c / maxCount) * drawH;
+
+  // Grid lines
+  ctx.strokeStyle = '#dde3ea'; ctx.lineWidth = 0.5;
+  [0.25, 0.5, 0.75, 1.0].forEach(f => {
+    const y = PAD_T + drawH - f * drawH;
+    ctx.beginPath(); ctx.moveTo(PAD_L, y); ctx.lineTo(PAD_L + drawW, y); ctx.stroke();
+    ctx.fillStyle = '#7a8a9a'; ctx.font = '8px monospace'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.fillText(`${(f * maxCount).toFixed(0)}`, PAD_L - 2, y);
+  });
+
+  // Bars — coloured by certainty level
+  counts.forEach((c, i) => {
+    const certMid = (i + 0.5) / nBins;
+    const t  = certMid;
+    // Green at high certainty, red at low
+    const r  = Math.round(255 * (1 - t));
+    const g  = Math.round(200 * t);
+    const bl = 60;
+    const x  = PAD_L + i * barW;
+    const y  = toY(c);
+    const h  = PAD_T + drawH - y;
+    ctx.fillStyle = `rgba(${r},${g},${bl},0.75)`;
+    ctx.fillRect(x + 0.5, y, barW - 1, h);
+  });
+
+  // X axis labels
+  ctx.fillStyle = '#7a8a9a'; ctx.font = '8px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  [0, 0.25, 0.5, 0.75, 1.0].forEach(v => {
+    const x = PAD_L + v * drawW;
+    ctx.fillText(v.toFixed(2), x, PAD_T + drawH + 4);
+  });
+
+  // Mean line
+  const meanX = PAD_L + meanCert * drawW;
+  ctx.strokeStyle = '#2255aa'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 2]);
+  ctx.beginPath(); ctx.moveTo(meanX, PAD_T); ctx.lineTo(meanX, PAD_T + drawH); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Axis labels
+  ctx.fillStyle = '#334455'; ctx.font = 'bold 8px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Classification Certainty', PAD_L + drawW / 2, 6);
+  ctx.fillStyle = '#2255aa'; ctx.font = '7.5px monospace';
+  ctx.fillText(`μ=${(meanCert*100).toFixed(1)}%`, meanX, PAD_T + drawH + 13);
+
+  // Count label
+  ctx.fillStyle = '#7a8a9a'; ctx.font = '7.5px monospace'; ctx.textAlign = 'left';
+  ctx.fillText(`n=${vals.length.toLocaleString()} voxels`, PAD_L + 2, 7);
+}
+
+// Show certainty histogram when switching to Analysis tab
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.tab-btn[data-tab="analysis"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (AppState.voxelGrid) { _initCertaintyHistUnit(); drawCertaintyHistogram(); }
+    });
+  });
+});
+
+function exportFormationStatsCSV() {
+  const bhs   = AppState.classifiedBH.filter(b => !b.synthetic && b.layers?.length);
+  const units  = AppState.geoUnits;
+  const grid   = AppState.voxelGrid;
+  if (!units.length) return;
+
+  const unitData = {};
+  units.forEach(u => { unitData[u.code] = { thickArr: [], depthArr: [], volume: 0 }; });
+  bhs.forEach(b => {
+    b.layers.forEach(l => {
+      const d = unitData[l.unitCode];
+      if (!d) return;
+      const thick = (l.base ?? 0) - (l.top ?? 0);
+      if (thick > 0) d.thickArr.push(thick);
+      d.depthArr.push(l.top ?? 0);
+    });
+  });
+  if (grid) {
+    const { unitIds, cellSize: cs } = grid;
+    const voxVol = cs * cs * (grid.cellH ?? cs);
+    unitIds.forEach(uid => {
+      if (uid > 0 && uid <= units.length) unitData[units[uid - 1].code].volume += voxVol;
+    });
+  }
+
+  const q = (arr, p) => {
+    if (!arr.length) return '';
+    const s = [...arr].sort((a, b) => a - b);
+    const i = (s.length - 1) * p;
+    return (s[Math.floor(i)] + (s[Math.ceil(i)] - s[Math.floor(i)]) * (i - Math.floor(i))).toFixed(2);
+  };
+
+  let csv = 'Code,Name,N_thick,Thick_min,Thick_p25,Thick_med,Thick_p75,Thick_max,Thick_mean,'
+           + 'N_depth,Depth_min,Depth_p25,Depth_med,Depth_p75,Depth_max,Depth_mean,Volume_m3\n';
+  units.forEach(u => {
+    const d  = unitData[u.code];
+    const ta = d.thickArr, da = d.depthArr;
+    const mn = a => a.length ? (a.reduce((s,v)=>s+v,0)/a.length).toFixed(2) : '';
+    csv += `${u.code},${u.name},${ta.length},${q(ta,0)},${q(ta,.25)},${q(ta,.5)},${q(ta,.75)},${q(ta,1)},${mn(ta)},`
+         + `${da.length},${q(da,0)},${q(da,.25)},${q(da,.5)},${q(da,.75)},${q(da,1)},${mn(da)},${d.volume.toFixed(0)}\n`;
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'formation-statistics.csv';
+  a.click();
 }
 
 // ── Rename legend units on double-click ───────────────────────────────────────
@@ -3628,6 +4249,7 @@ async function init() {
   initFoundationExport();
   initBHLogView();
   initLogSubTabs();
+  initSPTProfile();
   initCPTImport();
   initWelcomeOverlay();
   initStereonet();
@@ -5055,7 +5677,10 @@ export function _renderConceptList() {
     return `<div class="concept-entry" data-id="${c.id}">
       <div class="concept-header">
         <span class="concept-desc" title="${c.description}">${c.description.slice(0, 55)}${c.description.length > 55 ? '…' : ''}</span>
-        <button class="concept-remove" title="Remove concept" onclick="_removeConcept('${c.id}')">×</button>
+        <div style="display:flex;gap:2px">
+          <button class="concept-radar-btn" title="Show radar chart" onclick="_toggleConceptRadar('${c.id}', this)">◎</button>
+          <button class="concept-remove" title="Remove concept" onclick="_removeConcept('${c.id}')">×</button>
+        </div>
       </div>
       <div class="concept-meta">
         <span class="concept-dom-tag">${dom}${affText}</span>
@@ -5066,6 +5691,7 @@ export function _renderConceptList() {
         </label>
       </div>
       <div class="concept-axes">${bars}</div>
+      <canvas class="concept-radar-canvas" id="radar-${c.id}" width="200" height="200" style="display:none;margin:4px auto 0;border-radius:4px;background:#f3f5f8"></canvas>
     </div>`;
   }).join('');
   _updateConceptInfluenceBar();
@@ -5092,6 +5718,125 @@ function _renderConceptConflicts() {
       <span style="color:${col};margin-right:4px">${icon}</span>${escHtml(cf.description)}
     </div>`;
   }).join('');
+}
+
+// 8 grouped axes for radar chart (index into CONCEPT_AXES, sign-weighted mean)
+const _RADAR_GROUPS = [
+  { label: 'E-W Elongation',  axes: [3, 27],    signs: [1, 1]  },
+  { label: 'N-S Elongation',  axes: [4, 27],    signs: [1, -1] },
+  { label: 'Channel Form',    axes: [5, 19, 20], signs: [1, 1, 1] },
+  { label: 'Continuity',      axes: [9, 8],      signs: [1, -0.5] },
+  { label: 'Incision / Dip',  axes: [29, 2, 1],  signs: [1, 1, 1] },
+  { label: 'Steps / Faults',  axes: [18, 7, 25], signs: [1, 1, 1] },
+  { label: 'Sequence',        axes: [22, 21, 23], signs: [1, 1, 1] },
+  { label: 'Complexity',      axes: [31, 24],    signs: [1, 1]  },
+];
+
+window._toggleConceptRadar = function(id, btn) {
+  const canvas = document.getElementById(`radar-${id}`);
+  if (!canvas) return;
+  const visible = canvas.style.display !== 'none';
+  canvas.style.display = visible ? 'none' : 'block';
+  btn.style.opacity = visible ? '' : '1';
+  btn.style.color   = visible ? '' : 'var(--accent)';
+  if (!visible) {
+    const c = AppState.conceptStore?.concepts.find(x => x.id === id);
+    if (c) _drawConceptRadar(canvas, c.embedding);
+  }
+};
+
+function _drawConceptRadar(canvas, embedding) {
+  const W = 200, H = 200;
+  const cx = W / 2, cy = H / 2;
+  const R  = 76;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#f3f5f8';
+  ctx.fillRect(0, 0, W, H);
+
+  const n = _RADAR_GROUPS.length;
+  const angle = (i) => -Math.PI / 2 + (i / n) * 2 * Math.PI;
+
+  // Compute group values (clamped 0–1 absolute, signed for coloring)
+  const groupVals = _RADAR_GROUPS.map(g => {
+    let sum = 0, wsum = 0;
+    g.axes.forEach((axIdx, k) => {
+      const w = 1 / g.axes.length;
+      sum  += (embedding[axIdx] ?? 0) * g.signs[k] * w;
+      wsum += w;
+    });
+    return sum; // signed, −1 to +1
+  });
+
+  // Grid rings
+  ctx.strokeStyle = '#d0d8e4'; ctx.lineWidth = 0.5;
+  [0.25, 0.5, 0.75, 1.0].forEach(frac => {
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const a = angle(i);
+      const x = cx + Math.cos(a) * R * frac;
+      const y = cy + Math.sin(a) * R * frac;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.closePath(); ctx.stroke();
+  });
+
+  // Spokes
+  ctx.strokeStyle = '#c5cdd8';
+  for (let i = 0; i < n; i++) {
+    const a = angle(i);
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R);
+    ctx.stroke();
+  }
+
+  // Positive polygon (blue fill)
+  const posVals = groupVals.map(v => Math.max(0, v));
+  const negVals = groupVals.map(v => Math.max(0, -v));
+
+  const drawPoly = (vals, fillColor, strokeColor) => {
+    ctx.beginPath();
+    vals.forEach((v, i) => {
+      const a = angle(i);
+      const r = v * R;
+      const x = cx + Math.cos(a) * r;
+      const y = cy + Math.sin(a) * r;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+    ctx.fillStyle = fillColor; ctx.fill();
+    ctx.strokeStyle = strokeColor; ctx.lineWidth = 1.5; ctx.stroke();
+  };
+
+  drawPoly(posVals, 'rgba(66,114,196,0.25)', 'rgba(66,114,196,0.85)');
+  drawPoly(negVals, 'rgba(200,60,60,0.18)', 'rgba(200,60,60,0.6)');
+
+  // Dots at vertices
+  groupVals.forEach((v, i) => {
+    const a = angle(i);
+    const r = Math.abs(v) * R;
+    const x = cx + Math.cos(a) * r;
+    const y = cy + Math.sin(a) * r;
+    ctx.beginPath();
+    ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = v >= 0 ? 'rgba(66,114,196,0.9)' : 'rgba(200,60,60,0.85)';
+    ctx.fill();
+  });
+
+  // Labels
+  ctx.font = '7.5px Inter, sans-serif'; ctx.fillStyle = '#334455';
+  ctx.textBaseline = 'middle';
+  _RADAR_GROUPS.forEach((g, i) => {
+    const a   = angle(i);
+    const x   = cx + Math.cos(a) * (R + 14);
+    const y   = cy + Math.sin(a) * (R + 14);
+    ctx.textAlign = Math.cos(a) > 0.1 ? 'left' : Math.cos(a) < -0.1 ? 'right' : 'center';
+    ctx.fillText(g.label, x, y);
+  });
+
+  // Centre label
+  ctx.fillStyle = '#7a8a9a'; ctx.font = '7px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('◎ concept', cx, cy);
 }
 
 window._removeConcept = function(id) {
