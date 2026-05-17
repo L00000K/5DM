@@ -870,35 +870,97 @@ function _demoConceptEmbedding(description) {
   const d   = description.toLowerCase();
   const emb = new Float32Array(32);
 
-  // Geometric / morphology keywords → axis contributions
-  if (/palaeochannel|paleochannel|channel|trough/.test(d)) {
-    emb[0] = -0.8; emb[5] = 1.0; emb[8] = 0.9; emb[19] = 0.6;
-    emb[23] = 0.8; emb[27] = 0.9; emb[29] = 0.8; emb[22] = 0.5;
-  }
-  if (/east.?west|e.?w\b|ew\b/.test(d))        { emb[3] = 0.9; emb[4] = Math.min(emb[4], -0.7); }
-  if (/north.?south|n.?s\b|ns\b/.test(d))       { emb[4] = 0.9; emb[3] = Math.min(emb[3], -0.7); }
-  if (/northeast|ne\b/.test(d))                  { emb[3] = 0.6; emb[4] = 0.6; }
-  if (/northwest|nw\b/.test(d))                  { emb[3] = 0.6; emb[4] = 0.6; }
-  if (/river terrace|terrace deposit/.test(d)) {
-    emb[0] = 0.7; emb[8] = 0.6; emb[9] = 0.8; emb[23] = 0.7; emb[22] = 0.4;
-  }
-  if (/fault/.test(d)) {
-    emb[7] = 1.0; emb[18] = 0.8; emb[25] = 0.7; emb[28] = 0.6;
-  }
-  if (/step|stepped/.test(d)) { emb[18] = 0.9; }
-  if (/rockhead|bedrock|top of rock|chalk|limestone/.test(d)) {
-    emb[0] = 0.3; emb[18] = 0.5; emb[19] = 0.5; emb[8] = 0.6;
-  }
-  if (/dip|inclined|dipping/.test(d))            { emb[1] = 0.8; emb[2] = 0.7; }
-  if (/dome|anticline|mound/.test(d))            { emb[6] = 0.9; emb[9] = 0.6; }
-  if (/lens|lenticle|pod/.test(d))               { emb[9] = -0.5; emb[10] = 0.6; emb[12] = 0.6; }
-  if (/karst|dissolution/.test(d))               { emb[19] = 0.8; emb[24] = 1.0; }
-  if (/layer|horizontal|flat|tabular/.test(d))   { emb[0] = 0.9; emb[9] = 0.8; }
-  if (/flood|alluvial|alluvium/.test(d))         { emb[0] = 0.6; emb[9] = 0.7; emb[22] = 0.4; }
+  // Helper: accumulate (don't overwrite) so multiple keywords combine
+  const acc = (idx, val) => { emb[idx] = Math.max(-1, Math.min(1, emb[idx] + val)); };
 
-  // Confidence default
-  emb[26] = 0.6;
-  // Clamp
+  // ── Morphological type ────────────────────────────────────────────────────
+  if (/palaeochannel|paleochannel|buried\s+channel|incised\s+channel/.test(d)) {
+    acc(0, -0.8); acc(5, 1.0); acc(8, 0.9); acc(19, 0.6);
+    acc(22, 0.5); acc(23, 0.8); acc(27, 0.9); acc(29, 0.8);
+  }
+  if (/trough|valley|incision/.test(d)) { acc(5, 0.7); acc(29, 0.7); acc(8, 0.7); }
+  if (/river\s+terrace|terrace\s+deposit|rtd/.test(d)) {
+    acc(0, 0.7); acc(8, 0.6); acc(9, 0.8); acc(22, 0.4); acc(23, 0.7);
+  }
+  if (/floodplain|alluvial\s+plain|overbank/.test(d)) {
+    acc(0, 0.7); acc(9, 0.7); acc(22, 0.5); acc(0, 0.1);
+  }
+  if (/alluvial|alluvium|alluviated/.test(d))  { acc(0, 0.5); acc(9, 0.6); acc(22, 0.3); }
+  if (/glacial|glaciofluvial|glaciogenic/.test(d)) {
+    acc(23, 0.6); acc(19, 0.4); acc(25, 0.3);
+  }
+  if (/esker/.test(d)) { acc(3, 0.5); acc(4, 0.5); acc(27, 0.8); acc(5, 0.4); }
+  if (/drumlin/.test(d)) { acc(6, 0.5); acc(27, 0.7); acc(9, 0.5); }
+  if (/moraine/.test(d)) { acc(19, 0.6); acc(25, 0.5); acc(27, 0.6); }
+  if (/dome|anticline|diapir|mound/.test(d)) { acc(6, 0.9); acc(9, 0.6); acc(0, -0.5); }
+  if (/lens|lenticle|pod|blob/.test(d)) {
+    acc(9, -0.5); acc(10, 0.6); acc(11, 0.6); acc(12, 0.6); acc(13, 0.6);
+  }
+  if (/nested\s+channel|multistory|multi.?storey/.test(d)) { acc(5, 0.8); acc(20, 0.9); }
+  if (/karst|dissolution|sinkhole|doline/.test(d)) { acc(19, 0.8); acc(24, 1.0); acc(25, 0.5); }
+
+  // ── Structural controls ───────────────────────────────────────────────────
+  if (/fault(?!less)/.test(d))   { acc(7, 1.0); acc(18, 0.8); acc(25, 0.7); acc(28, 0.6); }
+  if (/step|stepped|offset/.test(d)) { acc(18, 0.9); acc(7, 0.3); }
+  if (/rockhead|bedrock|top\s+of\s+rock|chalk\s+surface|limestone\s+surface/.test(d)) {
+    acc(0, 0.2); acc(18, 0.4); acc(19, 0.5); acc(8, 0.6);
+  }
+  if (/dip|inclined|dipping/.test(d))  { acc(1, 0.8); acc(2, 0.7); }
+  if (/steep|near.?vertical|vertical/.test(d)) { acc(2, 0.9); acc(28, 0.7); }
+  if (/gentle|shallow\s+dip/.test(d))  { acc(2, 0.3); acc(0, 0.4); }
+  if (/fold|synclinal|anticlinal/.test(d)) { acc(6, 0.7); acc(2, 0.5); }
+  if (/horizontal|flat.?lying|tabular|layer/.test(d)) { acc(0, 0.9); acc(9, 0.8); }
+
+  // ── Directional orientation (elongation) ──────────────────────────────────
+  if (/east.?west|e.?w\b|ew\b|along\s+strike\s+e/i.test(d)) {
+    acc(3, 0.9); acc(27, 0.8);
+    if (emb[4] >= 0) acc(4, -0.6); // suppress N-S
+  }
+  if (/north.?south|n.?s\b|ns\b/i.test(d)) {
+    acc(4, 0.9); acc(27, 0.8);
+    if (emb[3] >= 0) acc(3, -0.6); // suppress E-W
+  }
+  if (/northeast|ne.?sw|ne\b/i.test(d))  { acc(3, 0.6); acc(4, 0.6); acc(27, 0.7); }
+  if (/northwest|nw.?se|nw\b/i.test(d))  { acc(3, 0.6); acc(4, 0.6); acc(27, 0.7); }
+
+  // ── Directional deepening ─────────────────────────────────────────────────
+  if (/deepen.*(east|right)|tilts?\s+east/.test(d)) { acc(14, 0.8); acc(1, 0.4); acc(2, 0.4); }
+  if (/deepen.*(west|left)|tilts?\s+west/.test(d))  { acc(15, 0.8); acc(1, 0.4); acc(2, 0.4); }
+  if (/deepen.*(north)|tilts?\s+north/.test(d))     { acc(16, 0.8); acc(1, 0.4); acc(2, 0.4); }
+  if (/deepen.*(south)|tilts?\s+south/.test(d))     { acc(17, 0.8); acc(1, 0.4); acc(2, 0.4); }
+
+  // ── Lateral continuity & thinning ────────────────────────────────────────
+  if (/continuous|persistent|widespread|extensive/.test(d)) { acc(9, 0.8); acc(27, 0.6); }
+  if (/thin|pinch|wedge/.test(d)) {
+    if (/east/.test(d))  acc(10, 0.8);
+    if (/west/.test(d))  acc(11, 0.8);
+    if (/north/.test(d)) acc(12, 0.8);
+    if (/south/.test(d)) acc(13, 0.8);
+    if (!/east|west|north|south/.test(d)) { acc(10, 0.5); acc(11, 0.5); }
+  }
+
+  // ── Grain size / sequence ────────────────────────────────────────────────
+  if (/coarsen.*(up|upward|wards)|upward\s+coarsen/.test(d)) { acc(21, 0.9); }
+  if (/fining.*(up|upward)|upward\s+fin/.test(d))             { acc(22, 0.9); }
+  if (/gravel.*base|basal\s+gravel|lag\s+gravel|coarse\s+lag/.test(d)) { acc(23, 1.0); }
+  if (/gravel|cobble|pebble|graveliferous/.test(d)) { acc(23, 0.5); }
+
+  // ── Contact character ────────────────────────────────────────────────────
+  if (/erosional|unconformity|erosive|scoured/.test(d)) { acc(8, 0.9); }
+  if (/gradational|transitional|gradual/.test(d))        { acc(8, -0.4); }
+  if (/irregular|wavy|undulating/.test(d))               { acc(19, 0.7); }
+  if (/complex|variable|heterogeneous/.test(d))          { acc(25, 0.7); acc(31, 0.5); }
+
+  // ── Confidence qualifiers ─────────────────────────────────────────────────
+  if (/certain|confident|definite|clear/.test(d))   { acc(26, 0.4); } // add to base 0.6
+  if (/uncertain|possible|probable|inferred/.test(d)) { acc(26, -0.3); }
+  if (/very\s+likely|high\s+confidence/.test(d))    { acc(26, 0.3); }
+  if (/low\s+confidence|speculative/.test(d))        { acc(26, -0.5); }
+
+  // Data confidence default
+  if (emb[26] === 0) acc(26, 0.6);
+
+  // Clamp all axes to [-1, +1]
   for (let i = 0; i < 32; i++) emb[i] = Math.max(-1, Math.min(1, emb[i]));
   return emb;
 }

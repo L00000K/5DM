@@ -190,6 +190,71 @@ class SceneManager {
     log('3D scene updated', 'ok');
   }
 
+  // ── Concept domain 3D visualisation ──────────────────────────────────────
+  // Draws semi-transparent coloured bounding boxes for spatially-constrained
+  // concepts (domain.type === 'bbox'). Global concepts show no 3D marker.
+  drawConceptDomains(conceptStore) {
+    if (this._conceptGroup) {
+      this._scene.remove(this._conceptGroup);
+      this._conceptGroup.traverse(obj => {
+        obj.geometry?.dispose();
+        if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+        else obj.material?.dispose();
+      });
+      this._conceptGroup = null;
+    }
+    if (!conceptStore || conceptStore.isEmpty) return;
+
+    const group = new THREE.Group();
+    const bounds = this._modelBounds?.grid;
+    if (!bounds) return;
+
+    const modelMinY = bounds.origin.y;
+    const modelMaxY = bounds.origin.y + bounds.worldHeight;
+
+    conceptStore.concepts.forEach((c, ci) => {
+      if (c.domain?.type !== 'bbox') return;
+      const { minX = 0, maxX = 0, minY = 0, maxY = 0 } = c.domain;
+      const w = Math.max(0.5, maxX - minX);
+      const d = Math.max(0.5, maxY - minY);
+      const h = modelMaxY - modelMinY;
+      const cx = (minX + maxX) / 2;
+      const cy = (modelMinY + modelMaxY) / 2;
+      const cz = (minY + maxY) / 2;
+
+      // Hue cycling per concept index (golden angle)
+      const hue = ((ci * 137.508) % 360) / 360;
+      const col = new THREE.Color().setHSL(hue, 0.8, 0.5);
+
+      // Wireframe box edges
+      const boxGeo = new THREE.BoxGeometry(w, h, d);
+      const edges  = new THREE.EdgesGeometry(boxGeo);
+      const lineMat = new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.85 });
+      const wire = new THREE.LineSegments(edges, lineMat);
+      wire.position.set(cx, cy, cz);
+      group.add(wire);
+      boxGeo.dispose();
+
+      // Translucent fill
+      const fillGeo = new THREE.BoxGeometry(w, h, d);
+      const fillMat = new THREE.MeshBasicMaterial({
+        color: col, transparent: true, opacity: 0.04, depthWrite: false, side: THREE.FrontSide,
+      });
+      const fill = new THREE.Mesh(fillGeo, fillMat);
+      fill.position.set(cx, cy, cz);
+      group.add(fill);
+
+      // Label sprite at top edge of bbox domain
+      const label = this._makeLabelSprite(c.description.slice(0, 28), 28, 'rgba(0,0,0,0.65)', col.getStyle());
+      label.position.set(cx, modelMaxY + 3, cz);
+      label.scale.set(20, 4, 1);
+      group.add(label);
+    });
+
+    this._conceptGroup = group;
+    this._scene.add(group);
+  }
+
   // ── View mode: 'voxels' | 'surfaces' | 'both' ────────────────────────────
   setViewMode(mode) {
     this._viewMode = mode;

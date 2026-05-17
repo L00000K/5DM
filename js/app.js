@@ -757,7 +757,7 @@ function initBuildModel() {
         varNugget: AppState.varNugget,
         faultPlanes: AppState.faultPlanes,
         conceptStore: AppState.conceptStore ?? null,
-        onProgress: p => setBuildProgress(p),
+        onProgress: (p, loss, meta) => setBuildProgress(p, loss, meta),
       };
 
       if (AppState.monteCarloEnabled) {
@@ -773,6 +773,7 @@ function initBuildModel() {
       showBuildProgress(false);
       updateInfoPanel();
       AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
+      AppState.scene.drawConceptDomains?.(AppState.conceptStore);
       updateVolumeStats();
       updateUnitStats();
       refreshLegendVolumes();
@@ -2655,11 +2656,18 @@ function showBuildProgress(visible) {
   if (el) el.hidden = !visible;
 }
 
-function setBuildProgress(fraction) {
+function setBuildProgress(fraction, loss, meta) {
   const fill = document.getElementById('build-progress-fill');
   const pct  = document.getElementById('build-progress-pct');
   if (fill) fill.style.width = `${(fraction * 100).toFixed(0)}%`;
   if (pct)  pct.textContent  = `${(fraction * 100).toFixed(0)}%`;
+  // On first call (fraction=0, meta present) report training set composition
+  if (fraction === 0 && meta?.nSamples !== undefined) {
+    const conceptInfo = meta.nVirtual > 0
+      ? ` · ${meta.nVirtual} concept-virtual`
+      : '';
+    log(`Training: ${meta.nReal} BH samples${conceptInfo} · ${meta.nSamples} total`, 'info');
+  }
 }
 
 // ── Update right-panel info ────────────────────────────────────────────────────
@@ -3876,6 +3884,8 @@ export function _renderConceptList() {
     </div>`;
   }).join('');
   _updateConceptInfluenceBar();
+  // Update 3D scene concept domain boxes (only bbox concepts show a 3D marker)
+  AppState.scene?.drawConceptDomains?.(AppState.conceptStore);
 }
 
 window._removeConcept = function(id) {

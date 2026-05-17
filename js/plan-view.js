@@ -319,6 +319,38 @@ export class PlanView {
     ctx.setLineDash([]);
     ctx.lineWidth = 1;
 
+    // Concept anisotropy ellipse — shows global warp tensor as a reference ellipse
+    // centred in the plan view. Helps verify that E-W palaeochannel → wide E-W ellipse.
+    if (conceptStore && !conceptStore.isEmpty) {
+      const gT = conceptStore.globalTensor();
+      // Only draw if meaningful anisotropy
+      if (Math.max(gT.Ax, gT.Ay) > 1.15 || Math.min(gT.Ax, gT.Ay) < 0.88) {
+        const ex = (drawW / 2) + PAD;
+        const ey = (drawH / 2) + PAD;
+        // Radius in pixels proportional to grid size, scaled by tensor
+        const baseR = Math.min(drawW, drawH) * 0.12;
+        const rx = baseR * Math.min(gT.Ax, 5);  // E-W radius
+        const ry = baseR * Math.min(gT.Ay, 5);  // N-S radius
+        // Filled ellipse (faint)
+        ctx.beginPath();
+        ctx.ellipse(ex, ey, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(64,180,255,0.08)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(64,180,255,0.55)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 3]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // Axis labels
+        ctx.fillStyle = 'rgba(64,180,255,0.8)';
+        ctx.font = 'bold 9px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`E-W ×${gT.Ax.toFixed(1)}`, ex, ey - ry - 4);
+        ctx.textAlign = 'right';
+        ctx.fillText(`N-S ×${gT.Ay.toFixed(1)}`, ex - rx - 3, ey + 3);
+      }
+    }
+
     // Borehole markers
     (boreholes ?? []).filter(b => !b.synthetic).forEach(bh => {
       const ix = Math.floor((bh.x - O.x) / cs);

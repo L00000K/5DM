@@ -226,14 +226,15 @@ class GeoImplicitNet {
   predict(inp) { return this.forward(inp).probs; }
 
   // Returns grads in same order as _params = [dW0,dW1,dW2,dW3, dWg0,dWg1, dWb0,dWb1, db0,db1,db2,db3]
-  backward(inp, act, targetIdx, l2 = 0.001) {
+  // sampleWeight scales the gradient — allows high-confidence samples to drive stronger updates.
+  backward(inp, act, targetIdx, l2 = 0.001, sampleWeight = 1.0) {
     const { nHidden, nIn, nOut, W, Wg, Wb, fourierDim } = this;
     const CTX_DIM = 32;
     const ctx = inp.subarray(fourierDim);
     const { H0_pre, H0, gamma0, beta0, H0f, H1_pre, H1, gamma1, beta1, H1f, H2_pre, H2, probs } = act;
 
     const dLogits = new Float32Array(nOut);
-    for (let i = 0; i < nOut; i++) dLogits[i] = probs[i] - (i === targetIdx ? 1 : 0);
+    for (let i = 0; i < nOut; i++) dLogits[i] = (probs[i] - (i === targetIdx ? 1 : 0)) * sampleWeight;
 
     const outerGrad = (dOut, inp_vec, rows, cols, Wmat) => {
       const dW = new Float32Array(rows * cols), db = new Float32Array(rows);
@@ -397,17 +398,78 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
         const ctx    = conceptStore ? conceptStore.computeAt(bh.x, bh.y, wz, layer.unitCode) : null;
         const ctxVec = ctx?.vec ?? zeroCtx;
         const tensor = ctx?.tensor ?? gTensor;
+        // Boost sample weight in concept-active zones: concept relevance provides
+        // extra semantic certainty, so we want stronger gradient signal there.
+        const conceptBoost = ctx ? Math.min(0.5, ctx.totalWeight * 0.3) : 0;
         const warped = { x: bh.x / tensor.Ax, y: bh.y / tensor.Ay, z: wz / tensor.Az };
         const pos = fourierEnc.encode(warped.x, warped.y, warped.z, warpedBounds);
         const inp = new Float32Array(nIn);
         inp.set(pos);
         inp.set(ctxVec, fourierEnc.outDim);
-        samples.push({ inp, target: ti, weight: wt });
+        samples.push({ inp, target: ti, weight: wt + conceptBoost });
       }
     }
   }
 
   if (samples.length === 0) return null;
+
+  // ── Concept-guided virtual samples ──────────────────────────────────────────
+  // When a concept defines strong anisotropy (e.g., palaeochannel E-W), synthesise
+  // interpolated training points along the concept's elongation axis between pairs
+  // of real borehole observations of the same unit. This directly reinforces lateral
+  // continuity in the concept direction without adding hard constraints.
+  if (conceptStore && !conceptStore.isEmpty) {
+    const gT = conceptStore.globalTensor();
+    // Only synthesise if there's meaningful anisotropy (>1.5× in any axis)
+    if (Math.max(gT.Ax, gT.Ay) > 1.5) {
+      const unitBHs = {};  // { unitIdx → [{x, y, z, unitCode}] }
+      for (const bh of boreholes) {
+        for (const layer of (bh.layers ?? [])) {
+          const ti = unitIdx[layer.unitCode];
+          if (ti === undefined) continue;
+          const zMid = bh.groundLevel - (layer.top + layer.base) / 2;
+          if (!unitBHs[ti]) unitBHs[ti] = [];
+          unitBHs[ti].push({ x: bh.x, y: bh.y, z: zMid, unitCode: layer.unitCode });
+        }
+      }
+      const N_SYNTH = 2; // points along the interpolation between each pair
+      for (const [ti, pts] of Object.entries(unitBHs)) {
+        if (pts.length < 2) continue;
+        // Connect nearby pairs (within 3× site span / concept anisotropy)
+        const spanX = (bounds.maxX - bounds.minX) / gT.Ax;
+        const spanY = (bounds.maxY - bounds.minY) / gT.Ay;
+        const maxDist = Math.max(spanX, spanY) * 0.7;
+        for (let a = 0; a < pts.length; a++) {
+          for (let b = a + 1; b < pts.length; b++) {
+            const pa = pts[a], pb = pts[b];
+            const dist = Math.hypot(pa.x - pb.x, pa.y - pb.y);
+            if (dist > maxDist) continue;
+            for (let s = 1; s <= N_SYNTH; s++) {
+              const t   = s / (N_SYNTH + 1);
+              const sx  = pa.x + t * (pb.x - pa.x);
+              const sy  = pa.y + t * (pb.y - pa.y);
+              const sz  = pa.z + t * (pb.z - pa.z);
+              const ctx = conceptStore.computeAt(sx, sy, sz, pa.unitCode);
+              // Only add virtual samples where concept is active (relevance > 0.2)
+              if (ctx.totalWeight < 0.2) continue;
+              const tensor = ctx.tensor;
+              const warpedPt = { x: sx / tensor.Ax, y: sy / tensor.Ay, z: sz / tensor.Az };
+              const pos  = fourierEnc.encode(warpedPt.x, warpedPt.y, warpedPt.z, warpedBounds);
+              const inp  = new Float32Array(nIn);
+              inp.set(pos);
+              inp.set(ctx.vec, fourierEnc.outDim);
+              // Virtual samples get reduced weight (0.4) so real BH data dominates
+              samples.push({ inp, target: parseInt(ti), weight: 0.4 * ctx.totalWeight });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  const nRealSamples    = samples.filter(s => s.weight >= 0.4).length;
+  const nVirtualSamples = samples.length - nRealSamples;
+  if (onProgress) onProgress(0, 0, { nSamples: samples.length, nReal: nRealSamples, nVirtual: nVirtualSamples });
 
   const net = new GeoImplicitNet(nIn, 64, nUnits, fourierEnc.outDim);
   const opt = new AdamOpt(net._params, lr);
@@ -422,8 +484,10 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
     let totalLoss = 0;
     for (const s of samples) {
       const act  = net.forward(s.inp);
-      totalLoss -= s.weight * Math.log(Math.max(act.probs[s.target], 1e-9));
-      opt.step(net.backward(s.inp, act, s.target, l2));
+      const loss = -Math.log(Math.max(act.probs[s.target], 1e-9));
+      totalLoss += s.weight * loss;
+      // Pass sample weight so high-confidence concept regions drive stronger gradient updates
+      opt.step(net.backward(s.inp, act, s.target, l2, s.weight));
     }
     if (onProgress && ep % 20 === 0) {
       onProgress(ep / epochs, totalLoss / samples.length);
@@ -497,8 +561,13 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore) {
           else if (probs[u] > probs[b2])  { b2 = u; }
         }
 
+        // Certainty: base separation between top-2 probs, boosted slightly
+        // where strong concepts are active (they provide extra epistemic confidence).
+        const baseCert = 0.5 + probs[b1] - probs[b2];
+        const conceptBoost = ctx ? Math.min(0.1, ctx.totalWeight * 0.08) : 0;
+
         unitIds[idx]      = codeToId[unitCodes[b1]] ?? 0;
-        certainty[idx]    = Math.max(0.05, Math.min(1, 0.5 + probs[b1] - probs[b2]));
+        certainty[idx]    = Math.max(0.05, Math.min(1, baseCert + conceptBoost));
         blendUnitIds[idx] = codeToId[unitCodes[b2]] ?? 0;
         blendRatios[idx]  = probs[b2];
       }
