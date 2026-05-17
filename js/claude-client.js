@@ -611,7 +611,7 @@ function _demoOracleResults(clusters, geoUnits) {
 
 // ── Generate AI geotechnical narrative for report ─────────────────────────────
 // Returns { narrative, key_findings, geotechnical_risks, recommendations } or null
-export async function generateReportNarrative(geoUnits, classifiedBH, voxelGrid, siteContext, apiKey, demoMode) {
+export async function generateReportNarrative(geoUnits, classifiedBH, voxelGrid, siteContext, apiKey, demoMode, conceptStore = null) {
   if (demoMode || !apiKey) return _demoNarrative(geoUnits, classifiedBH);
 
   const { nx, ny, nz, cellSize: cs, cellHeight: ch, unitIds, certainty } = voxelGrid;
@@ -636,6 +636,20 @@ export async function generateReportNarrative(geoUnits, classifiedBH, voxelGrid,
     return `${u.code} (${u.name}): ${pct}% of model volume (${vol.toLocaleString()} m³), avg certainty ${cert}%, Cu=${p.cu ?? '—'}kPa, SPT_N=${p.N_spt ?? '—'}, φ=${p.phi ?? '—'}°`;
   }).join('\n');
 
+  // Include semantic conceptual model if active
+  const conceptSummary = conceptStore && !conceptStore.isEmpty
+    ? '\n\nSEMANTIC CONCEPTUAL MODEL (encoded as 32-dim geometry embeddings):\n' +
+      conceptStore.concepts.map(c => {
+        const topAxes = Array.from(c.embedding)
+          .map((v, i) => ({ name: CONCEPT_AXES[i], v }))
+          .filter(a => Math.abs(a.v) > 0.4)
+          .sort((a, b) => Math.abs(b.v) - Math.abs(a.v))
+          .slice(0, 5)
+          .map(a => `${a.name}=${a.v >= 0 ? '+' : ''}${a.v.toFixed(2)}`).join(', ');
+        return `- "${c.description}" (conf=${(c.confidence * 100).toFixed(0)}%, domain=${c.domain?.type ?? 'global'}): ${topAxes}`;
+      }).join('\n')
+    : '';
+
   const siteInfo = [
     `Boreholes: ${bhCount}`,
     `Max depth: ${maxDepth.toFixed(1)} m`,
@@ -651,7 +665,9 @@ SITE INFORMATION:
 ${siteInfo}
 
 GEOLOGICAL UNITS AND MODEL STATISTICS:
-${unitSummary}
+${unitSummary}${conceptSummary}
+
+${conceptSummary ? 'The conceptual model embeddings show the geological interpretation framework used to shape the 3D model geometry. Reference these where relevant in the narrative.' : ''}
 
 Respond ONLY with JSON:
 {
@@ -1040,4 +1056,126 @@ function _demoConceptEmbedding(description) {
   // Clamp all axes to [-1, +1]
   for (let i = 0; i < 32; i++) emb[i] = Math.max(-1, Math.min(1, emb[i]));
   return emb;
+}
+
+// ── Automated concept suggestion from borehole data ────────────────────────────
+// Analyses the observed borehole patterns and suggests relevant geological
+// concepts that should be encoded in the ConceptStore. Returns an array of
+// { description, axes, confidence, reason } objects.
+export async function suggestConceptsFromBoreholes(classifiedBH, geoUnits, apiKey, demoMode) {
+  if (demoMode || !apiKey) return _demoConceptSuggestions(classifiedBH, geoUnits);
+
+  const bhCount = classifiedBH.filter(b => !b.synthetic).length;
+  if (bhCount < 2) return [];
+
+  // Compute spatial statistics from borehole data
+  const unitByCode = {};
+  geoUnits.forEach(u => { unitByCode[u.code] = u; });
+
+  // Per-unit: mean top and base elevation, spatial extent
+  const unitStats = {};
+  for (const bh of classifiedBH.filter(b => !b.synthetic)) {
+    for (const layer of (bh.layers ?? [])) {
+      if (!unitStats[layer.unitCode]) {
+        unitStats[layer.unitCode] = { tops: [], bases: [], xs: [], ys: [] };
+      }
+      const st = unitStats[layer.unitCode];
+      st.tops.push(bh.groundLevel - layer.top);
+      st.bases.push(bh.groundLevel - layer.base);
+      st.xs.push(bh.x);
+      st.ys.push(bh.y);
+    }
+  }
+
+  const unitStatsStr = Object.entries(unitStats).map(([code, st]) => {
+    const meanTop  = st.tops.reduce((a, b) => a + b, 0) / st.tops.length;
+    const meanBase = st.bases.reduce((a, b) => a + b, 0) / st.bases.length;
+    const spanX    = Math.max(...st.xs) - Math.min(...st.xs);
+    const spanY    = Math.max(...st.ys) - Math.min(...st.ys);
+    const thick    = meanTop - meanBase;
+    const unit     = unitByCode[code];
+    return `${code} (${unit?.name ?? code}): top=${meanTop.toFixed(1)}m, base=${meanBase.toFixed(1)}m, thickness=${thick.toFixed(1)}m, E-W span=${spanX.toFixed(0)}m, N-S span=${spanY.toFixed(0)}m, n=${st.tops.length} observations`;
+  }).join('\n');
+
+  const bhPositions = classifiedBH.filter(b => !b.synthetic)
+    .map(b => `${b.id}: (${b.x.toFixed(0)}, ${b.y.toFixed(0)}) GL=${b.groundLevel?.toFixed(1)}m`)
+    .join('\n');
+
+  const messages = [{
+    role: 'user',
+    content: `You are an expert geological modeller. Based on the borehole data statistics below, suggest 3-5 geological concepts that should be encoded in the semantic conceptual model to improve 3D model geometry.
+
+BOREHOLE POSITIONS:
+${bhPositions}
+
+UNIT STATISTICS (from ${bhCount} boreholes):
+${unitStatsStr}
+
+For each suggested concept, respond with JSON:
+[
+  {
+    "description": "1-sentence concept description (e.g. 'Palaeochannel trending E-W incised into chalk')",
+    "reason": "why this concept is suggested by the data pattern",
+    "confidence": 0.0-1.0,
+    "unit_codes": ["CODE1"] or []
+  },
+  ...
+]
+
+Focus on: directional elongation (E-W or N-S span differences), channel-like geometry (thick in some BHs, absent in others), depth trends (unit gets deeper in one direction), structural controls (abrupt thickness changes suggesting faults), karst (irregular bases). Return ONLY the JSON array.`,
+  }];
+
+  try {
+    const result = await callClaude(messages, apiKey);
+    if (!Array.isArray(result)) return _demoConceptSuggestions(classifiedBH, geoUnits);
+    return result.filter(s => s.description && s.confidence);
+  } catch {
+    return _demoConceptSuggestions(classifiedBH, geoUnits);
+  }
+}
+
+function _demoConceptSuggestions(classifiedBH, geoUnits) {
+  const bhCount = classifiedBH.filter(b => !b.synthetic).length;
+  if (bhCount < 2) return [];
+  // Analyse lateral unit presence to suggest elongation concepts
+  const unitBHPresence = {};
+  for (const bh of classifiedBH.filter(b => !b.synthetic)) {
+    for (const layer of (bh.layers ?? [])) {
+      if (!unitBHPresence[layer.unitCode]) unitBHPresence[layer.unitCode] = { xs: [], ys: [] };
+      unitBHPresence[layer.unitCode].xs.push(bh.x);
+      unitBHPresence[layer.unitCode].ys.push(bh.y);
+    }
+  }
+  const suggestions = [];
+  for (const [code, data] of Object.entries(unitBHPresence)) {
+    if (data.xs.length < 2) continue;
+    const spanX = Math.max(...data.xs) - Math.min(...data.xs);
+    const spanY = Math.max(...data.ys) - Math.min(...data.ys);
+    const unit  = geoUnits.find(u => u.code === code);
+    if (!unit) continue;
+    if (spanX > spanY * 1.5 && spanX > 30) {
+      suggestions.push({
+        description: `${unit.name} appears to trend E-W — elongated along the east-west axis`,
+        reason: `${code} observed across ${spanX.toFixed(0)}m E-W vs ${spanY.toFixed(0)}m N-S`,
+        confidence: Math.min(0.85, 0.5 + (spanX / spanY - 1) * 0.2),
+        unit_codes: [code],
+      });
+    } else if (spanY > spanX * 1.5 && spanY > 30) {
+      suggestions.push({
+        description: `${unit.name} appears to trend N-S — elongated along the north-south axis`,
+        reason: `${code} observed across ${spanY.toFixed(0)}m N-S vs ${spanX.toFixed(0)}m E-W`,
+        confidence: Math.min(0.85, 0.5 + (spanY / spanX - 1) * 0.2),
+        unit_codes: [code],
+      });
+    }
+  }
+  if (!suggestions.length) {
+    suggestions.push({
+      description: 'Lateral continuity — units appear laterally persistent across the site',
+      reason: 'Units observed in multiple boreholes with similar depths',
+      confidence: 0.65,
+      unit_codes: [],
+    });
+  }
+  return suggestions;
 }

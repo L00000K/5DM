@@ -1,7 +1,7 @@
 import { initApiKeyModal } from './api-key.js';
 import { initUploader } from './data-parser.js';
 import { initTextInput } from './text-input.js';
-import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel, oracleRefinement, generateReportNarrative, parseGeologicalFeatures } from './claude-client.js';
+import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel, oracleRefinement, generateReportNarrative, parseGeologicalFeatures, suggestConceptsFromBoreholes } from './claude-client.js';
 import { parseShapesFromClaude, generateShapeBoreholes } from './geo-shapes.js';
 import { exportConfig, importConfig } from './project-config.js';
 import { buildVoxelGrid, buildVoxelGridMonteCarlo } from './interpolator.js';
@@ -1719,7 +1719,7 @@ function initModelReport() {
     try {
       const result = await generateReportNarrative(
         AppState.geoUnits, AppState.classifiedBH, AppState.voxelGrid,
-        siteCtx, apiKey, !apiKey,
+        siteCtx, apiKey, !apiKey, AppState.conceptStore,
       );
       if (result) {
         const el = document.getElementById('ai-narrative-output');
@@ -4046,6 +4046,58 @@ function initConceptPanel() {
       log(`Bbox domain set: ${(domain.maxX - domain.minX).toFixed(0)}m × ${(domain.maxY - domain.minY).toFixed(0)}m`, 'ok');
     });
     log('Drag on the Plan View to draw the concept spatial domain', 'info');
+  });
+
+  // Auto-suggest concepts from borehole patterns
+  document.getElementById('btn-suggest-concepts')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-suggest-concepts');
+    const out = document.getElementById('concept-suggestions');
+    if (!AppState.classifiedBH.length) { log('Load borehole data first.', 'warn'); return; }
+    if (btn) { btn.disabled = true; btn.textContent = '⟳ Analysing patterns…'; }
+    try {
+      const apiKey = sessionStorage.getItem('anthropic_api_key') ?? '';
+      const suggestions = await suggestConceptsFromBoreholes(
+        AppState.classifiedBH, AppState.geoUnits, apiKey, !apiKey
+      );
+      if (!suggestions.length) { log('No concept suggestions generated.', 'info'); return; }
+      if (out) {
+        out.style.display = 'block';
+        out.innerHTML = suggestions.map((s, i) => `
+          <div class="suggestion-row" style="border:1px solid var(--border);border-radius:4px;padding:5px 6px;margin-bottom:4px;font-size:10px">
+            <div style="font-weight:600;color:var(--text-primary);margin-bottom:2px">${escHtml(s.description)}</div>
+            <div style="color:var(--text-dim);margin-bottom:4px;font-size:9px">${escHtml(s.reason ?? '')}</div>
+            <button class="btn-ghost btn-sm" style="font-size:9px;padding:1px 6px" data-sug-idx="${i}">+ Add this concept</button>
+          </div>
+        `).join('');
+        out.querySelectorAll('[data-sug-idx]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const s = suggestions[parseInt(btn.dataset.sugIdx)];
+            if (!s) return;
+            btn.disabled = true; btn.textContent = '⟳';
+            const apiKey2 = sessionStorage.getItem('anthropic_api_key') ?? '';
+            try {
+              const emb = await encodeGeologicalConcept(s.description, apiKey2, !apiKey2);
+              AppState.conceptStore.add({
+                description:  s.description,
+                embedding:    emb,
+                confidence:   s.confidence ?? 0.7,
+                domain:       { type: 'global' },
+                unitAffinity: s.unit_codes ?? [],
+              });
+              _renderConceptList();
+              _saveConceptStore();
+              log(`Concept added from suggestion: "${s.description.slice(0, 60)}"`, 'ok');
+              btn.textContent = '✓ Added';
+            } catch (err) { log(`Encode failed: ${err.message}`, 'error'); btn.disabled = false; btn.textContent = '+ Add'; }
+          });
+        });
+        log(`${suggestions.length} concept suggestion(s) generated from borehole patterns`, 'ok');
+      }
+    } catch (err) {
+      log(`Concept suggestion failed: ${err.message}`, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '✦ Auto-suggest concepts from data'; }
+    }
   });
 
   encodeBtn?.addEventListener('click', async () => {
