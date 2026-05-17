@@ -30,6 +30,10 @@ export class PlanView {
       if (this._lastArgs) this._redraw();
     });
 
+    document.getElementById('plan-contours')?.addEventListener('change', () => {
+      if (this._visible && this._lastArgs) this._redraw();
+    });
+
     window.addEventListener('keydown', e => {
       if (e.key === 'Escape') {
         if (this._drawMode) { this._cancelDraw(); }
@@ -268,6 +272,7 @@ export class PlanView {
     }
 
     let paramMin = 0, paramMax = 100, paramLabel = '';
+    const colScalar = new Float32Array(nx * ny);
 
     for (let iy = 0; iy < ny; iy++) {
       for (let ix = 0; ix < nx; ix++) {
@@ -371,6 +376,27 @@ export class PlanView {
             Math.ceil(cellPxW + 0.5),
             Math.ceil(cellPxH + 0.5)
           );
+        }
+
+        // Track scalar for contour lines
+        if (mode === 'cert') {
+          colScalar[ix + iy * nx] = certainty[flat];
+        } else if (mode === 'depth' && colDepth) {
+          const v = colDepth[ix + iy * nx];
+          if (!isNaN(v)) colScalar[ix + iy * nx] = v;
+        } else if (mode === 'entropy') {
+          const { blendRatios: br2 } = grid;
+          const LOG2b = Math.log(2);
+          const nUb  = Math.max(2, geoUnits.length);
+          const p1b = Math.max(0.001, Math.min(0.999, certainty[flat]));
+          const p2b = Math.max(0, Math.min(1 - p1b, br2 ? (br2[flat] ?? 0) : 0));
+          const pRb = Math.max(0, 1 - p1b - p2b);
+          const xEb = (p) => p > 0 && p < 1 ? -p * Math.log(p) / LOG2b : 0;
+          colScalar[ix + iy * nx] = Math.min(1, (xEb(p1b) + xEb(p2b) + xEb(pRb)) / Math.log2(nUb));
+        } else if (mode === 'cu' || mode === 'N_spt') {
+          const u2 = unitMap[uid];
+          const v2 = u2?.params?.[mode];
+          if (v2 != null) colScalar[ix + iy * nx] = v2;
         }
       }
     }
@@ -588,6 +614,87 @@ export class PlanView {
       ctx.font = '11px Inter, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('Click and drag to define spatial domain', PAD + drawW / 2, PAD + drawH / 2);
+    }
+
+    // ── Value contour lines (marching squares on scalar colourmap field) ─────────
+    const showContours = document.getElementById('plan-contours')?.checked ?? false;
+    if (showContours && !['unit', 'drill_targets'].includes(mode)) {
+      // Build scalar field at current elevation slice
+      const scField = new Float32Array(nx * ny);
+      let sfMin = Infinity, sfMax = -Infinity;
+      for (let iy2 = 0; iy2 < ny; iy2++) {
+        for (let ix2 = 0; ix2 < nx; ix2++) {
+          const v = colScalar?.[ix2 + iy2 * nx] ?? 0;
+          scField[ix2 + iy2 * nx] = v;
+          if (v > 0) { sfMin = Math.min(sfMin, v); sfMax = Math.max(sfMax, v); }
+        }
+      }
+      if (isFinite(sfMin) && sfMax > sfMin) {
+        const nContours = 8;
+        const step = (sfMax - sfMin) / nContours;
+        ctx.strokeStyle = 'rgba(20,40,80,0.55)';
+        ctx.lineWidth = 0.6;
+        ctx.setLineDash([2, 2]);
+        for (let ci = 1; ci < nContours; ci++) {
+          const iso = sfMin + ci * step;
+          // Marching squares — visit each cell quad
+          for (let iy2 = 0; iy2 < ny - 1; iy2++) {
+            for (let ix2 = 0; ix2 < nx - 1; ix2++) {
+              const v00 = scField[ix2     + iy2       * nx];
+              const v10 = scField[ix2 + 1 + iy2       * nx];
+              const v01 = scField[ix2     + (iy2 + 1) * nx];
+              const v11 = scField[ix2 + 1 + (iy2 + 1) * nx];
+              // Skip cells with no data
+              if (!v00 && !v10 && !v01 && !v11) continue;
+              const a = v00 >= iso ? 1 : 0;
+              const b2 = v10 >= iso ? 1 : 0;
+              const c2 = v11 >= iso ? 1 : 0;
+              const d2 = v01 >= iso ? 1 : 0;
+              const sqIdx = a | (b2 << 1) | (c2 << 2) | (d2 << 3);
+              if (sqIdx === 0 || sqIdx === 15) continue;
+              // Pixel coords of corners
+              const x0 = PAD + ix2 * cellPxW;
+              const x1 = PAD + (ix2 + 1) * cellPxW;
+              const y0 = PAD + (ny - 1 - iy2) * cellPxH;
+              const y1 = PAD + (ny - 2 - iy2) * cellPxH;
+              // Edge midpoints
+              const lerp = (va, vb, xa, xb) => xa + (xb - xa) * (iso - va) / (vb - va + 1e-9);
+              const em = {
+                bottom: lerp(v00, v10, x0, x1), // y = y0
+                top:    lerp(v01, v11, x0, x1), // y = y1
+                left:   lerp(v00, v01, y0, y1), // x = x0
+                right:  lerp(v10, v11, y0, y1), // x = x1
+              };
+              // Draw line segments based on case (simplified 4 main non-ambiguous cases)
+              const segs = {
+                1:  [[x0,em.left],[em.bottom,y0]],
+                2:  [[em.bottom,y0],[x1,em.right]],
+                3:  [[x0,em.left],[x1,em.right]],
+                4:  [[x1,em.right],[em.top,y1]],
+                5:  [[x0,em.left],[em.bottom,y0],[x1,em.right],[em.top,y1]],
+                6:  [[em.bottom,y0],[em.top,y1]],
+                7:  [[x0,em.left],[em.top,y1]],
+                8:  [[x0,em.left],[em.top,y1]],
+                9:  [[em.bottom,y0],[em.top,y1]],
+                10: [[x0,em.left],[em.bottom,y0],[x1,em.right],[em.top,y1]],
+                11: [[x1,em.right],[em.top,y1]],
+                12: [[x0,em.left],[x1,em.right]],
+                13: [[em.bottom,y0],[x1,em.right]],
+                14: [[x0,em.left],[em.bottom,y0]],
+              };
+              const pts = segs[sqIdx];
+              if (!pts) continue;
+              for (let s = 0; s < pts.length; s += 2) {
+                ctx.beginPath();
+                ctx.moveTo(pts[s][0], pts[s][1]);
+                ctx.lineTo(pts[s+1][0], pts[s+1][1]);
+                ctx.stroke();
+              }
+            }
+          }
+        }
+        ctx.setLineDash([]);
+      }
     }
 
     // Borehole markers

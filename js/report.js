@@ -301,14 +301,42 @@ export class ModelReport {
       const E    = p.E     != null ? p.E.toFixed(0)     : '—';
       const gam  = p.gamma != null ? p.gamma.toFixed(1) : '—';
       const nspt = p.N_spt != null ? p.N_spt.toFixed(0) : '—';
+      const period = u.period ? `<span style="background:${_periodColor(u.period)};padding:1px 5px;border-radius:3px;font-size:10px">${u.period}</span>` : '—';
       return `<tr>
         <td><span class="swatch" style="background:${u.color}"></span>${u.code}</td>
-        <td>${u.name}</td>
+        <td>${u.name}</td><td>${period}</td>
         <td style="font-size:11px;color:#677">${u.description ?? '—'}</td>
         <td>${vol}</td><td>${pct}%</td><td>${cert}</td>
         <td>${gam}</td><td>${cu}</td><td>${phi}</td><td>${Cc}</td><td>${E}</td><td>${nspt}</td>
       </tr>`;
     }).join('');
+
+    // ── Formation tops matrix ──────────────────────────────────────────────────
+    const formationTopsHTML = (() => {
+      const matrix = {};
+      bhs.forEach(bh => {
+        matrix[bh.id] = {};
+        bh.layers.forEach(l => {
+          if (!matrix[bh.id][l.unitCode]) {
+            matrix[bh.id][l.unitCode] = l.top;
+          }
+        });
+      });
+      const usedUnits = geoUnits.filter(u => bhs.some(b => matrix[b.id]?.[u.code] !== undefined));
+      if (!usedUnits.length) return '';
+      let t = `<table class="data-table" style="font-size:10px"><thead><tr>
+        <th>Unit</th>${bhs.map(b => `<th>${b.id}</th>`).join('')}
+      </tr></thead><tbody>`;
+      usedUnits.forEach(u => {
+        t += `<tr><td><span class="swatch" style="background:${u.color}"></span>${u.code}</td>
+          ${bhs.map(b => {
+            const v = matrix[b.id]?.[u.code];
+            return `<td style="text-align:right;color:${v !== undefined ? '#223' : '#bbb'}">${v !== undefined ? v.toFixed(1)+'m' : '—'}</td>`;
+          }).join('')}</tr>`;
+      });
+      t += '</tbody></table>';
+      return `<h2>Formation Top Depths (m below GL)</h2>${t}`;
+    })();
 
     // ── Borehole register rows ─────────────────────────────────────────────────
     const bhRows = bhs.map(bh => {
@@ -460,6 +488,8 @@ export class ModelReport {
       return n ? (s/n*100).toFixed(0)+'%' : '—';
     })();
 
+    // Inject formation tops and period column header
+    const periodColHeader = '<th>Period</th>';
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -501,10 +531,12 @@ ${planSVG}
 
 <h2>Geological Units — Volumes &amp; Parameters</h2>
 <table>
-  <tr><th>Code</th><th>Name</th><th>Description</th><th>Vol. (m³)</th><th>%</th><th>Cert.</th>
+  <tr><th>Code</th><th>Name</th><th>Period</th><th>Description</th><th>Vol. (m³)</th><th>%</th><th>Cert.</th>
     <th>γ (kN/m³)</th><th>Cu (kPa)</th><th>φ′ (°)</th><th>Cc</th><th>E (MPa)</th><th>SPT N</th></tr>
   ${unitRows}
 </table>
+
+${formationTopsHTML}
 
 <h2>Borehole Log Strips</h2>
 ${logStripsSVG}
@@ -539,4 +571,15 @@ ${riskHTML}
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
+}
+
+// ICS period colour lookup (shared with properties.js GEO_PERIODS)
+function _periodColor(code) {
+  const MAP = {
+    Q:'#f9f97f',Qh:'#fff2ae',Qp:'#fff987',Ng:'#ffe619',Pg:'#fd9a52',
+    K:'#7fc64e',J:'#34b2c9',Tr:'#812b92',P:'#f04028',C:'#67a599',
+    D:'#cb8c37',S:'#b3e1b6',O:'#009270',Cm:'#7fa056',pC:'#f74370',
+    MG:'#b5b5b5',Al:'#daf0e3',RT:'#f9ddb9',
+  };
+  return MAP[code] ?? '#e0e0e0';
 }
