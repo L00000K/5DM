@@ -4,6 +4,7 @@ import { VoxelBuilder } from './voxel-builder.js';
 import { SlicerTool } from './slicer.js';
 import { SurfaceManager } from './surfaces.js';
 import { log } from './app.js';
+import { buildDeviationPath, interpolateAtDepth } from './deviation.js';
 
 export async function initScene(canvasId) {
   return new SceneManager(canvasId);
@@ -331,6 +332,10 @@ class SceneManager {
     this._builder?.colorByGeologicalAge(geoUnits, periodColorMap);
   }
 
+  colorByGradeShell(paramName, minVal, maxVal, mode, highlightHex, dimOthers, geoUnits) {
+    return this._builder?.colorByGradeShell(paramName, minVal, maxVal, mode, highlightHex, dimOthers, geoUnits) ?? null;
+  }
+
   setSurfaceOpacity(op) {
     this._surfaces.setOpacity(op);
     this._surfaces.setMCOpacity(op);
@@ -362,6 +367,25 @@ class SceneManager {
     this._controls.target.set(cx, cy, cz);
     this._camera.position.set(cx + size * 0.8, cy + size * 0.5, cz + size * 0.8);
     this._camera.lookAt(cx, cy, cz);
+    this._controls.update();
+  }
+
+  // ── Camera bookmarks ────────────────────────────────────────────────────────
+  getCameraState() {
+    const c = this._camera, t = this._controls.target;
+    return {
+      position: { x: c.position.x, y: c.position.y, z: c.position.z },
+      target:   { x: t.x, y: t.y, z: t.z },
+      fov: c.fov,
+    };
+  }
+
+  setCameraState(state) {
+    if (!state) return;
+    const { position: p, target: t, fov } = state;
+    this._camera.position.set(p.x, p.y, p.z);
+    if (fov) { this._camera.fov = fov; this._camera.updateProjectionMatrix(); }
+    this._controls.target.set(t.x, t.y, t.z);
     this._controls.update();
   }
 
@@ -414,52 +438,92 @@ class SceneManager {
       if (!bh.layers?.length) return;
       const gl = bh.groundLevel ?? 0;
 
+      // Build deviation path (null if no survey data → vertical)
+      const devPath = (bh.deviation?.length >= 2)
+        ? buildDeviationPath(bh.x, bh.y, gl, bh.deviation)
+        : null;
+
       bh.layers.forEach((layer, li) => {
         const unit = unitByCode[layer.unitCode];
         if (!unit) return;
-        const height  = Math.max(layer.base - layer.top, 0.01);
-        const midElev = gl - (layer.top + layer.base) * 0.5;
 
-        // Cylinder segment
-        const geom = new THREE.CylinderGeometry(radius, radius, height, 8);
+        const topDepth  = layer.top;
+        const baseDepth = layer.base;
+        const midDepth  = (topDepth + baseDepth) * 0.5;
+
+        let topX, topY, topElev3d, baseX, baseY, baseElev3d;
+        if (devPath) {
+          const tp = interpolateAtDepth(devPath, topDepth);
+          const bp = interpolateAtDepth(devPath, baseDepth);
+          topX = tp.x;  topY = tp.y;  topElev3d  = tp.elev;
+          baseX = bp.x; baseY = bp.y; baseElev3d = bp.elev;
+        } else {
+          topX = baseX = bh.x; topY = baseY = bh.y;
+          topElev3d  = gl - topDepth;
+          baseElev3d = gl - baseDepth;
+        }
+
+        const midX    = (topX + baseX) / 2;
+        const midY    = (topY + baseY) / 2;
+        const midElev = (topElev3d + baseElev3d) / 2;
+
+        // Direction vector for inclined cylinder
+        const dir = new THREE.Vector3(
+          baseX - topX, baseElev3d - topElev3d, baseY - topY
+        );
+        const segLen = Math.max(dir.length(), 0.01);
+        dir.normalize();
+
+        const geom = new THREE.CylinderGeometry(radius, radius, segLen, 8);
         const mat  = new THREE.MeshLambertMaterial({ color: unit.color });
         const mesh = new THREE.Mesh(geom, mat);
-        mesh.position.set(bh.x, midElev, bh.y);
+        mesh.position.set(midX, midElev, midY);
+        if (devPath) {
+          const yAxis = new THREE.Vector3(0, 1, 0);
+          mesh.quaternion.setFromUnitVectors(yAxis, dir);
+        }
         mesh.userData.bhId = bh.id;
         group.add(mesh);
 
         // Formation contact ring at top of this layer (not first)
         if (li > 0) {
-          const contactElev = gl - layer.top;
           const ringGeom = new THREE.CylinderGeometry(radius * 2.2, radius * 2.2, 0.15, 12, 1, true);
           const ringMat  = new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.DoubleSide });
           const ring = new THREE.Mesh(ringGeom, ringMat);
-          ring.position.set(bh.x, contactElev, bh.y);
+          ring.position.set(topX, topElev3d, topY);
           group.add(ring);
         }
 
-        // SPT N horizontal bar extending in +X direction
+        // SPT N horizontal bar extending in +X direction from mid position
         if (layer.sptN != null && layer.sptN > 0) {
           const barLen = Math.min(layer.sptN / maxSPT, 1) * sptScale;
-          const barH   = Math.min(height * 0.6, 0.8);
+          const barH   = Math.min(segLen * 0.6, 0.8);
           const barGeom = new THREE.BoxGeometry(barLen, barH, 0.3);
           const barMat  = new THREE.MeshLambertMaterial({ color: 0x2a4a6a });
           const bar = new THREE.Mesh(barGeom, barMat);
-          bar.position.set(bh.x + radius + barLen / 2, midElev, bh.y);
+          bar.position.set(midX + radius + barLen / 2, midElev, midY);
           group.add(bar);
         }
       });
 
-      // BH ID label sprite at ground level + 2m
-      const topElev = gl + 2;
+      // Deviation trace polyline (only for deviated boreholes)
+      if (devPath && devPath.length >= 2) {
+        const pts = devPath.map(p => new THREE.Vector3(p.x, p.elev, p.y));
+        const traceGeom = new THREE.BufferGeometry().setFromPoints(pts);
+        const traceMat  = new THREE.LineBasicMaterial({ color: 0xffaa00, linewidth: 2 });
+        group.add(new THREE.Line(traceGeom, traceMat));
+      }
+
+      // BH ID label sprite at collar + 2m
+      const labelElev = gl + 2;
       const lbl = this._makeLabelSprite(bh.id, 36);
-      lbl.position.set(bh.x, topElev, bh.y);
+      lbl.position.set(bh.x, labelElev, bh.y);
       group.add(lbl);
 
-      // Vertical leader line from ground to label
+      // Leader line from collar to label
       const lineGeom = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(bh.x, gl, bh.y),
-        new THREE.Vector3(bh.x, topElev - 2, bh.y),
+        new THREE.Vector3(bh.x, labelElev - 2, bh.y),
       ]);
       const line = new THREE.Line(lineGeom, new THREE.LineBasicMaterial({ color: 0x888888 }));
       group.add(line);

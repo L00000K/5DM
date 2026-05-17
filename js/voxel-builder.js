@@ -508,6 +508,62 @@ export class VoxelBuilder {
     }
   }
 
+  // Grade shell: highlight voxels where a parameter meets a threshold condition.
+  // mode: 'above' | 'below' | 'between'
+  // Returns { matched, total } counts or null if no data.
+  colorByGradeShell(paramName, minVal, maxVal, mode, highlightHex, dimOthers, geoUnits) {
+    if (!this.grid) return null;
+    const { unitIds, certainty, blendRatios } = this.grid;
+    const unitById = {};
+    geoUnits.forEach(u => { unitById[u.id] = u; });
+
+    const hiCol  = new THREE.Color(highlightHex ?? '#ff4040');
+    const dimCol = new THREE.Color(0.25, 0.25, 0.25);
+
+    let matched = 0, total = 0;
+
+    const getParamVal = (flatIndex) => {
+      if (paramName === 'certainty') return certainty?.[flatIndex] ?? null;
+      if (paramName === 'depth') {
+        // z-position stored in grid coords; compute from grid
+        if (!this.grid.nx || !this.grid.nz) return null;
+        const { nx, ny, nz, zMin, cellSizeZ } = this.grid;
+        const iz = Math.floor(flatIndex / (nx * ny)) % nz;
+        return (this.grid.zMax ?? 0) - (zMin + iz * cellSizeZ);
+      }
+      const uid = unitIds[flatIndex];
+      const unit = unitById[uid];
+      return unit?.params?.[paramName] ?? null;
+    };
+
+    const inShell = (v) => {
+      if (v == null || !isFinite(v)) return false;
+      if (mode === 'above')   return v >= minVal;
+      if (mode === 'below')   return v <= minVal;
+      if (mode === 'between') return v >= minVal && v <= maxVal;
+      return false;
+    };
+
+    for (const [code, mesh] of Object.entries(this.meshes)) {
+      const flatIdx = this._unitFlatIdx?.[code];
+      if (!flatIdx) continue;
+      const colorAttr = mesh.geometry.getAttribute('voxelColor');
+      for (let i = 0; i < flatIdx.length; i++) {
+        const fi = flatIdx[i];
+        const v  = getParamVal(fi);
+        total++;
+        if (inShell(v)) {
+          colorAttr.setXYZ(i, hiCol.r, hiCol.g, hiCol.b);
+          matched++;
+        } else if (dimOthers) {
+          colorAttr.setXYZ(i, dimCol.r, dimCol.g, dimCol.b);
+        }
+      }
+      colorAttr.needsUpdate = true;
+    }
+    return { matched, total };
+  }
+
   // Restore original unit colours after parameter coloring.
   resetUnitColors() {
     for (const [code, mesh] of Object.entries(this.meshes)) {

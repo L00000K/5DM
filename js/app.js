@@ -832,6 +832,7 @@ function initBuildModel() {
       setEnabled('btn-param-apply', true);
       setEnabled('btn-param-reset', true);
       setEnabled('btn-build-isosurfaces', true);
+      setEnabled('btn-grade-apply', true);
       const fdPanel = document.getElementById('foundation-panel');
       if (fdPanel) fdPanel.style.display = 'block';
       // GWT interpolate button: only enable if BHs have gwtDepth data
@@ -1892,6 +1893,84 @@ function initCameraPresets() {
       AppState.scene.setCameraView(btn.dataset.preset);
     });
   });
+}
+
+// ── Named View Bookmarks ───────────────────────────────────────────────────────
+function initViewBookmarks() {
+  const BM_KEY = 'geo_view_bookmarks';
+  AppState.cameraBookmarks = (() => {
+    try { return JSON.parse(localStorage.getItem(BM_KEY) || '[]'); } catch { return []; }
+  })();
+
+  const toggleBtn  = document.getElementById('btn-save-bookmark');
+  const panel      = document.getElementById('bookmark-panel');
+  const nameInput  = document.getElementById('bookmark-name-input');
+  const confirmBtn = document.getElementById('btn-bookmark-confirm');
+  const listEl     = document.getElementById('bookmark-list');
+
+  function persist() {
+    try { localStorage.setItem(BM_KEY, JSON.stringify(AppState.cameraBookmarks)); } catch {}
+  }
+
+  function renderList() {
+    if (!listEl) return;
+    if (!AppState.cameraBookmarks.length) {
+      listEl.innerHTML = '<div class="bm-empty">No saved views yet</div>';
+      return;
+    }
+    listEl.innerHTML = AppState.cameraBookmarks.map(bm => `
+      <div class="bm-entry">
+        <span class="bm-icon">📷</span>
+        <button class="bm-load" onclick="window._bmLoad(${bm.id})" title="Restore view">${escHtml(bm.name)}</button>
+        <button class="bm-del"  onclick="window._bmDel(${bm.id})"  title="Delete">✕</button>
+      </div>`).join('');
+  }
+
+  toggleBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    panel?.classList.toggle('hidden');
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!panel?.classList.contains('hidden') && !panel?.contains(e.target) && e.target !== toggleBtn) {
+      panel?.classList.add('hidden');
+    }
+  });
+
+  confirmBtn?.addEventListener('click', () => {
+    if (!AppState.scene) { log('Load a model first.', 'warn'); return; }
+    const rawName = nameInput?.value.trim();
+    const name = rawName || `View ${AppState.cameraBookmarks.length + 1}`;
+    const state = AppState.scene.getCameraState();
+    AppState.cameraBookmarks.push({ id: Date.now(), name, state });
+    persist();
+    if (nameInput) nameInput.value = '';
+    renderList();
+    log(`View saved: "${name}"`, 'ok');
+  });
+
+  nameInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') confirmBtn?.click();
+  });
+
+  window._bmLoad = (id) => {
+    const bm = AppState.cameraBookmarks.find(b => b.id === id);
+    if (bm && AppState.scene) {
+      AppState.scene.setCameraState(bm.state);
+      panel?.classList.add('hidden');
+      log(`Restored view: "${bm.name}"`, 'ok');
+    }
+  };
+
+  window._bmDel = (id) => {
+    const bm = AppState.cameraBookmarks.find(b => b.id === id);
+    AppState.cameraBookmarks = AppState.cameraBookmarks.filter(b => b.id !== id);
+    persist();
+    renderList();
+    if (bm) log(`Deleted view: "${bm.name}"`, 'info');
+  };
+
+  renderList();
 }
 
 // ── Session save / load ────────────────────────────────────────────────────────
@@ -3055,9 +3134,11 @@ function initBHDataSubTabs() {
       document.querySelectorAll('.bhdata-sub-tab').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const key = btn.dataset.bhdTab;
-      document.getElementById('bhd-sub-raw').hidden  = (key !== 'raw');
-      document.getElementById('bhd-sub-tops').hidden = (key !== 'tops');
+      document.getElementById('bhd-sub-raw').hidden       = (key !== 'raw');
+      document.getElementById('bhd-sub-tops').hidden      = (key !== 'tops');
+      document.getElementById('bhd-sub-deviation').hidden = (key !== 'deviation');
       if (key === 'tops') renderFormationTopsTable();
+      if (key === 'deviation') _refreshDeviationUI();
     });
   });
 
@@ -3067,6 +3148,84 @@ function initBHDataSubTabs() {
 
   document.getElementById('btn-tops-export')?.addEventListener('click', () => {
     exportFormationTopsCSV();
+  });
+
+  // Deviation survey panel
+  document.getElementById('dev-csv-input')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    const bhId = document.getElementById('dev-bh-select')?.value;
+    if (!bhId) { log('Select a borehole first.', 'warn'); return; }
+    _loadDeviationSurvey(bhId, text, file.name);
+    e.target.value = '';
+  });
+
+  document.getElementById('btn-dev-clear')?.addEventListener('click', () => {
+    const bhId = document.getElementById('dev-bh-select')?.value;
+    if (!bhId) return;
+    const bh = AppState.classifiedBH.find(b => b.id === bhId);
+    if (bh) { delete bh.deviation; delete bh.deviationPath; }
+    _refreshDeviationUI();
+    log(`Deviation survey removed from ${bhId}.`, 'info');
+  });
+
+  document.getElementById('dev-bh-select')?.addEventListener('change', () => _refreshDeviationUI());
+}
+
+function _refreshDeviationUI() {
+  const sel = document.getElementById('dev-bh-select');
+  const wrap = document.getElementById('dev-survey-table-wrap');
+  const summary = document.getElementById('dev-summary');
+  if (!sel) return;
+
+  // Repopulate BH select
+  const bhs = AppState.classifiedBH.filter(b => !b.synthetic && b.layers?.length);
+  const curVal = sel.value;
+  sel.innerHTML = '<option value="">— Select borehole —</option>'
+    + bhs.map(b => {
+        const hasDev = b.deviation?.length >= 2;
+        return `<option value="${escHtml(b.id)}"${b.id === curVal ? ' selected' : ''}>${escHtml(b.id)}${hasDev ? ' ✓' : ''}</option>`;
+      }).join('');
+
+  const bhId = sel.value;
+  const bh = bhId ? AppState.classifiedBH.find(b => b.id === bhId) : null;
+  if (!bh?.deviation?.length) {
+    if (wrap) wrap.innerHTML = '<p class="hint" style="padding:6px;font-size:10px">No deviation survey loaded. Upload a CSV file.</p>';
+    if (summary) summary.textContent = '';
+    return;
+  }
+
+  const survey = bh.deviation;
+  let html = `<table class="formation-tops-table"><thead><tr>
+    <th>Depth (m)</th><th>Inclination (°)</th><th>Azimuth (°)</th></tr></thead><tbody>`;
+  survey.forEach(s => {
+    html += `<tr>
+      <td style="font-family:var(--font-mono);font-size:9px;text-align:right">${s.depth.toFixed(2)}</td>
+      <td style="font-family:var(--font-mono);font-size:9px;text-align:right">${s.incl.toFixed(2)}</td>
+      <td style="font-family:var(--font-mono);font-size:9px;text-align:right">${s.azim.toFixed(2)}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  if (wrap) wrap.innerHTML = html;
+
+  // Summary stats
+  const maxDepth = survey[survey.length - 1]?.depth ?? 0;
+  const maxIncl  = Math.max(...survey.map(s => s.incl));
+  if (summary) summary.textContent = `${survey.length} stations · TD ${maxDepth.toFixed(1)} m · Max inclination ${maxIncl.toFixed(1)}°`;
+}
+
+function _loadDeviationSurvey(bhId, csvText, filename) {
+  // Dynamic import to keep bundle slim
+  import('./deviation.js').then(({ parseDeviationCSV, buildDeviationPath }) => {
+    const survey = parseDeviationCSV(csvText);
+    if (!survey.length) { log(`No valid survey data in ${filename}.`, 'error'); return; }
+    const bh = AppState.classifiedBH.find(b => b.id === bhId);
+    if (!bh) return;
+    bh.deviation = survey;
+    bh.deviationPath = buildDeviationPath(bh.x, bh.y, bh.groundLevel ?? 0, survey);
+    _refreshDeviationUI();
+    log(`Deviation survey loaded for ${bhId}: ${survey.length} stations, max depth ${survey[survey.length - 1]?.depth?.toFixed(1)} m.`, 'ok');
   });
 }
 
@@ -3533,6 +3692,58 @@ function initParameterView() {
     // Restore default blue-cyan-green-yellow-red gradient
     cs.querySelector('div').style.background = 'linear-gradient(to right,#0000ff,#00ffff,#00ff00,#ffff00,#ff0000)';
     log('Restored unit colours.', 'info');
+  });
+}
+
+// ── Grade Shell ───────────────────────────────────────────────────────────────
+function initGradeShell() {
+  const modeEl     = document.getElementById('grade-mode');
+  const maxWrap    = document.getElementById('grade-max-wrap');
+  const applyBtn   = document.getElementById('btn-grade-apply');
+  const clearBtn   = document.getElementById('btn-grade-clear');
+  const statsEl    = document.getElementById('grade-stats');
+
+  // Show/hide max input based on mode
+  modeEl?.addEventListener('change', () => {
+    if (maxWrap) maxWrap.style.display = modeEl.value === 'between' ? 'flex' : 'none';
+  });
+  if (maxWrap) maxWrap.style.display = 'none';
+
+  applyBtn?.addEventListener('click', () => {
+    if (!AppState.voxelGrid || !AppState.scene) { log('Build the 3D model first.', 'warn'); return; }
+    const param     = document.getElementById('grade-param')?.value;
+    if (!param) { log('Select a parameter for the grade shell.', 'warn'); return; }
+    const mode      = modeEl?.value ?? 'above';
+    const minVal    = parseFloat(document.getElementById('grade-threshold-min')?.value ?? 'NaN');
+    const maxVal    = parseFloat(document.getElementById('grade-threshold-max')?.value ?? 'NaN');
+    const highlight = document.getElementById('grade-color')?.value ?? '#ff4040';
+    const dimOthers = document.getElementById('grade-dim-rest')?.checked ?? true;
+
+    if (!isFinite(minVal)) { log('Enter a threshold value.', 'warn'); return; }
+    if (mode === 'between' && !isFinite(maxVal)) { log('Enter a max value for "between" mode.', 'warn'); return; }
+
+    const result = AppState.scene.colorByGradeShell(
+      param, minVal, maxVal, mode, highlight, dimOthers, AppState.geoUnits
+    );
+    if (!result) { log(`No data for parameter "${param}" — assign parameters or build model first.`, 'warn'); return; }
+
+    const pct = result.total > 0 ? ((result.matched / result.total) * 100).toFixed(1) : '0';
+    if (statsEl) statsEl.textContent = `${result.matched.toLocaleString()} / ${result.total.toLocaleString()} voxels highlighted (${pct}%)`;
+    const label = document.getElementById('grade-param')?.selectedOptions[0]?.text ?? param;
+    const condStr = mode === 'between' ? `${minVal}–${maxVal}` : `${mode === 'above' ? '≥' : '≤'}${minVal}`;
+    log(`Grade shell: ${label} ${condStr} — ${result.matched.toLocaleString()} voxels (${pct}%)`, 'ok');
+  });
+
+  clearBtn?.addEventListener('click', () => {
+    if (!AppState.scene) return;
+    AppState.scene.resetUnitColors();
+    if (statsEl) statsEl.textContent = '';
+    log('Grade shell cleared.', 'info');
+  });
+
+  // Enable buttons when model is built
+  document.addEventListener('geomodel:built', () => {
+    if (applyBtn) applyBtn.disabled = false;
   });
 }
 
@@ -4437,6 +4648,8 @@ async function init() {
   initShortcutsModal();
   initGWT();
   initCameraPresets();
+  initViewBookmarks();
+  initGradeShell();
   initSession();
   initProjectConfig();
   initInterpretGeology();

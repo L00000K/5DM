@@ -652,6 +652,7 @@
         <div style="display:flex;gap:4px;padding:5px 8px 0;flex-wrap:wrap">
           <button class="bhdata-sub-tab active" data-bhd-tab="raw" style="font-size:10px">Layer Data</button>
           <button class="bhdata-sub-tab" data-bhd-tab="tops" style="font-size:10px">Formation Tops</button>
+          <button class="bhdata-sub-tab" data-bhd-tab="deviation" style="font-size:10px">Deviation</button>
         </div>
         <div id="bhd-sub-raw">
           <div id="bh-data-table-wrap" class="bh-table-wrap">
@@ -668,6 +669,24 @@
           </div>
           <div id="formation-tops-wrap" style="overflow:auto;max-height:380px;padding:0 4px 8px">
             <p class="hint" style="padding:8px">Load classified borehole data to see formation top matrix.</p>
+          </div>
+        </div>
+        <div id="bhd-sub-deviation" hidden>
+          <p class="hint" style="padding:6px 8px 2px;font-size:10px">Minimum curvature deviation surveys. Import CSV (Depth, Inclination, Azimuth) per borehole. Vertical boreholes need no survey.</p>
+          <div style="padding:4px 8px 6px">
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+              <select id="dev-bh-select" class="param-input" style="flex:1;font-size:10px">
+                <option value="">— Select borehole —</option>
+              </select>
+              <label class="btn-secondary btn-sm" style="cursor:pointer;font-size:9px;padding:2px 8px">
+                📂 Load CSV
+                <input type="file" id="dev-csv-input" accept=".csv,.txt" hidden>
+              </label>
+              <button id="btn-dev-clear" class="btn-ghost btn-sm" style="font-size:9px" title="Remove survey from selected borehole">✕</button>
+            </div>
+            <div style="font-size:10px;color:var(--text-mid);margin-bottom:4px">CSV format: <span style="font-family:monospace">depth, inclination, azimuth</span> (header optional)</div>
+            <div id="dev-survey-table-wrap" style="overflow:auto;max-height:280px"></div>
+            <div id="dev-summary" style="font-size:10px;color:var(--text-dim);margin-top:4px"></div>
           </div>
         </div>
       </div>
@@ -1006,6 +1025,17 @@
           <input type="number" id="vert-exag" value="1" min="0.1" max="20" step="0.5" class="vert-exag-input">
           <span class="vert-exag-x">×</span>
         </div>
+        <div class="bookmark-ctrl">
+          <button id="btn-save-bookmark" class="btn-open-slicer" title="Save / restore named camera views">📌 Views</button>
+          <div id="bookmark-panel" class="bookmark-panel hidden">
+            <div class="bookmark-panel-title">Named Views</div>
+            <div class="bookmark-panel-hdr">
+              <input type="text" id="bookmark-name-input" class="bookmark-name-input" placeholder="View name…" maxlength="40">
+              <button id="btn-bookmark-confirm" class="btn-primary btn-sm">Save</button>
+            </div>
+            <div id="bookmark-list" class="bookmark-list"></div>
+          </div>
+        </div>
       </div>
 
       <!-- Virtual BH / BH click log popup -->
@@ -1108,6 +1138,49 @@
           </div>
           <p id="param-scale-label" style="font-size:10px;color:var(--text-mid);margin:2px 0 0;text-align:center"></p>
         </div>
+      </div>
+
+      <div class="panel-section">
+        <h3>Grade Shell</h3>
+        <p class="hint" style="margin-bottom:6px;font-size:10px">Highlight voxels above / below a threshold for any parameter. Useful for locating stiff/soft zones, high SPT regions, or geometry boundaries.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;align-items:center;margin-bottom:5px">
+          <select id="grade-param" class="param-input" style="font-size:10px">
+            <option value="">— parameter —</option>
+            <option value="cu">Cu (kPa)</option>
+            <option value="phi">φ′ (°)</option>
+            <option value="E">E (MPa)</option>
+            <option value="gamma">γ (kN/m³)</option>
+            <option value="N_spt">SPT N</option>
+            <option value="certainty">Certainty (0–1)</option>
+            <option value="depth">Depth (m bgl)</option>
+          </select>
+          <select id="grade-mode" class="param-input" style="font-size:10px">
+            <option value="above">Above threshold</option>
+            <option value="below">Below threshold</option>
+            <option value="between">Between (min–max)</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:4px;align-items:center;margin-bottom:5px">
+          <input type="number" id="grade-threshold-min" class="cell-size-input" placeholder="Min / threshold" step="1" style="width:75px">
+          <span id="grade-max-wrap" style="display:flex;gap:3px;align-items:center">
+            <span style="font-size:10px;color:var(--text-dim)">–</span>
+            <input type="number" id="grade-threshold-max" class="cell-size-input" placeholder="Max" step="1" style="width:62px">
+          </span>
+        </div>
+        <div style="display:flex;gap:4px;margin-bottom:5px">
+          <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:3px">
+            Highlight colour:
+            <input type="color" id="grade-color" value="#ff4040" style="width:28px;height:20px;border:none;cursor:pointer;padding:0">
+          </label>
+          <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:3px;margin-left:auto">
+            <input type="checkbox" id="grade-dim-rest" checked> Dim others
+          </label>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button id="btn-grade-apply" class="btn-secondary btn-sm" disabled style="flex:1">Show Shell</button>
+          <button id="btn-grade-clear" class="btn-ghost btn-sm" style="flex:1">Clear</button>
+        </div>
+        <div id="grade-stats" style="font-size:10px;color:var(--text-mid);margin-top:4px"></div>
       </div>
 
       <div class="panel-section" id="foundation-panel" style="display:none">
