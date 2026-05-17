@@ -15,6 +15,12 @@ export class PlanView {
     this._visible    = false;
     this._lastArgs   = null;
 
+    // ── Bbox / polygon drawing state ─────────────────────────────────────────
+    this._drawMode   = null;      // null | 'bbox'
+    this._drawStart  = null;      // {canvasX, canvasY, worldX, worldY}
+    this._drawRect   = null;      // {x1,y1,x2,y2} in world coords (live preview)
+    this._onBboxDone = null;      // callback({minX,maxX,minY,maxY})
+
     this._closeBtn?.addEventListener('click', () => this.hide());
     this._exportBtn?.addEventListener('click', () => this._exportPNG());
     this._slider?.addEventListener('input', () => {
@@ -25,11 +31,83 @@ export class PlanView {
     });
 
     window.addEventListener('keydown', e => {
-      if (e.key === 'Escape' && this._visible) this.hide();
+      if (e.key === 'Escape') {
+        if (this._drawMode) { this._cancelDraw(); }
+        else if (this._visible) { this.hide(); }
+      }
     });
+
+    // Canvas interaction for bbox drawing
+    this._canvas?.addEventListener('mousedown',  e => this._onMouseDown(e));
+    this._canvas?.addEventListener('mousemove',  e => this._onMouseMove(e));
+    this._canvas?.addEventListener('mouseup',    e => this._onMouseUp(e));
+    this._canvas?.addEventListener('mouseleave', e => { if (this._drawMode === 'bbox' && !this._drawStart) {} });
 
     const ro = new ResizeObserver(() => { if (this._visible) this._redraw(); });
     if (this._panel) ro.observe(this._panel);
+  }
+
+  // ── Bbox draw API: call startBboxDraw(callback) to let user drag a rectangle
+  startBboxDraw(onDone) {
+    this._drawMode  = 'bbox';
+    this._drawStart = null;
+    this._drawRect  = null;
+    this._onBboxDone = onDone;
+    if (this._canvas) this._canvas.style.cursor = 'crosshair';
+  }
+
+  _cancelDraw() {
+    this._drawMode = null; this._drawStart = null; this._drawRect = null; this._onBboxDone = null;
+    if (this._canvas) this._canvas.style.cursor = '';
+    this._redraw();
+  }
+
+  _canvasToWorld(canvasX, canvasY) {
+    const args = this._lastArgs;
+    if (!args) return null;
+    const { grid: { nx, ny, cellSize: cs, origin: O } } = args;
+    const W   = this._canvas.clientWidth  || this._canvas.width;
+    const H   = this._canvas.clientHeight || this._canvas.height;
+    const PAD = 24;
+    const drawW = W - 2 * PAD, drawH = H - 2 * PAD;
+    const cellPxW = drawW / nx, cellPxH = drawH / ny;
+    const ix = (canvasX - PAD) / cellPxW;
+    const iy = ny - (canvasY - PAD) / cellPxH;   // flip Y (plan view has Y=0 at bottom)
+    return { worldX: O.x + ix * cs, worldY: O.z + iy * cs };
+  }
+
+  _onMouseDown(e) {
+    if (this._drawMode !== 'bbox') return;
+    const rect = this._canvas.getBoundingClientRect();
+    const cx = (e.clientX - rect.left) * (this._canvas.width / rect.width);
+    const cy = (e.clientY - rect.top)  * (this._canvas.height / rect.height);
+    const world = this._canvasToWorld(cx, cy);
+    if (!world) return;
+    this._drawStart = { cx, cy, ...world };
+    this._drawRect  = { x1: world.worldX, y1: world.worldY, x2: world.worldX, y2: world.worldY };
+  }
+
+  _onMouseMove(e) {
+    if (this._drawMode !== 'bbox' || !this._drawStart) return;
+    const rect = this._canvas.getBoundingClientRect();
+    const cx = (e.clientX - rect.left) * (this._canvas.width / rect.width);
+    const cy = (e.clientY - rect.top)  * (this._canvas.height / rect.height);
+    const world = this._canvasToWorld(cx, cy);
+    if (!world) return;
+    this._drawRect = { x1: this._drawStart.worldX, y1: this._drawStart.worldY, x2: world.worldX, y2: world.worldY };
+    this._redraw();
+  }
+
+  _onMouseUp(e) {
+    if (this._drawMode !== 'bbox' || !this._drawStart || !this._drawRect) return;
+    const { x1, y1, x2, y2 } = this._drawRect;
+    const domain = {
+      minX: Math.min(x1, x2), maxX: Math.max(x1, x2),
+      minY: Math.min(y1, y2), maxY: Math.max(y1, y2),
+    };
+    const cb = this._onBboxDone;
+    this._cancelDraw();
+    if (cb && Math.abs(domain.maxX - domain.minX) > 0.5) cb(domain);
   }
 
   draw(grid, geoUnits, boreholes, conceptStore = null) {
@@ -349,6 +427,33 @@ export class PlanView {
         ctx.textAlign = 'right';
         ctx.fillText(`N-S ×${gT.Ay.toFixed(1)}`, ex - rx - 3, ey + 3);
       }
+    }
+
+    // Live bbox drawing preview
+    if (this._drawMode === 'bbox' && this._drawRect) {
+      const { x1, y1, x2, y2 } = this._drawRect;
+      const px1 = PAD + ((Math.min(x1,x2) - O.x) / cs) * cellPxW;
+      const px2 = PAD + ((Math.max(x1,x2) - O.x) / cs) * cellPxW;
+      const py1 = PAD + (ny - (Math.max(y1,y2) - O.z) / cs) * cellPxH;
+      const py2 = PAD + (ny - (Math.min(y1,y2) - O.z) / cs) * cellPxH;
+      ctx.fillStyle = 'rgba(255,180,30,0.12)';
+      ctx.fillRect(px1, py1, px2 - px1, py2 - py1);
+      ctx.strokeStyle = 'rgba(255,160,10,0.9)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 3]);
+      ctx.strokeRect(px1, py1, px2 - px1, py2 - py1);
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255,160,10,0.9)';
+      ctx.font = 'bold 10px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      const w = Math.abs(x2 - x1).toFixed(0), d = Math.abs(y2 - y1).toFixed(0);
+      ctx.fillText(`${w}×${d}m`, (px1 + px2) / 2, (py1 + py2) / 2);
+    } else if (this._drawMode === 'bbox') {
+      // Show crosshair hint before first click
+      ctx.fillStyle = 'rgba(255,160,10,0.85)';
+      ctx.font = '11px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Click and drag to define spatial domain', PAD + drawW / 2, PAD + drawH / 2);
     }
 
     // Borehole markers

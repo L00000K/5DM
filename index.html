@@ -440,7 +440,13 @@
             <select id="concept-domain">
               <option value="global">Global (whole site)</option>
               <option value="site">Site bbox only</option>
+              <option value="draw">Draw on plan →</option>
             </select>
+          </div>
+          <div id="concept-draw-bbox-row" class="concept-ctrl-row" style="display:none">
+            <label></label>
+            <button id="btn-draw-bbox" class="btn btn-ghost" style="font-size:10px;flex:1">⬛ Draw on Plan View</button>
+            <span id="concept-bbox-preview" style="font-size:9px;color:var(--text-dim);font-family:var(--font-mono)"></span>
           </div>
           <div class="concept-ctrl-row" id="concept-unit-affinity-row" title="Leave blank to apply to all units">
             <label>Units (optional)</label>

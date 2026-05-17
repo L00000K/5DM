@@ -3776,19 +3776,53 @@ function initConceptPanel() {
     _loadDemoConceptsIfEmpty();
   }
 
-  const textarea   = document.getElementById('concept-description');
-  const confidence = document.getElementById('concept-confidence');
-  const confLabel  = document.getElementById('concept-confidence-val');
-  const domainSel  = document.getElementById('concept-domain');
-  const encodeBtn  = document.getElementById('btn-encode-concept');
-  const clearBtn   = document.getElementById('btn-clear-concepts');
-  const listEl     = document.getElementById('concept-list');
+  const textarea     = document.getElementById('concept-description');
+  const confidence   = document.getElementById('concept-confidence');
+  const confLabel    = document.getElementById('concept-confidence-val');
+  const domainSel    = document.getElementById('concept-domain');
+  const drawBboxRow  = document.getElementById('concept-draw-bbox-row');
+  const drawBboxBtn  = document.getElementById('btn-draw-bbox');
+  const bboxPreview  = document.getElementById('concept-bbox-preview');
+  const encodeBtn    = document.getElementById('btn-encode-concept');
+  const clearBtn     = document.getElementById('btn-clear-concepts');
+  const listEl       = document.getElementById('concept-list');
+
+  // Drawn bbox domain stored when user completes a plan-view drag
+  let _drawnBboxDomain = null;
 
   // Render concept library chips
   _initConceptLibrary();
 
   confidence?.addEventListener('input', () => {
     if (confLabel) confLabel.textContent = parseFloat(confidence.value).toFixed(2);
+  });
+
+  // Show/hide draw bbox row based on domain selection
+  domainSel?.addEventListener('change', () => {
+    const isDraw = domainSel.value === 'draw';
+    if (drawBboxRow) drawBboxRow.style.display = isDraw ? 'flex' : 'none';
+    if (!isDraw) { _drawnBboxDomain = null; if (bboxPreview) bboxPreview.textContent = ''; }
+  });
+
+  // Trigger plan view bbox drawing
+  drawBboxBtn?.addEventListener('click', () => {
+    if (!AppState.planView) {
+      log('Open the Plan View first (press P or use toolbar)', 'warn'); return;
+    }
+    if (!AppState.planView.visible) {
+      AppState.planView.show();
+      AppState.planView.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH, AppState.conceptStore);
+    }
+    AppState.planView.startBboxDraw(domain => {
+      _drawnBboxDomain = { type: 'bbox', ...domain, sigma: 30 };
+      if (bboxPreview) {
+        const w = (domain.maxX - domain.minX).toFixed(0);
+        const d = (domain.maxY - domain.minY).toFixed(0);
+        bboxPreview.textContent = `${w}×${d}m`;
+      }
+      log(`Bbox domain set: ${(domain.maxX - domain.minX).toFixed(0)}m × ${(domain.maxY - domain.minY).toFixed(0)}m`, 'ok');
+    });
+    log('Drag on the Plan View to draw the concept spatial domain', 'info');
   });
 
   encodeBtn?.addEventListener('click', async () => {
@@ -3800,7 +3834,11 @@ function initConceptPanel() {
     try {
       const emb  = await encodeGeologicalConcept(text, AppState.apiKey, AppState.demoMode);
       const conf = parseFloat(confidence?.value ?? 0.7);
-      const domain = _buildDomain(domainSel?.value ?? 'global');
+      // Use drawn bbox if user completed a plan-view draw, else fallback to selector
+      const domainType = domainSel?.value ?? 'global';
+      const domain = domainType === 'draw'
+        ? (_drawnBboxDomain ?? { type: 'global' })
+        : _buildDomain(domainType);
       // Collect selected unit affinity codes (multi-select)
       const unitAffinitySel = document.getElementById('concept-unit-affinity');
       const unitAffinity = unitAffinitySel
@@ -3812,6 +3850,9 @@ function initConceptPanel() {
       if (textarea) textarea.value = '';
       // Clear selection after encoding
       if (unitAffinitySel) Array.from(unitAffinitySel.options).forEach(o => o.selected = false);
+      // Reset drawn bbox after encoding so it's not accidentally reused
+      _drawnBboxDomain = null;
+      if (bboxPreview) bboxPreview.textContent = '';
       log(`Concept encoded: "${text.slice(0, 60)}" — ${AppState.conceptStore.concepts.length} total`, 'ok');
     } catch (err) {
       log(`Concept encode error: ${err.message}`, 'error');
