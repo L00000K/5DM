@@ -311,6 +311,10 @@ class SceneManager {
     this._builder?.colorByBoundaryUncertainty();
   }
 
+  colorByConceptInfluence() {
+    return this._builder?.colorByConceptInfluence() ?? false;
+  }
+
   setSurfaceOpacity(op) {
     this._surfaces.setOpacity(op);
     this._surfaces.setMCOpacity(op);

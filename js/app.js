@@ -2362,7 +2362,8 @@ function initParameterView() {
     E: 'E — Stiffness Modulus (MPa)',
     gamma: 'γ — Unit Weight (kN/m³)',
     N_spt: 'SPT N — Blow Count',
-    boundary: 'Boundary uncertainty (blend ratio 0–1)',
+    boundary:           'Boundary uncertainty (blend ratio 0–1)',
+    concept_influence:  'Concept semantic influence (0=data, 1=concept)',
   };
 
   document.getElementById('btn-param-apply')?.addEventListener('click', () => {
@@ -2378,6 +2379,24 @@ function initParameterView() {
       document.getElementById('param-scale-label').textContent = 'Boundary uncertainty — blue=certain, red=near contact';
       document.getElementById('param-colorscale').style.display = 'block';
       log('Parameter view: boundary uncertainty (blend ratio)', 'ok');
+      return;
+    }
+
+    if (paramName === 'concept_influence') {
+      const ok = AppState.scene.colorByConceptInfluence();
+      if (!ok) {
+        log('Concept influence data not available — rebuild the model with concepts loaded.', 'warn');
+        return;
+      }
+      document.getElementById('param-scale-min').textContent = '0.0';
+      document.getElementById('param-scale-mid').textContent = '0.5';
+      document.getElementById('param-scale-max').textContent = '1.0';
+      document.getElementById('param-scale-label').textContent = 'Concept semantic influence — purple=data-driven, amber=concept-driven';
+      // Override gradient to match HSL purple→amber
+      const cs = document.getElementById('param-colorscale');
+      cs.querySelector('div').style.background = 'linear-gradient(to right,#6a2fce,#3070cc,#1ab8b8,#40cc40,#e0b020)';
+      cs.style.display = 'block';
+      log('Parameter view: concept semantic influence', 'ok');
       return;
     }
 
@@ -2399,7 +2418,10 @@ function initParameterView() {
   document.getElementById('btn-param-reset')?.addEventListener('click', () => {
     if (!AppState.scene) return;
     AppState.scene.resetUnitColors();
-    document.getElementById('param-colorscale').style.display = 'none';
+    const cs = document.getElementById('param-colorscale');
+    cs.style.display = 'none';
+    // Restore default blue-cyan-green-yellow-red gradient
+    cs.querySelector('div').style.background = 'linear-gradient(to right,#0000ff,#00ffff,#00ff00,#ffff00,#ff0000)';
     log('Restored unit colours.', 'info');
   });
 }
@@ -3500,23 +3522,30 @@ function initSectionInterpreter() {
           }
         : { type: 'global' };
 
+      // Normalise statements: support both old string[] and new {statement, unit_codes, confidence}[]
+      const normStatements = statements.map(s =>
+        typeof s === 'string'
+          ? { statement: s, unit_codes: [], confidence: parsed.confidence ?? 0.72 }
+          : { statement: s.statement ?? s, unit_codes: s.unit_codes ?? [], confidence: s.confidence ?? parsed.confidence ?? 0.72 }
+      ).filter(s => s.statement?.trim());
+
       const conceptIds = [];
-      for (const stmt of statements) {
-        if (!stmt?.trim()) continue;
+      for (const ns of normStatements) {
         try {
-          const emb = await encodeGeologicalConcept(stmt, AppState.apiKey, AppState.demoMode);
+          const emb = await encodeGeologicalConcept(ns.statement, AppState.apiKey, AppState.demoMode);
           const id  = AppState.conceptStore.add({
-            description: stmt,
-            embedding:   emb,
-            confidence:  parsed.confidence ?? 0.72,
-            domain:      conceptDomain,
+            description:  ns.statement,
+            embedding:    emb,
+            confidence:   ns.confidence,
+            domain:       conceptDomain,
+            unitAffinity: ns.unit_codes,
           });
           conceptIds.push(id);
         } catch (e) { log(`Concept encode warning: ${e.message}`, 'warn'); }
       }
       _renderConceptList();
 
-      const kws = statements.join(', ') || '—';
+      const kws = normStatements.map(s => s.statement).join(', ') || '—';
       parseResult.innerHTML =
         `<span style="color:#4ae87a">✓ ${vbhs.length} virtual boreholes · ${conceptIds.length} concepts encoded</span><br>
          <span style="color:var(--text-mid)">Concepts: ${kws.slice(0,120)}</span><br>

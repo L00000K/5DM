@@ -570,10 +570,13 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore) {
   const { nx, ny, nz, cellSize, cellHeight, origin } = grid;
   const total = nx * ny * nz;
 
-  const unitIds      = new Uint8Array(total);
-  const certainty    = new Float32Array(total);
-  const blendUnitIds = new Uint8Array(total);
-  const blendRatios  = new Float32Array(total);
+  const unitIds         = new Uint8Array(total);
+  const certainty       = new Float32Array(total);
+  const blendUnitIds    = new Uint8Array(total);
+  const blendRatios     = new Float32Array(total);
+  // Per-voxel concept semantic dominance [0..1]: 0 = data-driven, 1 = concept-driven
+  // Used for traceability visualisation (heat-map overlay).
+  const conceptInfluence = new Float32Array(total);
 
   const codeToId = {};
   geoUnits.forEach(u => { codeToId[u.code] = u.id; });
@@ -633,15 +636,16 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore) {
         const baseCert = 0.5 + probs[b1] - probs[b2];
         const conceptBoost = ctx ? Math.min(0.1, ctx.totalWeight * 0.08) : 0;
 
-        unitIds[idx]      = codeToId[unitCodes[b1]] ?? 0;
-        certainty[idx]    = Math.max(0.05, Math.min(1, baseCert + conceptBoost));
-        blendUnitIds[idx] = codeToId[unitCodes[b2]] ?? 0;
-        blendRatios[idx]  = probs[b2];
+        unitIds[idx]          = codeToId[unitCodes[b1]] ?? 0;
+        certainty[idx]        = Math.max(0.05, Math.min(1, baseCert + conceptBoost));
+        blendUnitIds[idx]     = codeToId[unitCodes[b2]] ?? 0;
+        blendRatios[idx]      = probs[b2];
+        conceptInfluence[idx] = ctx ? Math.min(1, ctx.totalWeight) : 0;
       }
     }
   }
 
-  return { unitIds, certainty, blendUnitIds, blendRatios };
+  return { unitIds, certainty, blendUnitIds, blendRatios, conceptInfluence };
 }
 
 // ── Patch voxel grid with oracle probability distributions ───────────────────

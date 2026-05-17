@@ -355,6 +355,28 @@ export class VoxelBuilder {
     }
   }
 
+  // Color voxels by concept semantic influence [0=data-driven, 1=concept-driven].
+  // Purple (low) → blue → cyan → green → yellow → orange (high)
+  // Uses the conceptInfluence array stored on the grid by inferGeoImplicit.
+  colorByConceptInfluence() {
+    if (!this.grid?.conceptInfluence) return false;
+    const { conceptInfluence } = this.grid;
+    const col = new THREE.Color();
+    for (const [code, mesh] of Object.entries(this.meshes)) {
+      const flatIdx = this._unitFlatIdx?.[code];
+      if (!flatIdx) continue;
+      const colorAttr = mesh.geometry.getAttribute('voxelColor');
+      for (let i = 0; i < flatIdx.length; i++) {
+        const t = Math.min(1, Math.max(0, conceptInfluence[flatIdx[i]] ?? 0));
+        // Cool purple (t=0) → warm amber (t=1)
+        col.setHSL(0.72 - t * 0.58, 0.85, 0.42 + t * 0.18);
+        colorAttr.setXYZ(i, col.r, col.g, col.b);
+      }
+      colorAttr.needsUpdate = true;
+    }
+    return true;
+  }
+
   // Restore original unit colours after parameter coloring.
   resetUnitColors() {
     for (const [code, mesh] of Object.entries(this.meshes)) {

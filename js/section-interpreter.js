@@ -84,9 +84,11 @@ Return this JSON structure only:
   ],
   "semantic_keywords": ["<geological keyword>"],
   "conceptual_statements": [
-    "brief 1-sentence geological concept describing morphology or geometry",
-    "e.g. The palaeochannel trends E-W with an erosional concave-up base",
-    "e.g. Rockhead deepens steeply to the north across a fault"
+    {
+      "statement": "brief 1-sentence geometric/morphological concept",
+      "unit_codes": ["<code>"],
+      "confidence": 0.75
+    }
   ]
 }
 
@@ -95,7 +97,7 @@ Rules:
 - contacts.points must have at least 2 points spanning the section.
 - semantic_keywords: pick 3-8 terms from: dipping thinning thickening pinching lateral inclined wedging deepening shallowing eroded unconformity lens channel fold faulted truncated.
 - Only use unit_codes from the list above.
-- conceptual_statements: 2-5 statements, each describing a geometric or morphological aspect of the geology. Focus on geometry: orientation, shape (channel/lens/wedge/dome/fault), continuity, depth trends. These will be encoded as concept embeddings to shape the 3D neural field geometry. NOT descriptions of individual layers — geometric/conceptual observations only.`;
+- conceptual_statements: 2-5 objects. Each "statement" is a 1-sentence geometric/morphological concept (e.g. "Palaeochannel trends E-W with erosional concave-up base", "Rockhead deepens steeply north across the fault"). Include direction, shape, depth trend — NOT layer properties. "unit_codes" lists which unit codes this concept primarily applies to (empty array if it applies to all). "confidence" is 0.5-0.99. These are encoded as 32-dim geometry embeddings.`;
 
   return { system, user };
 }
@@ -124,22 +126,22 @@ function _demoSection(text, geoUnits, fenceLen) {
   const karst   = /karst|dissolution|void/i.test(text);
   const conceptual_statements = [];
   if (channel) {
-    conceptual_statements.push('A palaeochannel feature is present with an erosional concave-up base.');
-    conceptual_statements.push('Channel fill exhibits lateral thinning towards the margins.');
+    conceptual_statements.push({ statement: 'A palaeochannel feature is present with an erosional concave-up base.', unit_codes: [c2 ?? c1], confidence: 0.8 });
+    conceptual_statements.push({ statement: 'Channel fill exhibits lateral thinning towards the margins.', unit_codes: [c2 ?? c1], confidence: 0.72 });
   } else if (fault) {
-    conceptual_statements.push('A fault-controlled stepped boundary offsets the stratigraphy.');
-    conceptual_statements.push('Rockhead deepens abruptly across the fault trend.');
+    conceptual_statements.push({ statement: 'A fault-controlled stepped boundary offsets the stratigraphy.', unit_codes: [], confidence: 0.85 });
+    conceptual_statements.push({ statement: 'Rockhead deepens abruptly across the fault trend.', unit_codes: [c1], confidence: 0.8 });
   } else if (karst) {
-    conceptual_statements.push('Dissolution features produce an irregular base to the soluble unit.');
-    conceptual_statements.push('Structural complexity increases toward dissolution zones.');
+    conceptual_statements.push({ statement: 'Dissolution features produce an irregular base to the soluble unit.', unit_codes: [c1], confidence: 0.75 });
+    conceptual_statements.push({ statement: 'Structural complexity increases toward dissolution zones.', unit_codes: [], confidence: 0.65 });
   } else if (dip) {
-    conceptual_statements.push('Stratigraphy dips and deepens progressively along the section.');
-    conceptual_statements.push('Inclined bedding with lateral continuity along the section fence.');
+    conceptual_statements.push({ statement: 'Stratigraphy dips and deepens progressively along the section.', unit_codes: [], confidence: 0.78 });
+    conceptual_statements.push({ statement: 'Inclined bedding with lateral continuity along the section fence.', unit_codes: [c0], confidence: 0.7 });
   } else if (lens) {
-    conceptual_statements.push('A lenticular sand body is present with lateral thinning to both margins.');
+    conceptual_statements.push({ statement: 'A lenticular sand body is present with lateral thinning to both margins.', unit_codes: [c2 ?? c1], confidence: 0.75 });
   } else {
-    conceptual_statements.push('Stratigraphy is broadly horizontal and laterally continuous across the section.');
-    conceptual_statements.push('Flat-lying beds with consistent thickness and no significant dip.');
+    conceptual_statements.push({ statement: 'Stratigraphy is broadly horizontal and laterally continuous across the section.', unit_codes: [], confidence: 0.8 });
+    conceptual_statements.push({ statement: 'Flat-lying beds with consistent thickness and no significant dip.', unit_codes: [c0], confidence: 0.72 });
   }
   return {
     virtual_boreholes: vbs,
