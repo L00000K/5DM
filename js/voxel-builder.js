@@ -377,6 +377,59 @@ export class VoxelBuilder {
     return true;
   }
 
+  // Color voxels by dominant concept at each position.
+  // Assigns each concept a hue from a rotating palette; voxels are colored by
+  // the dominant concept's hue, with saturation proportional to influence weight.
+  // Voxels with no concept influence are shown in neutral grey.
+  colorByDominantConcept(conceptStore) {
+    if (!this.grid || !conceptStore || conceptStore.isEmpty) return false;
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O } = this.grid;
+    const concepts = conceptStore.concepts;
+    if (!concepts.length) return false;
+
+    // Pre-compute per-column dominant concept (only varies horizontally)
+    const colDom = new Map(); // ix*ny+iy → {hue, weight}
+    for (let iy = 0; iy < ny; iy++) {
+      const worldY = O.z + (iy + 0.5) * cs;
+      for (let ix = 0; ix < nx; ix++) {
+        const worldX = O.x + (ix + 0.5) * cs;
+        const ctx = conceptStore.computeAt(worldX, O.y + nz * ch * 0.5, worldY);
+        if (ctx.weights.length === 0 || ctx.totalWeight < 0.05) {
+          colDom.set(ix * ny + iy, null);
+          continue;
+        }
+        const dom = ctx.weights[0]; // sorted desc
+        const cIdx = concepts.findIndex(c => c.id === dom.id);
+        const hue  = (cIdx / concepts.length); // evenly spaced hues
+        colDom.set(ix * ny + iy, { hue, weight: ctx.totalWeight });
+      }
+    }
+
+    const col = new THREE.Color();
+    for (const [code, mesh] of Object.entries(this.meshes)) {
+      const flatIdx = this._unitFlatIdx?.[code];
+      if (!flatIdx) continue;
+      const colorAttr = mesh.geometry.getAttribute('voxelColor');
+      for (let i = 0; i < flatIdx.length; i++) {
+        const voxIdx = flatIdx[i];
+        const iz = Math.floor(voxIdx / (nx * ny));
+        const rem = voxIdx - iz * nx * ny;
+        const iy  = Math.floor(rem / nx);
+        const ix  = rem % nx;
+        const dom = colDom.get(ix * ny + iy);
+        if (!dom) {
+          col.setRGB(0.45, 0.45, 0.45); // neutral grey — no concept
+        } else {
+          const sat = Math.min(0.9, 0.4 + dom.weight * 0.5);
+          col.setHSL(dom.hue, sat, 0.45);
+        }
+        colorAttr.setXYZ(i, col.r, col.g, col.b);
+      }
+      colorAttr.needsUpdate = true;
+    }
+    return true;
+  }
+
   // Color voxels by borehole coverage density [0=sparse, 1=well-constrained].
   // Red (0 – sparse, extrapolated) → yellow → green (1 – data-dense).
   colorByCoverage() {

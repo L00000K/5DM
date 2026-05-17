@@ -187,7 +187,8 @@ class GeoImplicitNet {
     return ex;
   }
 
-  forward(inp) {
+  // filmDropout: fraction of FiLM units to zero during training (0 = no dropout)
+  forward(inp, filmDropout = 0) {
     const { nHidden, nIn, nOut, W, Wg, Wb, b, fourierDim } = this;
     const CTX_DIM = 32;
     // ctx = last 32 elements (concept context)
@@ -197,13 +198,17 @@ class GeoImplicitNet {
     const H0_pre = this._linear(W[0], b[0], inp, nHidden, nIn);
     const H0     = this._relu(H0_pre);
     // FiLM layer 0: γ0 = 1 + Wg0@ctx, β0 = Wb0@ctx
+    // FiLM dropout: randomly zero individual FiLM units during training.
+    // This prevents the network from over-relying on concept signals at specific
+    // borehole positions and encourages it to generalise conceptual geometry.
     const gamma0_raw = this._filmProj(Wg[0], ctx, nHidden, CTX_DIM);
     const beta0      = this._filmProj(Wb[0], ctx, nHidden, CTX_DIM);
     const gamma0     = new Float32Array(nHidden);
     const H0f        = new Float32Array(nHidden);
     for (let i = 0; i < nHidden; i++) {
-      gamma0[i] = 1 + gamma0_raw[i];
-      H0f[i]    = gamma0[i] * H0[i] + beta0[i];
+      const keep  = filmDropout > 0 ? (Math.random() > filmDropout ? 1 : 0) : 1;
+      gamma0[i] = 1 + gamma0_raw[i] * keep;
+      H0f[i]    = gamma0[i] * H0[i] + beta0[i] * keep;
     }
 
     // Layer 1 (takes modulated H0f)
@@ -215,8 +220,9 @@ class GeoImplicitNet {
     const gamma1     = new Float32Array(nHidden);
     const H1f        = new Float32Array(nHidden);
     for (let i = 0; i < nHidden; i++) {
-      gamma1[i] = 1 + gamma1_raw[i];
-      H1f[i]    = gamma1[i] * H1[i] + beta1[i];
+      const keep  = filmDropout > 0 ? (Math.random() > filmDropout ? 1 : 0) : 1;
+      gamma1[i] = 1 + gamma1_raw[i] * keep;
+      H1f[i]    = gamma1[i] * H1[i] + beta1[i] * keep;
     }
 
     // Layer 2 (takes modulated H1f, skip from H0f)
@@ -647,9 +653,12 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
       const j = Math.floor(Math.random() * (i + 1));
       [allSamples[i], allSamples[j]] = [allSamples[j], allSamples[i]];
     }
+    // FiLM dropout schedule: 25% during warmup (teaches network to function without FiLM),
+    // 10% for the rest (regularises but allows FiLM to converge).
+    const filmDropout = filmScale < 1 ? 0.25 : 0.10;
     let totalLoss = 0;
     for (const s of allSamples) {
-      const act  = net.forward(s.inp);
+      const act  = net.forward(s.inp, filmDropout);
       const loss = -Math.log(Math.max(act.probs[s.target], 1e-9));
       totalLoss += s.weight * loss;
       // Pass sample weight so high-confidence concept regions drive stronger gradient updates

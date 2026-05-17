@@ -2425,6 +2425,7 @@ function initParameterView() {
     boundary:           'Boundary uncertainty (blend ratio 0–1)',
     concept_influence:  'Concept semantic influence (0=data, 1=concept)',
     coverage_density:   'Borehole coverage density (0=sparse, 1=data-dense)',
+    dominant_concept:   'Dominant concept (colour by active geological concept)',
   };
 
   document.getElementById('btn-param-apply')?.addEventListener('click', () => {
@@ -2474,6 +2475,31 @@ function initParameterView() {
       cs.querySelector('div').style.background = 'linear-gradient(to right,#cc2222,#e08020,#e0cc00,#40cc40)';
       cs.style.display = 'block';
       log('Parameter view: borehole coverage density', 'ok');
+      return;
+    }
+
+    if (paramName === 'dominant_concept') {
+      const store = AppState.conceptStore;
+      if (!store || store.isEmpty) {
+        log('No concepts encoded — add concepts in the Concepts tab first.', 'warn');
+        return;
+      }
+      const ok = AppState.scene.colorByDominantConcept(store);
+      if (!ok) { log('Dominant concept coloring unavailable.', 'warn'); return; }
+      // Build a legend showing concept → hue
+      const cs     = document.getElementById('param-colorscale');
+      const csDiv  = cs.querySelector('div');
+      const stops  = store.concepts.map((c, i) => {
+        const hue = i / store.concepts.length;
+        return `hsl(${(hue * 360).toFixed(0)},75%,45%)`;
+      });
+      csDiv.style.background = `linear-gradient(to right,${stops.join(',')})`;
+      cs.style.display = 'block';
+      document.getElementById('param-scale-min').textContent = store.concepts[0]?.description.slice(0, 12) ?? '';
+      document.getElementById('param-scale-max').textContent = store.concepts[store.concepts.length - 1]?.description.slice(0, 12) ?? '';
+      document.getElementById('param-scale-mid').textContent = '·';
+      document.getElementById('param-scale-label').textContent = `Dominant concept — grey=no concept, ${store.concepts.length} concept(s) shown`;
+      log(`Parameter view: dominant concept (${store.concepts.length} concepts)`, 'ok');
       return;
     }
 
