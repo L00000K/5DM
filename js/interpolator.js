@@ -992,6 +992,211 @@ export async function buildVoxelGridMonteCarlo(boreholes, geoUnits, cellSizeH, o
   return { ...base, unitIds, certainty, blendUnitIds, blendRatios };
 }
 
+// ── Indicator Kriging — per-unit probability volumes ──────────────────────────
+// For each geological unit u, kriging is applied to the indicator function
+//   I_u(x,y,z) = 1 if the point belongs to unit u, 0 otherwise.
+// The result is nUnits Float32Arrays of shape [nx*ny*nz], each holding P(unit=u).
+// Rows are clipped to [0,1] and row-normalised so probabilities sum to 1 per voxel.
+// This is the canonical Leapfrog / SGeMS uncertainty-quantification approach.
+//
+// Returns: { unitIds, certainty, blendUnitIds, blendRatios, probVolumes }
+// probVolumes: Map<unitCode, Float32Array(nx*ny*nz)>
+export async function buildIndicatorKriging(boreholes, geoUnits, cellSizeParam, options = {}) {
+  if (!boreholes.length) throw new Error('No borehole data');
+
+  const onProgress = options.onProgress ?? null;
+  const kNeighbors = Math.max(2, options.kNeighbors ?? 6);
+
+  // Pre-compute deviation trajectories
+  for (const bh of boreholes) {
+    bh._trajectory = (bh.deviation?.length >= 2) ? computeTrajectory(bh) : null;
+  }
+
+  // ── Bounding box + grid ──────────────────────────────────────────────────────
+  const xs  = boreholes.map(b => b.x);
+  const ys  = boreholes.map(b => b.y);
+  const gls = boreholes.map(b => b.groundLevel ?? 0);
+  const maxDepths = boreholes.map(b =>
+    b.depth ?? (b.layers.length ? Math.max(...b.layers.map(l => l.base)) : 10));
+
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const maxGL = Math.max(...gls);
+  const maxDep = Math.max(...maxDepths);
+
+  const marginX = Math.max((maxX - minX) * 0.15, cellSizeParam * 2);
+  const marginY = Math.max((maxY - minY) * 0.15, cellSizeParam * 2);
+  const ox = minX - marginX, oy = minY - marginY, oz = maxGL - maxDep;
+
+  const rawW = maxX - minX + 2 * marginX;
+  const rawD = maxY - minY + 2 * marginY;
+  const rawH = maxDep;
+  const cellSize = cellSizeParam;
+  const cellH    = cellSizeParam * (options.verticalExaggeration ?? 1.0);
+
+  const nx = Math.max(2, Math.ceil(rawW / cellSize));
+  const ny = Math.max(2, Math.ceil(rawD / cellSize));
+  const nz = Math.max(2, Math.ceil(rawH / cellH));
+  const total = nx * ny * nz;
+
+  // ── Build sample set: one entry per borehole layer mid-point ─────────────────
+  const samples = [];
+  for (const bh of boreholes) {
+    const gl = bh.groundLevel ?? 0;
+    for (const layer of bh.layers) {
+      if (!layer.unitCode) continue;
+      const midDepth = (layer.top + layer.base) / 2;
+      const wz = gl - midDepth;
+      const { dx, dy } = getDeviatedXY(bh, midDepth);
+      samples.push({ x: bh.x + dx, y: bh.y + dy, z: wz, unitCode: layer.unitCode, cert: layer.certainty ?? 0.9 });
+    }
+  }
+  if (!samples.length) throw new Error('No layer samples for indicator kriging');
+
+  // ── Per-unit variogram parameters (auto-fit from sample spacing) ──────────────
+  const siteDiag = Math.hypot(maxX - minX + 1, maxY - minY + 1);
+  const autoRange = siteDiag * 0.5;
+  const autoSill  = 0.25; // variance of Bernoulli(0.5)
+  const nugget    = options.nugget ?? autoSill * 0.05;
+  const sill      = options.sill   ?? autoSill;
+  const range     = options.range  ?? autoRange;
+
+  // ── Probability accumulators — one Float32Array per unit ──────────────────────
+  const unitCodes = geoUnits.map(u => u.code);
+  const nUnits    = unitCodes.length;
+  const codeIdx   = {};
+  unitCodes.forEach((c, i) => { codeIdx[c] = i; });
+
+  // Flat [total * nUnits] accumulator for P(u|voxel) — stored interleaved per voxel
+  const probs = new Float32Array(total * nUnits);
+
+  // Simple 3-D kd-style nearest-sample lookup using sorted index arrays
+  // (full kd-tree is overkill for typical <500 borehole sample counts)
+  const sxArr = Float64Array.from(samples.map(s => s.x));
+  const syArr = Float64Array.from(samples.map(s => s.y));
+  const szArr = Float64Array.from(samples.map(s => s.z));
+
+  function kNearest(qx, qy, qz, k) {
+    const dists = [];
+    for (let i = 0; i < samples.length; i++) {
+      const dx = sxArr[i] - qx, dy = syArr[i] - qy, dz = szArr[i] - qz;
+      dists.push([dx * dx + dy * dy + dz * dz * 4, i]); // 2× vertical stretch
+    }
+    dists.sort((a, b) => a[0] - b[0]);
+    return dists.slice(0, k).map(([d2, i]) => ({ ...samples[i], dist: Math.sqrt(d2) }));
+  }
+
+  // ── Kriging per voxel ──────────────────────────────────────────────────────────
+  const batchSize = nx * ny; // one Z-layer per progress tick
+  for (let iz = 0; iz < nz; iz++) {
+    const wz = oz + iz * cellH + cellH * 0.5;
+    for (let iy = 0; iy < ny; iy++) {
+      const wy = oy + iy * cellSize + cellSize * 0.5;
+      for (let ix = 0; ix < nx; ix++) {
+        const wx = ox + ix * cellSize + cellSize * 0.5;
+        const vIdx = (ix + iy * nx + iz * nx * ny) * nUnits;
+
+        const nbrs = kNearest(wx, wy, wz, kNeighbors);
+        const n    = nbrs.length;
+        if (!n) { // no samples → uniform prior
+          for (let u = 0; u < nUnits; u++) probs[vIdx + u] = 1 / nUnits;
+          continue;
+        }
+
+        // Kriging weight matrix (augmented for Lagrange multiplier)
+        const sz = n + 1;
+        const K = new Float32Array(sz * sz);
+        for (let i = 0; i < n; i++) {
+          for (let j = 0; j < n; j++) {
+            const d = Math.hypot(nbrs[i].x - nbrs[j].x, nbrs[i].y - nbrs[j].y, (nbrs[i].z - nbrs[j].z) * 2);
+            K[i * sz + j] = i === j ? sill + nugget : sill - gammaSpherical(d, range, sill);
+          }
+          K[i * sz + n] = K[n * sz + i] = 1;
+        }
+        const kVec = new Array(sz).fill(1);
+        for (let i = 0; i < n; i++) {
+          const d = Math.hypot(nbrs[i].x - wx, nbrs[i].y - wy, (nbrs[i].z - wz) * 2);
+          kVec[i] = sill - gammaSpherical(d, range, sill);
+        }
+
+        // Solve KW = k (flat arrays for speed, Gaussian elim)
+        let weights;
+        try {
+          const KRows = Array.from({ length: sz }, (_, r) => Array.from({ length: sz }, (_, c) => K[r * sz + c]));
+          weights = solveLinear(KRows, kVec).slice(0, n);
+        } catch {
+          // Fallback to IDW if kriging system is singular
+          const wSum = nbrs.reduce((s, nb) => s + (1 / (nb.dist + 0.01)), 0);
+          weights = nbrs.map(nb => (1 / (nb.dist + 0.01)) / wSum);
+        }
+
+        // Accumulate indicator for each unit
+        let pSum = 0;
+        for (let u = 0; u < nUnits; u++) {
+          let p = 0;
+          for (let i = 0; i < n; i++) {
+            const ind = nbrs[i].unitCode === unitCodes[u] ? nbrs[i].cert : 0;
+            p += Math.max(0, weights[i]) * ind;
+          }
+          p = Math.max(0, Math.min(1, p));
+          probs[vIdx + u] = p;
+          pSum += p;
+        }
+        // Normalise so probabilities sum to 1
+        if (pSum > 1e-9) {
+          for (let u = 0; u < nUnits; u++) probs[vIdx + u] /= pSum;
+        } else {
+          for (let u = 0; u < nUnits; u++) probs[vIdx + u] = 1 / nUnits;
+        }
+      }
+    }
+    if (onProgress) onProgress(iz / nz);
+  }
+
+  // ── Extract winner + certainty from probability volumes ──────────────────────
+  const unitIds      = new Uint8Array(total);
+  const certainty    = new Float32Array(total);
+  const blendUnitIds = new Uint8Array(total);
+  const blendRatios  = new Float32Array(total);
+
+  const unitIdsMap = {};
+  geoUnits.forEach(u => { unitIdsMap[u.code] = u.id; });
+
+  for (let v = 0; v < total; v++) {
+    const base = v * nUnits;
+    let b1 = 0, b2 = 1;
+    for (let u = 2; u < nUnits; u++) {
+      if      (probs[base + u] > probs[base + b1]) { b2 = b1; b1 = u; }
+      else if (probs[base + u] > probs[base + b2])  b2 = u;
+    }
+    unitIds[v]      = unitIdsMap[unitCodes[b1]] ?? 0;
+    certainty[v]    = Math.max(0.05, probs[base + b1]);
+    blendUnitIds[v] = unitIdsMap[unitCodes[b2]] ?? 0;
+    blendRatios[v]  = probs[base + b2];
+  }
+
+  // ── Build per-unit probability maps (separate Float32Arrays) ─────────────────
+  const probVolumes = new Map();
+  for (let u = 0; u < nUnits; u++) {
+    const vol = new Float32Array(total);
+    for (let v = 0; v < total; v++) vol[v] = probs[v * nUnits + u];
+    probVolumes.set(unitCodes[u], vol);
+  }
+
+  if (onProgress) onProgress(1);
+  log(`Indicator kriging complete — ${nUnits} units · ${total.toLocaleString()} voxels`, 'ok');
+
+  return {
+    nx, ny, nz,
+    cellSize, cellHeight: cellH,
+    origin: { x: ox, y: oz, z: oy },
+    worldWidth: nx * cellSize, worldHeight: nz * cellH, worldDepth: ny * cellSize,
+    unitIds, certainty, blendUnitIds, blendRatios,
+    probVolumes,
+    method: 'indicator-kriging',
+  };
+}
+
 export function voxelIndex(ix, iy, iz, grid) {
   return ix + iy * grid.nx + iz * grid.nx * grid.ny;
 }

@@ -4,7 +4,7 @@ import { initTextInput } from './text-input.js';
 import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel, oracleRefinement, generateReportNarrative, parseGeologicalFeatures, suggestConceptsFromBoreholes } from './claude-client.js';
 import { parseShapesFromClaude, generateShapeBoreholes } from './geo-shapes.js';
 import { exportConfig, importConfig } from './project-config.js';
-import { buildVoxelGrid, buildVoxelGridMonteCarlo } from './interpolator.js';
+import { buildVoxelGrid, buildVoxelGridMonteCarlo, buildIndicatorKriging } from './interpolator.js';
 import { initScene } from './scene.js';
 import { initLayerControls } from './layer-controls.js';
 import { initExporter } from './exporter.js';
@@ -723,6 +723,24 @@ async function loadDemoSite(demoName) {
       log(`Topography loaded — ${data.topography.length} points.`, 'ok');
     }
 
+    // Load pre-encoded geological concepts from demo JSON
+    if (data.concepts?.length) {
+      if (!AppState.conceptStore) AppState.conceptStore = new ConceptStore();
+      AppState.conceptStore.clear();
+      for (const c of data.concepts) {
+        AppState.conceptStore.add({
+          description: c.description,
+          embedding:   new Float32Array(c.embedding),
+          confidence:  c.confidence ?? 0.75,
+          domain:      c.domain ?? { type: 'global' },
+          unitAffinity: c.unitAffinity ?? [],
+        });
+      }
+      log(`Conceptual model: ${data.concepts.length} geological concept(s) loaded.`, 'ok');
+      // Refresh concept panel UI if it's already initialised
+      setTimeout(() => { _renderConceptList?.(); _updateConceptInfluenceBar?.(); }, 50);
+    }
+
     updateLegend();
     updateInfoPanel();
     updateBHTable();
@@ -922,6 +940,11 @@ function initBuildModel() {
         AppState.voxelGrid = await buildVoxelGridMonteCarlo(
           bhForModel, AppState.geoUnits, AppState.cellSizeH,
           { ...gridOptions, nRealisations: AppState.mcRealisations ?? 20, perturbSigmaM: 0.5 }
+        );
+      } else if (AppState.interpMethod === 'indicator-kriging') {
+        AppState.voxelGrid = await buildIndicatorKriging(
+          bhForModel, AppState.geoUnits, AppState.cellSizeH,
+          { ...gridOptions, range: AppState.varRange, sill: AppState.varSill, nugget: AppState.varNugget }
         );
       } else {
         AppState.voxelGrid = await buildVoxelGrid(
