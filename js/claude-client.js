@@ -1179,3 +1179,71 @@ function _demoConceptSuggestions(classifiedBH, geoUnits) {
   }
   return suggestions;
 }
+
+// ── Auto-correlate: merge BH descriptions → recommended unit codes ────────────
+// Returns [{description, currentCode, recommendedCode, reason, confidence}]
+export async function autoCorrelateUnits(classifiedBH, geoUnits, apiKey, demoMode) {
+  const bhs = classifiedBH.filter(b => !b.synthetic);
+  if (!bhs.length || !geoUnits.length) return [];
+
+  // Collect unique descriptions (clipped to first 80 chars for context)
+  const descMap = new Map(); // description → currentCode
+  bhs.forEach(bh => {
+    (bh.layers ?? []).forEach(l => {
+      const d = (l.description ?? '').trim().toLowerCase().slice(0, 80);
+      if (d && !descMap.has(d)) descMap.set(d, l.unitCode ?? '?');
+    });
+  });
+
+  if (!apiKey || demoMode) {
+    // Keyword-based demo heuristic
+    const KEYWORDS = [
+      { re: /clay|silty clay|firm clay|soft clay|stiff clay/i, code: geoUnits.find(u => /clay/i.test(u.name))?.code },
+      { re: /sand|loose sand|medium sand|fine sand/i,          code: geoUnits.find(u => /sand/i.test(u.name))?.code },
+      { re: /gravel|pebbles|cobbles|granular/i,                code: geoUnits.find(u => /gravel/i.test(u.name))?.code },
+      { re: /chalk|limestone|flint|calcareous/i,               code: geoUnits.find(u => /chalk|limestone/i.test(u.name))?.code },
+      { re: /made ground|fill|topsoil|made-ground/i,           code: geoUnits.find(u => /fill|made|topsoil/i.test(u.name))?.code },
+      { re: /mudstone|siltstone|shale/i,                       code: geoUnits.find(u => /mudstone|silt|shale/i.test(u.name))?.code },
+    ].filter(k => k.code);
+
+    return Array.from(descMap.entries()).slice(0, 30).map(([desc, current]) => {
+      const match = KEYWORDS.find(k => k.re.test(desc));
+      if (!match || match.code === current) return null;
+      return {
+        description: desc,
+        currentCode: current,
+        recommendedCode: match.code,
+        reason: `Description matches ${match.re.source} pattern`,
+        confidence: 0.6,
+      };
+    }).filter(Boolean);
+  }
+
+  const unitList = geoUnits.map(u => `${u.code}: ${u.name} — ${u.description ?? ''}`).join('\n');
+  const descList = Array.from(descMap.entries()).slice(0, 60)
+    .map(([d, c]) => `  "${d}" → currently coded: ${c}`)
+    .join('\n');
+
+  const prompt = `You are a geotechnical engineer checking unit classifications.
+
+AVAILABLE GEOLOGICAL UNITS:
+${unitList}
+
+BOREHOLE LAYER DESCRIPTIONS (with current unit code):
+${descList}
+
+For each description, decide if the current unit code is correct or if it should be remapped.
+Return a JSON array of corrections ONLY (omit correctly-classified items):
+[{"description":"...","currentCode":"...","recommendedCode":"...","reason":"...","confidence":0.0–1.0}]
+Return ONLY the JSON array, nothing else.`;
+
+  try {
+    const resp = await _claudeRequest([{ role: 'user', content: prompt }], apiKey, 'claude-haiku-4-5-20251001', 1024);
+    const text = resp.content?.[0]?.text ?? '';
+    const arr  = JSON.parse(text.match(/\[[\s\S]*\]/)?.[0] ?? '[]');
+    return Array.isArray(arr) ? arr.filter(x => x.recommendedCode && x.currentCode !== x.recommendedCode) : [];
+  } catch (e) {
+    console.warn('autoCorrelateUnits error:', e.message);
+    return [];
+  }
+}

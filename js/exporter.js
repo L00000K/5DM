@@ -499,6 +499,88 @@ export function initExporter() {
     log(`BH CSV exported — ${bhs.length} boreholes.`, 'ok');
   });
 
+  // ── Export each borehole as LAS 2.0 (combined into a single text archive) ──────
+  document.getElementById('btn-export-las')?.addEventListener('click', () => {
+    const bhs = AppState.classifiedBH?.filter(b => !b.synthetic);
+    if (!bhs?.length) { log('No borehole data to export.', 'warn'); return; }
+    const unitByCode = {};
+    AppState.geoUnits.forEach(u => { unitByCode[u.code] = u; });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const allParts = [];
+
+    bhs.forEach(bh => {
+      if (!bh.layers?.length) return;
+      const gl     = bh.groundLevel ?? 0;
+      const maxD   = Math.max(...bh.layers.map(l => l.base ?? 0));
+      const STEP   = 0.5; // 0.5m depth samples
+      const nRows  = Math.ceil(maxD / STEP) + 1;
+
+      // Interpolate unit code (as integer index), certainty, and SPT N at each sample
+      const unitIdx = (depth) => {
+        const layer = bh.layers.find(l => depth >= l.top && depth < l.base);
+        if (!layer) return -999.25;
+        const idx = AppState.geoUnits.findIndex(u => u.code === layer.unitCode);
+        return idx >= 0 ? idx + 1 : -999.25;
+      };
+      const certAt = (depth) => {
+        const layer = bh.layers.find(l => depth >= l.top && depth < l.base);
+        return layer?.certainty != null ? layer.certainty.toFixed(3) : '-999.25';
+      };
+      const sptAt = (depth) => {
+        const layer = bh.layers.find(l => depth >= l.top && depth < l.base);
+        return layer?.sptN != null ? layer.sptN.toFixed(1) : '-999.25';
+      };
+
+      let las = `~VERSION INFORMATION\n`;
+      las += ` VERS.                2.0   : LAS Version 2.0\n`;
+      las += ` WRAP.                NO    : One line per depth step\n`;
+      las += `~WELL INFORMATION\n`;
+      las += ` STRT.M               ${(0).toFixed(2)} : Start depth\n`;
+      las += ` STOP.M               ${maxD.toFixed(2)} : Stop depth\n`;
+      las += ` STEP.M               ${STEP.toFixed(2)} : Depth step\n`;
+      las += ` NULL.               -999.25 : Null value\n`;
+      las += ` COMP.                GeoModel AI\n`;
+      las += ` WELL.                ${bh.id}\n`;
+      las += ` FLD.                 SITE\n`;
+      las += ` LOC.                 X:${bh.x?.toFixed(2) ?? 0} Y:${bh.y?.toFixed(2) ?? 0}\n`;
+      las += ` SRVC.                GeoModel AI\n`;
+      las += ` DATE.                ${today}\n`;
+      las += ` API.                 00-000-00000-00\n`;
+      las += `~CURVE INFORMATION\n`;
+      las += ` DEPT.M               : Depth (m below GL)\n`;
+      las += ` ELEV.M               : Elevation (mAOD)\n`;
+      las += ` UNIT.                : Geological unit index (1-based; 0=no data)\n`;
+      las += ` CERT.                : Classification certainty (0–1)\n`;
+      las += ` SPTN.                : SPT N value (blows/300mm)\n`;
+      las += `~PARAMETER INFORMATION\n`;
+      las += ` KB.M                 ${gl.toFixed(2)} : Ground level (mAOD)\n`;
+      las += `# Unit index map:\n`;
+      AppState.geoUnits.forEach((u, i) => {
+        las += `# ${i + 1} = ${u.code} (${u.name})\n`;
+      });
+      las += `~A  DEPT       ELEV       UNIT  CERT     SPTN\n`;
+
+      for (let i = 0; i < nRows; i++) {
+        const depth = i * STEP;
+        const elev  = gl - depth;
+        las += ` ${depth.toFixed(2).padStart(8)}  ${elev.toFixed(2).padStart(8)}  ${String(unitIdx(depth)).padStart(4)}  ${certAt(depth).padStart(6)}  ${sptAt(depth).padStart(8)}\n`;
+      }
+
+      allParts.push({ name: `${bh.id}.las`, content: las });
+    });
+
+    if (!allParts.length) { log('No borehole layers to export.', 'warn'); return; }
+
+    // Combine all LAS files into a single text file with clear separators
+    const combined = allParts.map(p =>
+      `${'='.repeat(60)}\n# FILE: ${p.name}\n${'='.repeat(60)}\n${p.content}`
+    ).join('\n\n');
+
+    downloadBlob(new Blob([combined], { type: 'text/plain' }), `boreholes-las2.txt`);
+    log(`LAS 2.0 exported — ${allParts.length} borehole(s) in combined text file.`, 'ok');
+  });
+
   // ── Export full block model as CSV (Leapfrog / Vulcan / Datamine compatible) ──
   document.getElementById('btn-export-blockmodel')?.addEventListener('click', () => {
     const grid = AppState.voxelGrid;

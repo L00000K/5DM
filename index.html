@@ -1476,6 +1476,7 @@
         <button id="btn-export-surfaces" class="btn-secondary" disabled title="Export the top surface of each geological unit as a 3D OBJ mesh">⬇ Formation Surfaces OBJ</button>
         <button id="btn-export-stl" class="btn-secondary" disabled title="Export formation top surfaces as binary STL — for Plaxis, Abaqus, FreeCAD, Blender">⬇ Formation Surfaces STL</button>
         <button id="btn-export-bh-csv" class="btn-secondary" disabled>⬇ BH Logs CSV</button>
+        <button id="btn-export-las" class="btn-secondary" disabled title="Export each borehole as a LAS 2.0 wireline log file (ZIP archive)">⬇ LAS 2.0</button>
         <button id="btn-export-ags" class="btn-secondary" disabled title="Export classified boreholes in AGS 4.x format (LOCA, GEOL, ISPT groups)">⬇ AGS 4.x</button>
         <div class="settings-divider">GIS / Analysis</div>
         <button id="btn-export-pointcloud" class="btn-secondary" disabled>⬇ Point Cloud CSV</button>
@@ -1546,6 +1547,13 @@
           <button id="btn-reclassify" class="btn-secondary btn-sm">Reclassify</button>
           <span id="reclassify-result" style="font-size:11px;color:var(--text-dim)"></span>
         </div>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
+        <button id="btn-auto-correlate" class="btn-secondary btn-sm" style="width:100%;font-size:10px"
+          title="Use AI to scan layer descriptions and suggest unit code corrections">
+          ✦ Auto-correlate unit descriptions (AI)
+        </button>
+        <div id="auto-correlate-results" style="display:none;margin-top:6px;max-height:180px;overflow-y:auto"></div>
       </div>
       <div class="modal-actions" style="justify-content:space-between;margin-top:10px">
         <button id="btn-add-unit" class="btn-secondary">+ Add Unit</button>

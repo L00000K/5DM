@@ -502,7 +502,7 @@ function initReset() {
     setEnabled('btn-export-pointcloud', false);
     setEnabled('btn-export-stats', false);
     setEnabled('btn-export-blockmodel', false);
-    setEnabled('btn-export-bh-csv', false);
+    setEnabled('btn-export-bh-csv', false); setEnabled('btn-export-las', false);
     setEnabled('btn-export-ags', false);
     setEnabled('btn-export-props', false);
     setEnabled('btn-auto-params', false);
@@ -589,7 +589,7 @@ async function loadDemoSite(demoName) {
     updateBHUnitStats();
     setEnabled('btn-run-ai', true);
     setEnabled('btn-build-model', true);
-    setEnabled('btn-export-bh-csv', true);
+    setEnabled('btn-export-bh-csv', true); setEnabled('btn-export-las', true);
       setEnabled('btn-export-ags', true);
     setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true);
     setEnabled('btn-auto-params', true);
@@ -657,7 +657,7 @@ function initRunAI() {
       );
       AppState.geoUnits = units;
       AppState.classifiedBH = classified;
-      setEnabled('btn-export-bh-csv', true);
+      setEnabled('btn-export-bh-csv', true); setEnabled('btn-export-las', true);
       setEnabled('btn-export-ags', true);
       setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true);
       setEnabled('btn-auto-params', true);
@@ -1038,7 +1038,7 @@ function initProjectConfig() {
       AppState.bhLogView?.draw(AppState.classifiedBH.filter(b => !b.synthetic), AppState.geoUnits);
       setEnabled('btn-run-ai', true);
       setEnabled('btn-build-model', AppState.classifiedBH.length > 0);
-      setEnabled('btn-export-bh-csv', AppState.classifiedBH.length > 0);
+      setEnabled('btn-export-bh-csv', AppState.classifiedBH.length > 0); setEnabled('btn-export-las', AppState.classifiedBH.length > 0);
       setEnabled('btn-export-props', AppState.geoUnits.length > 0); setEnabled('btn-formation-stats', AppState.geoUnits.length > 0);
       setEnabled('btn-auto-params', AppState.geoUnits.length > 0);
       hideWelcome();
@@ -1434,6 +1434,63 @@ function initUnitEditor() {
     log(`Reclassified ${count} layer(s): ${fromCode} → ${toCode}`, count > 0 ? 'ok' : 'warn');
   });
 }
+
+  // Auto-correlate unit descriptions via AI
+  document.getElementById('btn-auto-correlate')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-auto-correlate');
+    const out  = document.getElementById('auto-correlate-results');
+    if (!out) return;
+    if (!AppState.classifiedBH.length) {
+      out.style.display = 'block';
+      out.innerHTML = '<p class="hint" style="color:var(--red);padding:4px">Load classified borehole data first.</p>';
+      return;
+    }
+    btn.disabled = true; btn.textContent = '✦ Analysing…';
+    try {
+      const { autoCorrelateUnits } = await import('./claude-client.js');
+      const corrections = await autoCorrelateUnits(
+        AppState.classifiedBH, AppState.geoUnits,
+        AppState.apiKey, AppState.demoMode
+      );
+      out.style.display = 'block';
+      if (!corrections.length) {
+        out.innerHTML = '<p style="font-size:10px;color:var(--green);padding:4px">✓ All descriptions correctly classified.</p>';
+      } else {
+        out.innerHTML = corrections.map(c => `
+          <div class="corr-row" style="font-size:10px;border:1px solid var(--border);border-radius:4px;padding:5px 7px;margin-bottom:4px;background:var(--bg-deep)">
+            <div style="color:var(--text-mid);margin-bottom:2px;line-height:1.3">"${escHtml(c.description.slice(0, 70))}"</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span style="color:var(--red)">${escHtml(c.currentCode)}</span>
+              <span>→</span>
+              <span style="color:var(--green);font-weight:600">${escHtml(c.recommendedCode)}</span>
+              <span style="color:var(--text-dim);font-size:9px">${escHtml(c.reason ?? '')} (${((c.confidence ?? 0)*100).toFixed(0)}%)</span>
+              <button class="btn-ghost btn-sm" style="font-size:9px;padding:1px 5px;margin-left:auto"
+                onclick="window._applyCorr('${escHtml(c.currentCode)}','${escHtml(c.recommendedCode)}', this)">Apply</button>
+            </div>
+          </div>`).join('');
+      }
+    } catch (e) {
+      out.style.display = 'block';
+      out.innerHTML = `<p style="font-size:10px;color:var(--red);padding:4px">Error: ${escHtml(e.message)}</p>`;
+    } finally {
+      btn.disabled = false; btn.textContent = '✦ Auto-correlate unit descriptions (AI)';
+    }
+  });
+}
+
+window._applyCorr = function(fromCode, toCode, btn) {
+  let count = 0;
+  for (const bh of AppState.classifiedBH) {
+    for (const layer of bh.layers) {
+      if (layer.unitCode === fromCode) { layer.unitCode = toCode; count++; }
+    }
+  }
+  updateLegend(); updateBHTable();
+  renderPropertiesTable(AppState.geoUnits, () => updateLegend());
+  log(`Auto-corr applied: ${fromCode} → ${toCode} (${count} layer(s))`, 'ok');
+  btn.textContent = `✓ Applied (${count})`;
+  btn.disabled = true;
+};
 
 // ── Log sub-tab switcher (BH / CPT / SPT) ────────────────────────────────────
 function initLogSubTabs() {
@@ -1880,7 +1937,7 @@ function initSession() {
     updateStratColumn();
     setEnabled('btn-run-ai', AppState.classifiedBH.length > 0);
     setEnabled('btn-build-model', AppState.classifiedBH.length > 0);
-    setEnabled('btn-export-bh-csv', true);
+    setEnabled('btn-export-bh-csv', true); setEnabled('btn-export-las', true);
       setEnabled('btn-export-ags', true);
     setEnabled('btn-export-props', true); setEnabled('btn-formation-stats', true);
     setEnabled('btn-auto-params', true);
@@ -4186,7 +4243,7 @@ function parseGeoMapFile(file, infoEl) {
     infoEl.innerHTML = `<div class="file-item">
       <span class="file-name">${escHtml(file.name)}</span>
       <span class="file-size">${count} pts</span></div>`;
-    setEnabled('btn-export-bh-csv', true);
+    setEnabled('btn-export-bh-csv', true); setEnabled('btn-export-las', true);
       setEnabled('btn-export-ags', true);
     log(`Geological map: ${count} constraint points added (${skipped} skipped).`, 'ok');
   };
