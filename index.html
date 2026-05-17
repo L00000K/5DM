@@ -1647,6 +1647,37 @@
         <button id="btn-export-geojson-tops" class="btn-secondary" disabled title="Export formation top elevations as GeoJSON FeatureCollection with unit code and depth-to-top attributes">⬇ Formation Tops GeoJSON</button>
         <div class="settings-divider">Unit Properties</div>
         <button id="btn-export-props" class="btn-secondary" disabled>⬇ Unit Properties CSV</button>
+        <div class="settings-divider">Coordinate Tools</div>
+        <p class="hint" style="font-size:10px;margin-bottom:6px">Convert between British National Grid (OSGB36) and WGS84 lat/lon. Accuracy ~1 m using Helmert 7-parameter transformation.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+          <div>
+            <div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">Easting (m BNG)</div>
+            <input type="number" id="crs-easting" class="cell-size-input" placeholder="e.g. 530000" style="width:100%">
+          </div>
+          <div>
+            <div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">Northing (m BNG)</div>
+            <input type="number" id="crs-northing" class="cell-size-input" placeholder="e.g. 180000" style="width:100%">
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+          <div>
+            <div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">Latitude (°N)</div>
+            <input type="number" id="crs-lat" class="cell-size-input" placeholder="e.g. 51.5" step="0.000001" style="width:100%">
+          </div>
+          <div>
+            <div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">Longitude (°E)</div>
+            <input type="number" id="crs-lon" class="cell-size-input" placeholder="e.g. -0.12" step="0.000001" style="width:100%">
+          </div>
+        </div>
+        <div style="display:flex;gap:4px;margin-bottom:4px">
+          <button id="btn-bng-to-wgs84" class="btn-secondary btn-sm" style="flex:1">BNG → WGS84</button>
+          <button id="btn-wgs84-to-bng" class="btn-secondary btn-sm" style="flex:1">WGS84 → BNG</button>
+        </div>
+        <div id="crs-result" style="font-size:10px;color:var(--text-mid);font-family:var(--font-mono);min-height:14px"></div>
+        <div style="margin-top:6px">
+          <div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">OS Grid Reference</div>
+          <input type="text" id="crs-gridref" class="cell-size-input" placeholder="e.g. TQ 30000 80000" style="width:100%;font-family:monospace" readonly>
+        </div>
       </div>
 
     </aside>

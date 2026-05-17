@@ -406,6 +406,42 @@ function _renderVariogram(boreholes) {
   }
 }
 
+// ── Coordinate reference system conversion ────────────────────────────────────
+function initCRSTools() {
+  const bngBtn  = document.getElementById('btn-bng-to-wgs84');
+  const wgsBtn  = document.getElementById('btn-wgs84-to-bng');
+  const result  = document.getElementById('crs-result');
+  const gridRef = document.getElementById('crs-gridref');
+
+  bngBtn?.addEventListener('click', async () => {
+    const E = parseFloat(document.getElementById('crs-easting')?.value ?? 'NaN');
+    const N = parseFloat(document.getElementById('crs-northing')?.value ?? 'NaN');
+    if (!isFinite(E) || !isFinite(N)) { if (result) result.textContent = 'Enter easting and northing.'; return; }
+    const { bngToWGS84, toOSGridRef } = await import('./crs.js');
+    const { lat, lon } = bngToWGS84(E, N);
+    if (result) result.textContent = `Lat: ${lat.toFixed(6)}°N  Lon: ${lon.toFixed(6)}°E`;
+    const latEl = document.getElementById('crs-lat');
+    const lonEl = document.getElementById('crs-lon');
+    if (latEl) latEl.value = lat.toFixed(6);
+    if (lonEl) lonEl.value = lon.toFixed(6);
+    if (gridRef) gridRef.value = toOSGridRef(E, N);
+  });
+
+  wgsBtn?.addEventListener('click', async () => {
+    const lat = parseFloat(document.getElementById('crs-lat')?.value ?? 'NaN');
+    const lon = parseFloat(document.getElementById('crs-lon')?.value ?? 'NaN');
+    if (!isFinite(lat) || !isFinite(lon)) { if (result) result.textContent = 'Enter latitude and longitude.'; return; }
+    const { wgs84ToBNG, toOSGridRef } = await import('./crs.js');
+    const { E, N } = wgs84ToBNG(lat, lon);
+    if (result) result.textContent = `E: ${E.toFixed(1)} m  N: ${N.toFixed(1)} m`;
+    const eEl = document.getElementById('crs-easting');
+    const nEl = document.getElementById('crs-northing');
+    if (eEl) eEl.value = E.toFixed(0);
+    if (nEl) nEl.value = N.toFixed(0);
+    if (gridRef) gridRef.value = toOSGridRef(E, N);
+  });
+}
+
 // ── Variogram manual controls ────────────────────────────────────────────────
 function initVariogramControls() {
   document.getElementById('btn-var-apply')?.addEventListener('click', () => {
@@ -5041,6 +5077,7 @@ async function init() {
   initGradeShell();
   initCrossPlot();
   initVariogramControls();
+  initCRSTools();
   initSession();
   initProjectConfig();
   initInterpretGeology();
