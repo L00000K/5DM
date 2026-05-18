@@ -670,6 +670,15 @@
           <div id="concept-coherence-output" style="display:none;margin-top:6px"></div>
         </div>
 
+        <!-- Bayesian concept confidence calibration from BH evidence -->
+        <div style="margin-top:4px">
+          <button class="btn btn-ghost" style="font-size:10px;width:100%" onclick="_calibrateConceptConfidences()"
+            title="Use borehole prediction accuracy to Bayesian-update each concept's confidence. Concepts that helped correct predictions get higher confidence; concepts that hurt predictions get lower confidence.">
+            ◈ Bayesian confidence calibration
+          </button>
+          <div id="concept-calib-output" style="display:none;margin-top:6px"></div>
+        </div>
+
         <!-- Concept contribution report — per-concept ablation vs BH accuracy -->
         <div style="margin-top:4px">
           <button class="btn btn-ghost" style="font-size:10px;width:100%" onclick="_runConceptContributionReport()"

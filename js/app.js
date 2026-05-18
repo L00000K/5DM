@@ -10240,6 +10240,145 @@ function _bhAccuracyVsGrid(unitIds, grid) {
   return count > 0 ? correct / count : null;
 }
 
+// ── Bayesian Concept Confidence Calibration ───────────────────────────────────
+// After building, computes for each concept how strongly its semantic influence
+// correlates with correct vs incorrect predictions at real boreholes.
+//
+// Likelihood model (per concept c):
+//   - For each BH observation, get concept relevance r_c at that (x,y,z)
+//   - If model CORRECT:   positive_signal += r_c × certainty
+//   - If model INCORRECT: negative_signal += r_c × certainty
+// Bayesian update:
+//   log_odds_update = alpha × (positive_signal - negative_signal) / total_signal
+//   new_conf = sigmoid(logit(prior_conf) + log_odds_update)
+// This makes concept confidence track BH evidence without dramatic swings.
+//
+// Returns [{conceptId, priorConf, posteriorConf, delta, posSignal, negSignal, bhCount}]
+window._calibrateConceptConfidences = function(applyUpdates = false) {
+  const store = AppState.conceptStore;
+  const grid  = AppState.voxelGrid;
+  const bhs   = (AppState.classifiedBH ?? []).filter(b => !b.synthetic && b.layers?.length >= 1);
+  const el    = document.getElementById('concept-calib-output');
+
+  if (!store || store.isEmpty || !grid?.unitIds || !bhs.length) {
+    if (el) { el.style.display = 'block'; el.innerHTML = '<p class="hint" style="font-size:10px">Requires: built model + active concepts + real boreholes.</p>'; }
+    return;
+  }
+
+  const unitById  = {};
+  AppState.geoUnits.forEach(u => { unitById[u.id] = u; });
+
+  const ALPHA     = 1.2;  // update step strength
+  const MIN_CONF  = 0.15;
+  const MAX_CONF  = 0.97;
+
+  const logit   = p => Math.log(Math.max(1e-6, p) / Math.max(1e-6, 1 - p));
+  const sigmoid = x => 1 / (1 + Math.exp(-x));
+
+  const results = store.concepts.map(concept => {
+    let posSignal = 0, negSignal = 0, totalSignal = 0;
+    let bhCount = 0;
+
+    for (const bh of bhs) {
+      if (!isFinite(bh.x) || !isFinite(bh.y)) continue;
+      const ix = Math.max(0, Math.min(grid.nx - 1, Math.round((bh.x - grid.origin.x) / grid.cellSize - 0.5)));
+      const iy = Math.max(0, Math.min(grid.ny - 1, Math.round((bh.y - grid.origin.z) / grid.cellSize - 0.5)));
+
+      for (const layer of bh.layers) {
+        if (!layer.unitCode) continue;
+        const elev = (bh.groundLevel ?? 0) - ((layer.top ?? 0) + (layer.base ?? 0)) / 2;
+        const iz   = Math.max(0, Math.min(grid.nz - 1, Math.round((elev - grid.origin.y) / grid.cellHeight - 0.5)));
+        const flat = ix + iy * grid.nx + iz * grid.nx * grid.ny;
+        if (flat < 0 || flat >= grid.unitIds.length) continue;
+
+        // Concept relevance at this BH sample
+        const rel = store._relevance(concept, bh.x, bh.y, elev);
+        if (rel < 0.05) continue; // concept not active here
+
+        const cert    = grid.certainty ? grid.certainty[flat] : 0.5;
+        const predId  = grid.unitIds[flat];
+        const pred    = unitById[predId];
+        const correct = pred?.code === layer.unitCode;
+
+        const weight = rel * cert;
+        if (correct)  posSignal += weight;
+        else          negSignal += weight;
+        totalSignal  += weight;
+        bhCount++;
+      }
+    }
+
+    if (totalSignal < 0.1) {
+      // Not enough signal to update — concept has no spatial overlap with BH data
+      return { conceptId: concept.id, description: concept.description,
+               priorConf: concept.confidence, posteriorConf: concept.confidence,
+               delta: 0, posSignal, negSignal, bhCount, hasSignal: false };
+    }
+
+    const logOddsUpdate = ALPHA * (posSignal - negSignal) / totalSignal;
+    const posteriorConf = Math.max(MIN_CONF, Math.min(MAX_CONF, sigmoid(logit(concept.confidence) + logOddsUpdate)));
+    const delta = posteriorConf - concept.confidence;
+
+    return { conceptId: concept.id, description: concept.description,
+             priorConf: concept.confidence, posteriorConf, delta,
+             posSignal: +posSignal.toFixed(3), negSignal: +negSignal.toFixed(3),
+             bhCount, hasSignal: true };
+  });
+
+  if (applyUpdates) {
+    for (const r of results) {
+      if (!r.hasSignal) continue;
+      const c = store.concepts.find(c => c.id === r.conceptId);
+      if (c) c.confidence = r.posteriorConf;
+    }
+    _renderConceptList();
+    _updateConceptInfluenceBar();
+    _saveConceptStore();
+    log(`Bayesian calibration: ${results.filter(r => r.hasSignal).length} concept(s) updated`, 'ok');
+  }
+
+  // Render results
+  if (el) {
+    const signalResults = results.filter(r => r.hasSignal);
+    if (!signalResults.length) {
+      el.style.display = 'block';
+      el.innerHTML = '<p class="hint" style="font-size:10px">Concepts have no spatial overlap with borehole locations — no calibration signal available. Add spatially bounded domain concepts to get meaningful calibration.</p>';
+      return;
+    }
+
+    const rows = results.map(r => {
+      const col  = r.delta > 0.03 ? 'var(--accent)' : r.delta < -0.03 ? 'var(--red)' : 'var(--text-mid)';
+      const sign = r.delta >= 0 ? '+' : '';
+      const bar  = r.hasSignal
+        ? `<div style="display:flex;gap:2px;height:5px;margin:2px 0">
+             <div style="flex:${r.posSignal.toFixed(2)};background:#5ab97d;border-radius:1px" title="Positive signal (helped BH predictions)"></div>
+             <div style="flex:${r.negSignal.toFixed(2)};background:#e06c75;border-radius:1px" title="Negative signal (hurt BH predictions)"></div>
+           </div>` : '';
+      return `<div style="padding:4px 5px;border:1px solid var(--border);border-radius:4px;margin-bottom:3px;font-size:10px">
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="flex:1;color:var(--text-mid);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.description)}">${escHtml(r.description.slice(0, 40))}</span>
+          <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim)">${(r.priorConf * 100).toFixed(0)}%→</span>
+          <span style="font-family:var(--font-mono);font-size:9px;color:${col}">${(r.posteriorConf * 100).toFixed(0)}%</span>
+          <span style="font-size:9px;color:${col}">(${sign}${(r.delta * 100).toFixed(0)}%)</span>
+        </div>
+        ${bar}
+        ${r.hasSignal ? `<div style="font-size:8.5px;color:var(--text-dim)">${r.bhCount} BH points · +${r.posSignal} / -${r.negSignal}</div>` : '<div style="font-size:8.5px;color:var(--text-dim)">No spatial overlap with BH data</div>'}
+      </div>`;
+    }).join('');
+
+    el.style.display = 'block';
+    el.innerHTML = `<div style="font-size:10px;font-weight:600;color:var(--text-mid);margin-bottom:5px">Bayesian confidence updates</div>
+      ${rows}
+      <button id="btn-apply-calib" class="btn btn-secondary btn-sm" style="width:100%;margin-top:5px;font-size:10px">Apply updates to concept confidences</button>`;
+
+    document.getElementById('btn-apply-calib')?.addEventListener('click', () => {
+      window._calibrateConceptConfidences(true);
+      const btn = document.getElementById('btn-apply-calib');
+      if (btn) { btn.disabled = true; btn.textContent = '✓ Applied'; }
+    });
+  }
+};
+
 window._runConceptContributionReport = async function() {
   const el    = document.getElementById('concept-contrib-output');
   const grid  = AppState.voxelGrid;
