@@ -177,6 +177,7 @@ export class FenceSection {
     const showUnc      = document.getElementById('fence-show-uncertainty')?.checked ?? false;
     const showCov      = document.getElementById('fence-show-coverage')?.checked ?? false;
     const showPatterns = document.getElementById('fence-show-patterns')?.checked ?? false;
+    const showRibbons  = document.getElementById('fence-show-ribbons')?.checked ?? false;
 
     const { grid, geoUnits, normal, centerD, thickness, boreholes } = args;
     const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty, blendRatios } = grid;
@@ -395,6 +396,103 @@ export class FenceSection {
           }
         }
       }
+    }
+
+    // ── P10–P90 probability contact ribbons (MC uncertainty) ─────────────────
+    // For each unit with a probability volume, draw a shaded ribbon between the
+    // P10 and P90 positions of its top contact along the section.
+    if (showRibbons && grid.probVolumes?.size > 0) {
+      const probVolumes = grid.probVolumes;
+
+      for (const unit of geoUnits) {
+        const probVol = probVolumes.get(unit.code);
+        if (!probVol) continue;
+
+        // Collect P10 and P90 top contact positions per section column
+        const p10Y = new Float32Array(N_COLS).fill(NaN);
+        const p90Y = new Float32Array(N_COLS).fill(NaN);
+
+        for (let ci = 0; ci < N_COLS; ci++) {
+          const t  = (ci / (N_COLS - 1)) - 0.5;
+          const wx = sx0 + along.x * t * worldW;
+          const wz = sz0 + along.z * t * worldW;
+          const ix = Math.floor((wx - O.x) / cs);
+          const iy = Math.floor((wz - O.z) / cs);
+          if (ix < 0 || ix >= nx || iy < 0 || iy >= ny) continue;
+
+          let topP10 = -1, topP90 = -1;
+          // Scan top→bottom; find highest iz where P >= threshold
+          for (let iz = nz - 1; iz >= 0; iz--) {
+            const p = probVol[ix + iy * nx + iz * nx * ny];
+            if (topP10 < 0 && p >= 0.10) topP10 = iz;
+            if (topP90 < 0 && p >= 0.90) topP90 = iz;
+            if (topP10 >= 0 && topP90 >= 0) break;
+          }
+
+          if (topP10 >= 0) {
+            p10Y[ci] = PAD_T + drawH - ((topP10 * ch + ch) / worldH) * drawH;
+          }
+          if (topP90 >= 0) {
+            p90Y[ci] = PAD_T + drawH - ((topP90 * ch + ch) / worldH) * drawH;
+          }
+        }
+
+        // Draw ribbon: filled polygon from P10 top line to P90 top line
+        const validCols = [];
+        for (let ci = 0; ci < N_COLS; ci++) {
+          if (!isNaN(p10Y[ci]) && !isNaN(p90Y[ci])) validCols.push(ci);
+        }
+        if (validCols.length < 2) continue;
+
+        // Split into contiguous runs
+        let runStart = validCols[0];
+        for (let k = 0; k <= validCols.length; k++) {
+          const ci  = validCols[k];
+          const end = k > 0 && (ci === undefined || ci !== validCols[k - 1] + 1);
+          if (end) {
+            const runEnd = validCols[k - 1];
+            if (runEnd > runStart + 1) {
+              ctx.beginPath();
+              // Top edge: P10 (shallower, wider uncertainty)
+              ctx.moveTo(PAD_L + runStart * colPx, p10Y[runStart]);
+              for (let ci2 = runStart + 1; ci2 <= runEnd; ci2++) {
+                ctx.lineTo(PAD_L + ci2 * colPx, p10Y[ci2]);
+              }
+              // Bottom edge: P90 (deeper, inside the unit)
+              for (let ci2 = runEnd; ci2 >= runStart; ci2--) {
+                ctx.lineTo(PAD_L + ci2 * colPx, p90Y[ci2]);
+              }
+              ctx.closePath();
+              ctx.globalAlpha = 0.28;
+              ctx.fillStyle = unit.color;
+              ctx.fill();
+              // P50 contact line: solid mid-tone
+              ctx.beginPath();
+              ctx.moveTo(PAD_L + runStart * colPx, p90Y[runStart]);
+              for (let ci2 = runStart + 1; ci2 <= runEnd; ci2++) {
+                ctx.lineTo(PAD_L + ci2 * colPx, p90Y[ci2]);
+              }
+              ctx.globalAlpha = 0.65;
+              ctx.strokeStyle = unit.color;
+              ctx.lineWidth = 1.2;
+              ctx.stroke();
+            }
+            runStart = ci;
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // Add ribbon legend
+      const ribY = PAD_T + drawH - 12;
+      ctx.globalAlpha = 0.45;
+      ctx.fillStyle = '#7090a0';
+      ctx.fillRect(PAD_L + 4, ribY - 4, 18, 8);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#4a6275';
+      ctx.font = '8px Inter, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('P10–P90 contact ribbon', PAD_L + 26, ribY + 2);
     }
 
     // ── BH ticks with SPT N-value bars ───────────────────────────────────
