@@ -11154,3 +11154,168 @@ window._generateCrossSection = function() {
 
   log(`Cross-section: Az${azimuth}° · ${nCols}×${nRows}px · ${bhIntersections.length} BH(s) · ${annotLines.length} concept annotation(s)`, 'ok');
 };
+
+// Unit Concept Signature Analysis — neural field back-projection into concept embedding space.
+// For each geological unit, computes the mean concept context at its dominant voxels vs
+// non-dominant voxels. The signed difference is the unit's "concept signature":
+// the learned association between concept axes and geological unit geometry.
+window._analyseUnitConceptSignatures = async function() {
+  const el    = document.getElementById('unit-concept-sig-output');
+  const grid  = AppState.voxelGrid;
+  const store = AppState.conceptStore;
+  if (!el) return;
+  el.style.display = 'block';
+
+  if (!grid) {
+    el.innerHTML = '<div style="font-size:10px;color:#e06c75">Build the model first.</div>';
+    return;
+  }
+  if (!store || store.isEmpty) {
+    el.innerHTML = '<div style="font-size:10px;color:#e06c75">Add concepts first — signatures require concept context vectors.</div>';
+    return;
+  }
+
+  el.innerHTML = '<div style="font-size:10px;color:var(--text-mid)">Computing concept signatures…</div>';
+  await new Promise(r => setTimeout(r, 0));
+
+  const geoUnits = AppState.geoUnits;
+  const { nx, ny, nz, cellSize, cellHeight, origin, unitIds, certainty } = grid;
+  const nVox = unitIds.length;
+
+  // Build unitId → index map
+  const unitIdxMap = {};
+  geoUnits.forEach((u, i) => { unitIdxMap[u.id] = i; });
+  const nUnits = geoUnits.length;
+
+  // Accumulators: per unit — sum of concept vec weighted by (certainty - 0.5)
+  const sumVecs    = geoUnits.map(() => new Float32Array(32));
+  const totalW     = new Float32Array(nUnits);
+  // Global mean (all voxels)
+  const globalSum  = new Float32Array(32);
+  let   globalW    = 0;
+
+  // Sample every STEP-th voxel to keep computation fast
+  const STEP = Math.max(1, Math.floor(nVox / 1000));
+
+  for (let flat = 0; flat < nVox; flat += STEP) {
+    const uid  = unitIds[flat];
+    const cert = certainty?.[flat] ?? 0.5;
+    if (cert < 0.52) continue;  // skip near-random predictions
+
+    const ui = unitIdxMap[uid];
+    if (ui === undefined) continue;
+
+    const iz  = Math.floor(flat / (nx * ny));
+    const rem = flat % (nx * ny);
+    const iy  = Math.floor(rem / nx);
+    const ix  = rem % nx;
+    const wx  = origin[0] + (ix + 0.5) * cellSize;
+    const wy  = origin[1] + (iy + 0.5) * cellSize;
+    const wz  = origin[2] + (iz + 0.5) * cellHeight;
+
+    const ctx = store.computeAt(wx, wy, wz);
+    if (!ctx?.vec) continue;
+
+    const w = cert - 0.5;
+    for (let i = 0; i < 32; i++) {
+      sumVecs[ui][i] += ctx.vec[i] * w;
+      globalSum[i]   += ctx.vec[i] * w;
+    }
+    totalW[ui] += w;
+    globalW    += w;
+  }
+
+  // Normalise to get mean vectors
+  const meanVecs = geoUnits.map((_, ui) => {
+    const v = new Float32Array(32);
+    if (totalW[ui] > 0) for (let i = 0; i < 32; i++) v[i] = sumVecs[ui][i] / totalW[ui];
+    return v;
+  });
+  const globalMean = new Float32Array(32);
+  if (globalW > 0) for (let i = 0; i < 32; i++) globalMean[i] = globalSum[i] / globalW;
+
+  // Signature = mean_unit - global_mean: deviation from background concept context
+  const signatures = geoUnits.map((_, ui) => {
+    const sig = new Float32Array(32);
+    for (let i = 0; i < 32; i++) sig[i] = meanVecs[ui][i] - globalMean[i];
+    return sig;
+  });
+
+  // Render one card per unit
+  const cards = geoUnits.map((unit, ui) => {
+    const sig = signatures[ui];
+    const nSamples = Math.round(totalW[ui] / (1 / (nVox / STEP)));  // approx voxel count
+    const coverage  = totalW[ui] > 0;
+    if (!coverage) return `<div style="padding:5px;background:var(--bg-surface);border-radius:4px;margin-bottom:4px;border-left:3px solid var(--border)">
+      <div style="font-size:9.5px;font-weight:600;color:var(--text-mid)">${escHtml(unit.code)} — ${escHtml(unit.name)}</div>
+      <div style="font-size:9px;color:var(--text-dim)">No high-certainty voxels sampled.</div>
+    </div>`;
+
+    // Top positive and negative discriminating axes
+    const ranked = Array.from(sig).map((v, i) => ({ i, v, name: CONCEPT_AXES[i] }))
+      .filter(x => Math.abs(x.v) > 0.02)
+      .sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
+    const topPos = ranked.filter(x => x.v > 0).slice(0, 3);
+    const topNeg = ranked.filter(x => x.v < 0).slice(0, 2);
+
+    // Sparkline bars (signature deviation, ±0.5 scale)
+    const bars = Array.from(sig).map((v, i) => {
+      const pct = Math.min(100, Math.round(Math.abs(v) / 0.5 * 100));
+      const col = v > 0 ? '#5ab97d' : '#e06c75';
+      return `<div style="width:3px;height:${pct}%;background:${col};border-radius:1px 1px 0 0;align-self:flex-end" title="${CONCEPT_AXES[i]}: ${v > 0 ? '+' : ''}${v.toFixed(2)}"></div>`;
+    }).join('');
+
+    const posHtml = topPos.map(x =>
+      `<span style="color:#5ab97d">+${x.name.replace(/_/g, ' ')} (${x.v.toFixed(2)})</span>`
+    ).join(', ');
+    const negHtml = topNeg.map(x =>
+      `<span style="color:#e06c75">−${x.name.replace(/_/g, ' ')} (${x.v.toFixed(2)})</span>`
+    ).join(', ');
+
+    const addEmbedding = JSON.stringify(Array.from(meanVecs[ui]).map(v => +v.toFixed(3)));
+
+    return `<div style="padding:5px;background:var(--bg-surface);border-radius:4px;margin-bottom:5px;border-left:3px solid ${unit.color ?? '#888'}">
+      <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+        <div style="width:10px;height:10px;background:${unit.color ?? '#888'};border-radius:2px;flex-shrink:0"></div>
+        <span style="font-size:9.5px;font-weight:600;color:var(--text)">${escHtml(unit.code)}</span>
+        <span style="font-size:9px;color:var(--text-dim);flex:1">${escHtml(unit.name)}</span>
+        <button onclick="_addSignatureAsConcept('${escHtml(unit.code)}', '${escHtml(unit.name)}', ${escHtml(addEmbedding)})"
+          style="font-size:8px;padding:1px 5px;border-radius:3px;cursor:pointer;border:1px solid var(--accent);color:var(--accent);background:transparent">+ Add</button>
+      </div>
+      <div style="display:flex;align-items:flex-end;height:24px;gap:0.5px;margin-bottom:3px">${bars}</div>
+      <div style="font-size:9px;color:var(--text-mid);line-height:1.4">
+        ${posHtml}${posHtml && negHtml ? ' · ' : ''}${negHtml}
+      </div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:6px">
+      Unit concept signatures — deviation from site-wide mean
+    </div>
+    ${cards}
+    <div style="font-size:9px;color:var(--text-dim);margin-top:4px;font-style:italic">
+      Bars show how far each axis deviates from site average at high-certainty voxels of each unit.
+      Green = axis elevated vs background · Red = axis suppressed. Click "Add" to encode as a concept.
+    </div>`;
+
+  log(`Unit concept signatures: ${geoUnits.length} units analysed`, 'ok');
+};
+
+// Helper: add a unit's concept signature as a new concept in the store
+window._addSignatureAsConcept = function(unitCode, unitName, embArray) {
+  const store = AppState.conceptStore;
+  if (!store) return;
+  const emb = new Float32Array(embArray);
+  store.add({
+    description: `Inferred concept signature for ${unitCode} — ${unitName}`,
+    embedding: emb,
+    confidence: 0.65,
+    domain: { type: 'global' },
+    unitAffinity: [unitCode],
+  });
+  _renderConceptList?.();
+  _updateConceptInfluenceBar?.();
+  _saveConceptStore?.();
+  log(`Concept signature for "${unitCode}" added to store`, 'ok');
+};

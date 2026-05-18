@@ -1747,6 +1747,15 @@
       </div>
 
       <div class="panel-section">
+        <h3>Unit Concept Signature</h3>
+        <p class="hint" style="font-size:10px;margin-bottom:6px">For each geological unit, computes which concept axes most strongly characterise its spatial distribution in the trained model — the model's learned concept-to-unit association. Closes the loop: neural field → concept embedding space.</p>
+        <button onclick="_analyseUnitConceptSignatures()" class="btn-secondary btn-sm" style="width:100%;margin-bottom:4px">
+          ✦ Analyse Unit Concept Signatures
+        </button>
+        <div id="unit-concept-sig-output" style="display:none;margin-top:4px;font-size:10px"></div>
+      </div>
+
+      <div class="panel-section">
         <h3>Sequence Stratigraphy</h3>
         <p class="hint" style="font-size:10px;margin-bottom:6px">Identifies geological sequence boundaries where temporally ordered concepts predict unit transitions. Derived from concept temporal ordering and model voxel contacts.</p>
         <button id="btn-seq-surfaces" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:4px" title="Identify geological sequence surfaces from concept temporal ordering + model unit contacts">⊟ Identify Sequence Surfaces</button>
