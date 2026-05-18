@@ -4,7 +4,7 @@ import { initTextInput } from './text-input.js';
 import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel, oracleRefinement, generateReportNarrative, parseGeologicalFeatures, suggestConceptsFromBoreholes } from './claude-client.js';
 import { parseShapesFromClaude, generateShapeBoreholes } from './geo-shapes.js';
 import { exportConfig, importConfig } from './project-config.js';
-import { buildVoxelGrid, buildVoxelGridMonteCarlo, buildIndicatorKriging, detectAndCorrectInversions, buildParamVolumes } from './interpolator.js';
+import { buildVoxelGrid, buildVoxelGridMonteCarlo, buildIndicatorKriging, detectAndCorrectInversions, buildParamVolumes, detectPinchouts } from './interpolator.js';
 import { inferGeoImplicit } from './geo-implicit.js';
 import { initScene } from './scene.js';
 import { initLayerControls } from './layer-controls.js';
@@ -4687,6 +4687,39 @@ function initRiskAssessment() {
       if (btn) btn.textContent = '⊛ Analyse Unit Similarity';
       setEnabled('btn-unit-similarity', true);
     }
+  });
+
+  document.getElementById('btn-detect-pinchouts')?.addEventListener('click', () => {
+    const resEl = document.getElementById('pinchout-results');
+    if (!resEl) return;
+    if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
+    let pinchMap;
+    try {
+      pinchMap = detectPinchouts(AppState.voxelGrid, AppState.geoUnits);
+    } catch (e) { log(`Pinch-out detection failed: ${e.message}`, 'error'); return; }
+
+    if (!pinchMap.size) {
+      resEl.style.display = 'block';
+      resEl.innerHTML = '<em style="color:#aaa">No pinch-outs detected — all units span the full model extent.</em>';
+      return;
+    }
+
+    const rows = [];
+    for (const [code, info] of pinchMap.entries()) {
+      const pct = (info.coverageFraction * 100).toFixed(1);
+      const edgeCount = info.pinchoutEdges.length;
+      const unit = AppState.geoUnits.find(u => u.code === code);
+      const col = unit?.color ?? '#888';
+      rows.push(`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+        <span style="width:10px;height:10px;border-radius:2px;background:${col};flex-shrink:0"></span>
+        <span style="flex:1"><strong>${code}</strong></span>
+        <span style="color:#ccc">${pct}% coverage</span>
+        <span style="color:#f5a623">${edgeCount} edge col${edgeCount !== 1 ? 's' : ''}</span>
+      </div>`);
+    }
+    resEl.style.display = 'block';
+    resEl.innerHTML = `<div style="margin-bottom:6px;color:#aaa">${pinchMap.size} unit${pinchMap.size !== 1 ? 's' : ''} with lateral terminations:</div>${rows.join('')}`;
+    log(`Pinch-out detection: ${pinchMap.size} units with lateral terminations`, 'info');
   });
 
   document.getElementById('btn-assess-risk')?.addEventListener('click', () => {

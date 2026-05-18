@@ -1620,6 +1620,68 @@ function _idw3D(obs, nx, ny, nz, ox, oy, oz, cs, ch, k, power) {
   return vol;
 }
 
+// ── Formation pinch-out / wedge-out detection ─────────────────────────────────
+// For each geological unit, finds columns where the unit is present and adjacent
+// to columns where it is absent (zero thickness). These edges are "pinch-outs" —
+// where the formation wedges out laterally.
+// Returns Map<unitCode, { pinchoutEdges: [{ix, iy, wx, wy}], presentCols, totalCols }>
+export function detectPinchouts(grid, geoUnits) {
+  if (!grid || !geoUnits?.length) return new Map();
+  const { nx, ny, nz, cellSize: cs, origin, unitIds } = grid;
+  if (!unitIds) return new Map();
+  const n2 = nx * ny;
+  const result = new Map();
+
+  for (const unit of geoUnits) {
+    // Build presence map: present[ix + iy*nx] = true if unit exists in column
+    const present = new Uint8Array(n2);
+    let presentCount = 0;
+    for (let iy = 0; iy < ny; iy++) {
+      for (let ix = 0; ix < nx; ix++) {
+        for (let iz = 0; iz < nz; iz++) {
+          if (unitIds[ix + iy * nx + iz * n2] === unit.id) {
+            present[ix + iy * nx] = 1;
+            presentCount++;
+            break;
+          }
+        }
+      }
+    }
+    if (!presentCount) continue;
+
+    // Find present columns adjacent to absent columns (4-connectivity)
+    const edges = [];
+    const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (let iy = 0; iy < ny; iy++) {
+      for (let ix = 0; ix < nx; ix++) {
+        if (!present[ix + iy * nx]) continue;
+        for (const [dix, diy] of DIRS) {
+          const nx2 = ix + dix, ny2 = iy + diy;
+          if (nx2 < 0 || nx2 >= nx || ny2 < 0 || ny2 >= ny) continue;
+          if (!present[nx2 + ny2 * nx]) {
+            edges.push({
+              ix, iy,
+              wx: origin.x + (ix + 0.5) * cs,
+              wy: origin.z + (iy + 0.5) * cs,
+            });
+            break; // one edge per column is enough
+          }
+        }
+      }
+    }
+
+    if (edges.length) {
+      result.set(unit.code, {
+        pinchoutEdges: edges,
+        presentCols: presentCount,
+        totalCols: n2,
+        coverageFraction: presentCount / n2,
+      });
+    }
+  }
+  return result;
+}
+
 export function voxelIndex(ix, iy, iz, grid) {
   return ix + iy * grid.nx + iz * grid.nx * grid.ny;
 }
