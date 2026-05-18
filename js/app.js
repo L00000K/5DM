@@ -5542,74 +5542,133 @@ async function init() {
 
   // Plan view click: show concept-based stratigraphic prediction popup
   window.addEventListener('planview:click', e => {
-    const d = e.detail;
-    if (!d || !AppState.conceptStore || AppState.conceptStore.isEmpty) return;
+    const d        = e.detail;
     const store    = AppState.conceptStore;
     const geoUnits = AppState.geoUnits;
-    if (!geoUnits.length) return;
+    const grid     = AppState.voxelGrid;
+    if (!d || !geoUnits.length) return;
+    // Show popup if we have a grid OR active concepts
+    if (!grid && (!store || store.isEmpty)) return;
 
-    // Compute concept context at clicked position + a range of depths
-    const depth_range = AppState.voxelGrid
-      ? { min: AppState.voxelGrid.origin.y, max: AppState.voxelGrid.origin.y + AppState.voxelGrid.nz * AppState.voxelGrid.cellHeight }
-      : { min: d.elev - 20, max: d.elev + 5 };
-
-    // Sample 6 depths: from deepest to shallowest
-    const nLevels = 6;
-    const predictions = [];
-    for (let i = 0; i < nLevels; i++) {
-      const wz = depth_range.min + (i / (nLevels - 1)) * (depth_range.max - depth_range.min);
-      const ctx = store.computeAt(d.worldX, d.worldY, wz);
-      if (ctx.totalWeight < 0.05) continue;
-      // Find most likely unit based on unitAffinity of dominant concept
-      const topConcept = store.concepts.find(c => c.id === ctx.weights[0]?.id);
-      const affinityUnits = topConcept?.unitAffinity?.length ? topConcept.unitAffinity : null;
-      const dominantUnit  = affinityUnits
-        ? geoUnits.find(u => affinityUnits.includes(u.code)) ?? geoUnits[0]
-        : null;
-      predictions.push({
-        z: wz,
-        totalWeight: ctx.totalWeight,
-        dominantUnit,
-        topConceptDesc: topConcept?.description?.slice(0, 30) ?? '—',
-        axEW:  (ctx.vec[3] ?? 0).toFixed(2),
-        axNS:  (ctx.vec[4] ?? 0).toFixed(2),
-        axCh:  (ctx.vec[5] ?? 0).toFixed(2),
-      });
+    // ── Extract vertical column from the built grid ──────────────────────────
+    let column = null;
+    if (grid) {
+      const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O,
+              unitIds, certainty, conceptInfluence, coverageDensity } = grid;
+      const ix = Math.round((d.worldX - O.x) / cs - 0.5);
+      const iy = Math.round((d.worldY - O.z) / cs - 0.5);
+      if (ix >= 0 && ix < nx && iy >= 0 && iy < ny) {
+        column = [];
+        for (let iz = nz - 1; iz >= 0; iz--) { // top-down
+          const idx  = ix + iy * nx + iz * nx * ny;
+          const uid  = unitIds[idx];
+          const unit = geoUnits.find(u => u.id === uid);
+          const elev = O.y + iz * ch + ch * 0.5;
+          const ctx  = store ? store.computeAt(d.worldX, d.worldY, elev) : null;
+          column.push({
+            elev,
+            unit,
+            cert:    certainty?.[idx] ?? 0,
+            ci:      conceptInfluence?.[idx] ?? 0,
+            cov:     coverageDensity?.[idx] ?? 0,
+            topConceptDesc: ctx?.weights?.[0] ? store.concepts.find(c => c.id === ctx.weights[0].id)?.description?.slice(0, 28) : null,
+          });
+        }
+      }
     }
 
-    // Build a small popup element
-    let existing = document.getElementById('plan-concept-popup');
-    if (!existing) {
-      existing = document.createElement('div');
-      existing.id = 'plan-concept-popup';
-      existing.style.cssText = `
-        position:fixed;z-index:9999;background:var(--bg-panel);border:1px solid var(--border);
+    // ── Concept-only predictions if no grid ──────────────────────────────────
+    let conceptRows = [];
+    if (!column && store && !store.isEmpty) {
+      const DR = { min: d.elev - 20, max: d.elev + 5 };
+      for (let i = 0; i < 6; i++) {
+        const wz  = DR.min + (i / 5) * (DR.max - DR.min);
+        const ctx = store.computeAt(d.worldX, d.worldY, wz);
+        if (ctx.totalWeight < 0.05) continue;
+        const tc   = store.concepts.find(c => c.id === ctx.weights[0]?.id);
+        const affU = tc?.unitAffinity?.length ? geoUnits.find(u => tc.unitAffinity.includes(u.code)) : null;
+        conceptRows.push({ z: wz, totalWeight: ctx.totalWeight, unit: affU, desc: tc?.description?.slice(0, 30) ?? '—' });
+      }
+    }
+
+    // ── Render popup ─────────────────────────────────────────────────────────
+    let popup = document.getElementById('plan-concept-popup');
+    if (!popup) {
+      popup = document.createElement('div');
+      popup.id = 'plan-concept-popup';
+      popup.style.cssText = `position:fixed;z-index:9999;background:var(--bg-panel);border:1px solid var(--border);
         border-radius:6px;padding:8px 10px;font-size:10px;color:var(--text);
-        box-shadow:0 4px 16px rgba(0,0,0,0.4);max-width:240px;pointer-events:auto`;
-      document.body.appendChild(existing);
+        box-shadow:0 4px 20px rgba(0,0,0,0.45);max-width:270px;pointer-events:auto;min-width:220px`;
+      document.body.appendChild(popup);
     }
-    existing.style.left = `${d.canvasX + 16}px`;
-    existing.style.top  = `${d.canvasY - 10}px`;
-    existing.style.display = 'block';
+    // Position near cursor but keep on-screen
+    const px = Math.min(d.canvasX + 18, window.innerWidth - 290);
+    const py = Math.max(Math.min(d.canvasY - 10, window.innerHeight - 350), 10);
+    popup.style.left = `${px}px`;
+    popup.style.top  = `${py}px`;
+    popup.style.display = 'block';
 
-    const rows = predictions.map(p =>
-      `<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">
-        ${p.dominantUnit ? `<span style="width:8px;height:8px;border-radius:2px;background:${p.dominantUnit.color};flex-shrink:0"></span>` : '<span style="width:8px;height:8px;flex-shrink:0"></span>'}
-        <span style="color:var(--text-mid);min-width:40px;font-family:var(--font-mono)">${p.z.toFixed(1)}</span>
-        <span style="flex:1;color:var(--text-dim)">${escHtml(p.topConceptDesc)}</span>
-        <span style="color:var(--accent);font-family:var(--font-mono)">${(p.totalWeight * 100).toFixed(0)}%</span>
-      </div>`
-    ).join('');
+    let inner = `<div style="font-weight:600;margin-bottom:4px;font-size:10.5px">
+      Vertical profile &thinsp; (${d.worldX.toFixed(0)}, ${d.worldY.toFixed(0)})
+    </div>`;
 
-    existing.innerHTML = `
-      <div style="font-weight:600;margin-bottom:5px">Concept prediction at (${d.worldX.toFixed(0)}, ${d.worldY.toFixed(0)})</div>
-      <div style="color:var(--text-dim);font-size:9px;margin-bottom:5px">Depth / dominant concept / influence (without built model)</div>
-      ${rows || '<div style="color:var(--text-dim)">No active concepts at this position</div>'}
-      <button onclick="document.getElementById('plan-concept-popup').style.display='none'"
-        style="margin-top:5px;font-size:9px;padding:1px 6px;background:var(--bg-el);border:1px solid var(--border);border-radius:3px;cursor:pointer;color:var(--text-mid)">✕ Close</button>`;
+    if (column) {
+      // Compact column log with unit color bar, certainty, CI
+      inner += `<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px">
+        Built model · ${column.length} depth intervals ↑ top to bottom ↓</div>`;
+      // Group consecutive voxels with same unit into bands
+      const bands = [];
+      let cur = null;
+      for (const row of column) {
+        const code = row.unit?.code ?? '?';
+        if (!cur || cur.code !== code) {
+          cur = { code, color: row.unit?.color ?? '#888', topElev: row.elev, botElev: row.elev, cert: row.cert, ci: row.ci, desc: row.topConceptDesc };
+          bands.push(cur);
+        } else {
+          cur.botElev  = row.elev;
+          cur.cert     = (cur.cert + row.cert) / 2;
+          cur.ci       = (cur.ci + row.ci) / 2;
+        }
+      }
+      inner += bands.map(b => {
+        const thick = Math.abs(b.topElev - b.botElev).toFixed(1);
+        const ciCol = b.ci > 0.6 ? '#e07020' : b.ci > 0.3 ? '#d4a843' : 'var(--accent)';
+        return `<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+          <div style="width:10px;height:14px;border-radius:2px;background:${b.color};flex-shrink:0"></div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:10px;font-weight:600">${escHtml(b.code)}</div>
+            <div style="font-size:9px;color:var(--text-dim)">${b.topElev.toFixed(1)}→${b.botElev.toFixed(1)}m &nbsp; ${thick}m</div>
+            ${b.desc ? `<div style="font-size:9px;color:var(--text-dim);font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(b.desc)}</div>` : ''}
+          </div>
+          <div style="text-align:right;flex-shrink:0;font-size:9px;font-family:var(--font-mono)">
+            <div style="color:var(--text-mid)">${(b.cert*100).toFixed(0)}%</div>
+            <div style="color:${ciCol}">${(b.ci*100).toFixed(0)}%CI</div>
+          </div>
+        </div>`;
+      }).join('');
+      inner += `<div style="font-size:9px;color:var(--text-dim);margin-top:4px;border-top:1px solid var(--border);padding-top:4px">
+        Certainty / CI (concept influence)
+      </div>`;
+    } else if (conceptRows.length) {
+      inner += `<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px">Concept prediction only — build model for full stratigraphy</div>`;
+      inner += conceptRows.map(p =>
+        `<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">
+          ${p.unit ? `<span style="width:9px;height:9px;border-radius:2px;background:${p.unit.color};flex-shrink:0"></span>` : '<span style="width:9px;height:9px;flex-shrink:0"></span>'}
+          <span style="color:var(--text-mid);min-width:38px;font-family:var(--font-mono);font-size:9px">${p.z.toFixed(1)}m</span>
+          <span style="flex:1;color:var(--text-dim);font-size:9px">${escHtml(p.desc)}</span>
+          <span style="color:var(--accent);font-size:9px">${(p.totalWeight*100).toFixed(0)}%</span>
+        </div>`
+      ).join('');
+    } else {
+      inner += `<div style="color:var(--text-dim);font-size:10px">No data at this location.</div>`;
+    }
 
-    // Auto-close after 8 seconds
-    setTimeout(() => { if (existing) existing.style.display = 'none'; }, 8000);
+    inner += `<button onclick="this.closest('#plan-concept-popup').style.display='none'"
+      style="margin-top:6px;font-size:9px;padding:1px 7px;background:var(--bg-el);border:1px solid var(--border);border-radius:3px;cursor:pointer;color:var(--text-mid);width:100%">✕ Close</button>`;
+
+    popup.innerHTML = inner;
+    clearTimeout(popup._autoClose);
+    popup._autoClose = setTimeout(() => { if (popup) popup.style.display = 'none'; }, 12000);
   });
 
   // Traceability: show concept + BH attribution when hovering a voxel
