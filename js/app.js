@@ -7571,6 +7571,137 @@ function _warnLowInfluenceConcepts() {
   confEl.innerHTML += newRows;
 }
 
+// ── Concept interpretation narrative ─────────────────────────────────────────
+// Generates a report-ready paragraph describing what the conceptual model predicts,
+// suitable for inclusion in a ground investigation report or factual statement.
+function _generateConceptNarrative() {
+  const store = AppState.conceptStore;
+  if (!store || store.isEmpty) return 'No concepts encoded in the conceptual model.';
+
+  const concepts = store.concepts;
+  const grid = AppState.voxelGrid;
+  const hasModel = !!(grid?.conceptInfluence);
+  const coherenceResults = hasModel ? computeConceptCoherence() : [];
+  const sensitivityResults = hasModel ? computeConceptSensitivity() : [];
+
+  const siteName = AppState.siteContext?.name ?? 'the site';
+  const nBHs = (AppState.classifiedBH ?? []).filter(b => !b.synthetic).length;
+
+  const parts = [];
+
+  // Opening
+  parts.push(
+    `The three-dimensional ground model for ${siteName} incorporates ${concepts.length} geological concept${concepts.length > 1 ? 's' : ''} ` +
+    `encoded as dense 32-axis semantic embeddings that geometrically shape the neural implicit field, ` +
+    `complementing ${nBHs} borehole observation${nBHs !== 1 ? 's' : ''}.`
+  );
+
+  // Per-concept description
+  const conceptParts = concepts.map((c, i) => {
+    const conf = (c.confidence * 100).toFixed(0);
+    const emb = c.embedding;
+
+    // Derive key geometric properties from embedding
+    const geomDescriptions = [];
+    const ew = emb[3] ?? 0, ns = emb[4] ?? 0;
+    const chan = emb[5] ?? 0, dome = emb[6] ?? 0;
+    const horiz = emb[0] ?? 0, stepped = emb[18] ?? 0, fault = emb[7] ?? 0;
+    const vert = emb[29] ?? 0, erosional = emb[8] ?? 0;
+    const deepE = emb[14] ?? 0, deepW = emb[15] ?? 0, deepN = emb[16] ?? 0, deepS = emb[17] ?? 0;
+
+    if (ew > 0.5 && ew > ns + 0.2) geomDescriptions.push('E-W elongated geometry');
+    else if (ns > 0.5 && ns > ew + 0.2) geomDescriptions.push('N-S elongated geometry');
+    else if (ew > 0.4 && ns > 0.4) geomDescriptions.push('NE-SW to NW-SE elongated geometry');
+    if (chan > 0.6) geomDescriptions.push(`concave-up channel morphology${vert > 0.5 ? ' with significant incision' : ''}`);
+    if (dome > 0.6) geomDescriptions.push('convex-up dome or anticline form');
+    if (horiz > 0.6) geomDescriptions.push('laterally continuous bedded geometry');
+    if (stepped > 0.6 || fault > 0.7) geomDescriptions.push('stepped fault-controlled contact');
+    if (erosional > 0.6) geomDescriptions.push('erosional basal contact');
+    if (deepE > 0.4) geomDescriptions.push('surface deepening to east');
+    else if (deepW > 0.4) geomDescriptions.push('surface deepening to west');
+    if (deepN > 0.4) geomDescriptions.push('surface deepening to north');
+    else if (deepS > 0.4) geomDescriptions.push('surface deepening to south');
+
+    const domainStr = c.domain?.type === 'bbox'
+      ? ' with a spatially restricted horizontal domain'
+      : '';
+    const depthStr = (c.domain?.minZ !== undefined || c.domain?.maxZ !== undefined)
+      ? ` in the depth range ${c.domain.minZ ?? '?'} to ${c.domain.maxZ ?? '?'} m AOD`
+      : '';
+    const affStr = c.unitAffinity?.length ? ` applied to ${c.unitAffinity.join(', ')} deposits` : '';
+    const tempStr = c.temporalOrder !== null && c.temporalOrder !== undefined
+      ? ` (geological age rank ${c.temporalOrder})` : '';
+
+    // Coherence and sensitivity for this concept
+    const coh = coherenceResults.find(r => concepts.some(cc => cc.id === c.id));
+    const sen = sensitivityResults.find(r => r.conceptId === c.id);
+    const infStr = sen ? ` and influenced ${sen.pctOfTotal.toFixed(0)}% of model voxels` : '';
+
+    const geomStr = geomDescriptions.length
+      ? `characterised by ${geomDescriptions.join(', ')}`
+      : 'encoded geometry';
+
+    return `(${i + 1}) ${c.description.slice(0, 80)} — ` +
+      `a ${geomStr}${affStr}${depthStr}${domainStr}${tempStr}, ` +
+      `with a confidence weighting of ${conf}%${infStr}.`;
+  });
+
+  parts.push('The conceptual model comprises: ' + conceptParts.join(' '));
+
+  // Temporal ordering
+  const tempPairs = store.temporallyOrderedPairs?.() ?? [];
+  if (tempPairs.length) {
+    const tStr = tempPairs.map(({ younger, older }) =>
+      `${younger.description.slice(0, 40)} is younger than ${older.description.slice(0, 40)}`
+    ).join('; ');
+    parts.push(`Geological time ordering constraints were applied: ${tStr}. These relationships injected synthetic training samples to enforce the stratigraphic sequence in data-sparse regions.`);
+  }
+
+  // Post-build coherence
+  if (hasModel && coherenceResults.length) {
+    const matched = coherenceResults.filter(r => r.conceptMatch >= 0.5);
+    const mismatched = coherenceResults.filter(r => r.conceptMatch < 0.5);
+    if (matched.length) {
+      parts.push(
+        `Concept-geometry verification confirmed that ${matched.length} geological unit${matched.length > 1 ? 's' : ''} (` +
+        matched.map(r => r.unitCode).join(', ') +
+        `) exhibited geometry consistent with the encoded conceptual model (match score ≥50%). ` +
+        (mismatched.length ? `${mismatched.length} unit${mismatched.length > 1 ? 's' : ''} showed geometry that diverged from concept predictions, suggesting the borehole data provides strong geometric constraints that override the conceptual model in those areas.` : '')
+      );
+    }
+  }
+
+  // Conflict warnings
+  const conflicts = detectConceptConflicts();
+  if (conflicts.filter(c => c.severity === 'error').length) {
+    parts.push(`Note: ${conflicts.filter(c => c.severity === 'error').length} concept conflict${conflicts.filter(c => c.severity === 'error').length > 1 ? 's were' : ' was'} detected during model build. These should be reviewed before using the model for engineering decisions.`);
+  }
+
+  return parts.join('\n\n');
+}
+
+// Wire concept narrative button
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('btn-concept-narrative')?.addEventListener('click', () => {
+    const store = AppState.conceptStore;
+    if (!store || store.isEmpty) { log('Encode at least one concept first.', 'warn'); return; }
+    const narrative = _generateConceptNarrative();
+    const el = document.getElementById('concept-narrative-output');
+    const copyBtn = document.getElementById('btn-copy-narrative');
+    if (el) {
+      el.style.display = 'block';
+      el.textContent = narrative;
+    }
+    if (copyBtn) {
+      copyBtn.style.display = 'inline-block';
+      copyBtn.onclick = () => {
+        navigator.clipboard?.writeText(narrative).then(() => { copyBtn.textContent = '✓ Copied'; setTimeout(() => { copyBtn.textContent = '⧉ Copy to clipboard'; }, 1500); });
+      };
+    }
+    log('Concept interpretation narrative generated', 'ok');
+  });
+});
+
 // Internal alias for traceability (same as exported getVoxelAttribution)
 function _computeAttribution(worldX, worldY, worldZ) {
   return getVoxelAttribution(worldX, worldY, worldZ);
