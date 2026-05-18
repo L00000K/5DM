@@ -295,7 +295,7 @@ function gpVote(neighbours, qx, qy, unitIndex, unknownId, lengthScale) {
 //   Fits a polynomial trend surface to the domain, then Kriges residuals.
 //   Order 0 = Ordinary Kriging. Order 1 = linear (regional dip/tilt).
 //   Order 2 = quadratic (fold structures, bowl-shaped stratigraphy).
-function ukVote(neighbours, qx, qy, unitIndex, unknownId, range, sill, trendOrder) {
+function ukVote(neighbours, qx, qy, unitIndex, unknownId, range, sill, trendOrder, aniso = null) {
   const n = neighbours.length;
   const nugget = sill * 0.05;
 
@@ -313,7 +313,8 @@ function ukVote(neighbours, qx, qy, unitIndex, unknownId, range, sill, trendOrde
 
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
-      const d = Math.hypot(neighbours[i].x - neighbours[j].x, neighbours[i].y - neighbours[j].y);
+      const dx = neighbours[i].x - neighbours[j].x, dy = neighbours[i].y - neighbours[j].y;
+      const d = _anisoD(dx, dy, aniso);
       K[i][j] = i === j ? sill + nugget : sill - gammaSpherical(d, range, sill);
     }
     const fi = basis(neighbours[i].x, neighbours[i].y);
@@ -325,7 +326,8 @@ function ukVote(neighbours, qx, qy, unitIndex, unknownId, range, sill, trendOrde
 
   const rhs = new Array(sz).fill(0);
   for (let i = 0; i < n; i++) {
-    const d = Math.hypot(neighbours[i].x - qx, neighbours[i].y - qy);
+    const dx = neighbours[i].x - qx, dy = neighbours[i].y - qy;
+    const d = _anisoD(dx, dy, aniso);
     rhs[i] = sill - gammaSpherical(d, range, sill);
   }
   for (let j = 0; j < p; j++) rhs[n + j] = f0[j];
@@ -861,6 +863,9 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
         worldHeight: nz * cellH,
         worldDepth:  ny * cellSize,
         unitIds, certainty, blendUnitIds, blendRatios,
+        // trainedModel exposed so callers can re-infer with different concept stores
+        // (concept ensemble uncertainty) without re-training the network.
+        trainedModel,
         ...(conceptInfluence ? { conceptInfluence } : {}),
         ...(coverageDensity   ? { coverageDensity }  : {}),
         ...(probVolumes       ? { probVolumes }       : {}),
@@ -973,7 +978,9 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
               result = krigingVote(nb, x, y, unitIndex, unknownId, effRange, sill, options.varNugget ?? null, kAniso)
                     ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
             } else if (method === 'uk') {
-              result = ukVote(nb, x, y, unitIndex, unknownId, effRange, sill, trendOrder)
+              const ukAniso = (effSinAz || effCosAz || effRatio !== 1)
+                ? { sinAz: effSinAz, cosAz: effCosAz, ratio: effRatio } : null;
+              result = ukVote(nb, x, y, unitIndex, unknownId, effRange, sill, trendOrder, ukAniso)
                     ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
             } else if (method === 'gp') {
               result = gpVote(nb, x, y, unitIndex, unknownId, effGpLen)

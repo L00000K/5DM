@@ -479,6 +479,40 @@ export class VoxelBuilder {
     return true;
   }
 
+  // Color voxels by concept stability across N ensemble runs.
+  // runUnitIds: array of Uint8Arrays from N model runs with different concept scales.
+  // Green = all runs agree, yellow = majority agree, red = no consensus.
+  colorByConceptStability(runUnitIds) {
+    if (!this.grid || !runUnitIds?.length) return false;
+    const nRuns = runUnitIds.length;
+    const total = runUnitIds[0].length;
+    // Per-voxel: fraction of runs that agree with the most common unit
+    const stability = new Float32Array(total);
+    for (let idx = 0; idx < total; idx++) {
+      const votes = {};
+      for (let r = 0; r < nRuns; r++) {
+        const uid = runUnitIds[r][idx];
+        votes[uid] = (votes[uid] ?? 0) + 1;
+      }
+      const maxVotes = Math.max(...Object.values(votes));
+      stability[idx] = maxVotes / nRuns;
+    }
+    const col = new THREE.Color();
+    for (const [code, mesh] of Object.entries(this.meshes)) {
+      const flatIdx  = this._unitFlatIdx?.[code];
+      if (!flatIdx) continue;
+      const colorAttr = mesh.geometry.getAttribute('voxelColor');
+      for (let i = 0; i < flatIdx.length; i++) {
+        const t = stability[flatIdx[i]] ?? 1;
+        // t=1 → green (hue 0.33), t=0.5 → yellow, t<0.5 → red
+        col.setHSL(t * 0.33, 0.9, 0.35 + t * 0.12);
+        colorAttr.setXYZ(i, col.r, col.g, col.b);
+      }
+      colorAttr.needsUpdate = true;
+    }
+    return stability;
+  }
+
   // Color voxels by borehole coverage density [0=sparse, 1=well-constrained].
   // Red (0 – sparse, extrapolated) → yellow → green (1 – data-dense).
   colorByCoverage() {

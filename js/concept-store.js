@@ -381,6 +381,21 @@ export class ConceptStore {
     return warnings;
   }
 
+  // ── Clone with scaled confidences (for ensemble uncertainty analysis) ────────
+  // Returns a new ConceptStore with all concept confidences multiplied by scale.
+  // scale = 0 → concepts off (pure borehole), scale = 1 → baseline,
+  // scale > 1 → amplified semantic influence.
+  cloneScaled(scale) {
+    const store = new ConceptStore();
+    store._nextId = this._nextId;
+    store._concepts = this._concepts.map(c => ({
+      ...c,
+      embedding: new Float32Array(c.embedding),
+      confidence: Math.max(0, Math.min(1, c.confidence * scale)),
+    }));
+    return store;
+  }
+
   // ── Serialisation ───────────────────────────────────────────────────────────
 
   serialize() {

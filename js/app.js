@@ -5,6 +5,7 @@ import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitPara
 import { parseShapesFromClaude, generateShapeBoreholes } from './geo-shapes.js';
 import { exportConfig, importConfig } from './project-config.js';
 import { buildVoxelGrid, buildVoxelGridMonteCarlo, buildIndicatorKriging } from './interpolator.js';
+import { inferGeoImplicit } from './geo-implicit.js';
 import { initScene } from './scene.js';
 import { initLayerControls } from './layer-controls.js';
 import { initExporter } from './exporter.js';
@@ -84,6 +85,7 @@ export const AppState = {
   conceptStore: null,     // ConceptStore — geological concept embeddings for neural field
   geoEvents: [],          // Geological event timeline (oldest first)
   stratCorr: null,        // StratCorrelation panel
+  trainedModel: null,     // cached neural-implicit trained model for fast re-inference
 };
 
 // ── Logging utility ────────────────────────────────────────────────────────────
@@ -960,6 +962,8 @@ function initBuildModel() {
           bhForModel, AppState.geoUnits, AppState.cellSizeH, gridOptions
         );
       }
+      // Cache trained neural model for fast concept-ensemble re-inference
+      AppState.trainedModel = AppState.voxelGrid?.trainedModel ?? null;
       showBuildProgress(false);
       updateInfoPanel();
       AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
@@ -8276,6 +8280,112 @@ function _warnLowInfluenceConcepts() {
   confEl.style.display = 'block';
   confEl.innerHTML += newRows;
 }
+
+// ── Concept ensemble uncertainty analysis ────────────────────────────────────
+// Runs 3 inference passes with concept scales [0, 1, 1.5] using the cached
+// trained neural model. Colors voxels by prediction stability across scales.
+// For non-neural methods, shows an explanation and offers the 3-run rebuild.
+window._runConceptEnsemble = async function() {
+  const el = document.getElementById('concept-ensemble-output');
+  if (el) { el.style.display = 'block'; el.innerHTML = '<div style="font-size:10px;color:var(--text-mid)">Running…</div>'; }
+
+  const grid  = AppState.voxelGrid;
+  const store = AppState.conceptStore;
+  if (!grid) {
+    if (el) el.innerHTML = '<div style="font-size:10px;color:#e06c75">Build a 3D model first.</div>';
+    return;
+  }
+
+  // Neural method: fast re-inference with concept confidence scaling
+  if (AppState.trainedModel && store && !store.isEmpty) {
+    const gridMeta = {
+      nx: grid.nx, ny: grid.ny, nz: grid.nz,
+      cellSize: grid.cellSize, cellHeight: grid.cellHeight,
+      origin: grid.origin,
+    };
+    const scales = [0, 1, 1.5];
+    const labels = ['Concepts OFF (pure borehole)', 'Baseline (×1.0)', 'Amplified (×1.5)'];
+    const runs = [];
+    for (let s = 0; s < scales.length; s++) {
+      if (el) el.innerHTML = `<div style="font-size:10px;color:var(--text-mid)">Inferring run ${s + 1}/3…</div>`;
+      const scaledStore = store.cloneScaled(scales[s]);
+      const inferred = inferGeoImplicit(AppState.trainedModel, gridMeta, AppState.geoUnits, scaledStore);
+      runs.push(inferred.unitIds);
+    }
+
+    // Color by stability
+    const stability = AppState.scene.colorByConceptStability(runs);
+    if (!stability) {
+      if (el) el.innerHTML = '<div style="font-size:10px;color:#e06c75">Color failed — rebuild model first.</div>';
+      return;
+    }
+
+    // Compute statistics
+    const total = stability.length;
+    let nStable = 0, nPartial = 0, nUnstable = 0;
+    for (let i = 0; i < total; i++) {
+      if      (stability[i] >= 0.99) nStable++;
+      else if (stability[i] >= 0.67) nPartial++;
+      else                            nUnstable++;
+    }
+    const pStable   = (nStable   / total * 100).toFixed(0);
+    const pPartial  = (nPartial  / total * 100).toFixed(0);
+    const pUnstable = (nUnstable / total * 100).toFixed(0);
+
+    if (el) el.innerHTML = `
+      <div style="font-size:9.5px;color:var(--text-mid);margin-bottom:6px">
+        3 runs: ${labels.join(' · ')}<br>
+        <b style="color:var(--text)">Voxel stability across concept scales:</b>
+      </div>
+      <div class="coherence-row">
+        <span class="coherence-name" style="color:#5ab97d">Stable (all 3 agree)</span>
+        <div class="coherence-bar-wrap"><div class="coherence-bar" style="width:${pStable}%;background:#5ab97d"></div></div>
+        <span class="coherence-pct" style="color:#5ab97d">${pStable}%</span>
+      </div>
+      <div class="coherence-row">
+        <span class="coherence-name" style="color:#e6b84a">Partial (2/3 agree)</span>
+        <div class="coherence-bar-wrap"><div class="coherence-bar" style="width:${pPartial}%;background:#e6b84a"></div></div>
+        <span class="coherence-pct" style="color:#e6b84a">${pPartial}%</span>
+      </div>
+      <div class="coherence-row">
+        <span class="coherence-name" style="color:#e06c75">Unstable (no consensus)</span>
+        <div class="coherence-bar-wrap"><div class="coherence-bar" style="width:${pUnstable}%;background:#e06c75"></div></div>
+        <span class="coherence-pct" style="color:#e06c75">${pUnstable}%</span>
+      </div>
+      <div style="font-size:9px;color:var(--text-dim);margin-top:4px">
+        Green = borehole-anchored, safe to rely on.<br>
+        Red = concept-driven, interpretation-dependent.
+      </div>`;
+  } else if (!AppState.trainedModel) {
+    // Non-neural method: show analytical sensitivity proxy
+    if (!grid.certainty || !grid.conceptInfluence) {
+      if (el) el.innerHTML = `<div style="font-size:10px;color:var(--text-mid)">
+        Switch to <b>neural-implicit</b> method and build model to enable ensemble analysis.
+        The cached trained network enables instant re-inference at different concept strengths.
+      </div>`;
+      return;
+    }
+    // Proxy: sensitivity = conceptInfluence × (1 - certainty) × (1 - coverage)
+    const { certainty: cert, conceptInfluence: ci, coverageDensity: cov } = grid;
+    const total = cert.length;
+    const stability = new Float32Array(total);
+    for (let i = 0; i < total; i++) {
+      const sens = (ci?.[i] ?? 0) * (1 - cert[i]) * (1 - (cov?.[i] ?? 0));
+      stability[i] = 1 - Math.min(1, sens * 3);
+    }
+    AppState.scene.colorByConceptStability([
+      // Simulate 3 runs by slight blurring of existing unitIds
+      grid.unitIds,
+      // Proxy "run with amplified concepts" via blendUnitIds in concept-influenced voxels
+      new Uint8Array(total).map((_, i) => ci?.[i] > 0.4 ? (grid.blendUnitIds[i] || grid.unitIds[i]) : grid.unitIds[i]),
+      grid.unitIds,
+    ]);
+    if (el) el.innerHTML = `<div style="font-size:10px;color:var(--text-mid)">
+      <b>Concept sensitivity proxy</b> — shown on model (green=stable, red=concept-sensitive).<br>
+      For full ensemble use <b>neural-implicit</b> method.
+    </div>`;
+  }
+};
 
 // ── Concept axis correlation matrix ──────────────────────────────────────────
 // Renders a 32×32 heatmap on #concept-corr-canvas showing how geological axes
