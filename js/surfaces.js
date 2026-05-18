@@ -13,17 +13,20 @@ export class SurfaceManager {
   build(grid, geoUnits) {
     this.clear();
 
-    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin, unitIds } = grid;
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin, unitIds, certainty } = grid;
     const n2 = nx * ny;
 
     for (const unit of geoUnits) {
       const elev = new Float32Array(n2).fill(NaN);
+      const cert = new Float32Array(n2).fill(0);  // certainty at formation top
 
       for (let iy = 0; iy < ny; iy++) {
         for (let ix = 0; ix < nx; ix++) {
           for (let iz = nz - 1; iz >= 0; iz--) {
-            if (unitIds[ix + iy * nx + iz * n2] === unit.id) {
+            const idx = ix + iy * nx + iz * n2;
+            if (unitIds[idx] === unit.id) {
               elev[ix + iy * nx] = origin.y + iz * ch + ch;
+              cert[ix + iy * nx] = certainty ? certainty[idx] : 1;
               break;
             }
           }
@@ -89,16 +92,36 @@ export class SurfaceManager {
       }
       if (!indices.length) continue;
 
+      // Per-vertex color: blend unit color toward yellow/red based on certainty
+      const colors = new Float32Array(vCount * 3);
+      const unitCol = new THREE.Color(unit.color).convertSRGBToLinear();
+      const highCertCol = new THREE.Color().setHSL(0.33, 0.9, 0.45); // green = certain
+      const lowCertCol  = new THREE.Color().setHSL(0.04, 0.9, 0.45); // red = uncertain
+      const blendedCol  = new THREE.Color();
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          const vi = vertIdx[ix + iy * nx];
+          if (vi < 0) continue;
+          const t = Math.max(0, Math.min(1, cert[ix + iy * nx] ?? 1));
+          // Mix unit color (75%) with certainty indicator (25%)
+          blendedCol.set(t > 0.5 ? highCertCol : lowCertCol);
+          blendedCol.lerp(unitCol, 0.65);
+          colors[vi * 3]     = blendedCol.r;
+          colors[vi * 3 + 1] = blendedCol.g;
+          colors[vi * 3 + 2] = blendedCol.b;
+        }
+      }
+
       const geom = new THREE.BufferGeometry();
       geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geom.setAttribute('color',    new THREE.BufferAttribute(colors,    3));
       geom.setIndex(indices);
       geom.computeVertexNormals();
 
-      const color = new THREE.Color(unit.color).convertSRGBToLinear();
       const mat = new THREE.MeshLambertMaterial({
-        color,
+        vertexColors: true,
         transparent: true,
-        opacity: 0.55,
+        opacity: 0.60,
         side: THREE.DoubleSide,
         depthWrite: false,
       });
