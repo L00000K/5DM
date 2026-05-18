@@ -7215,6 +7215,7 @@ function _initAxisPerturbation() {
       </div>`;
     }).join('');
 
+    let _previewTimer = null;
     sliderEl.querySelectorAll('input[type=range]').forEach(sl => {
       sl.addEventListener('input', () => {
         const idx = parseInt(sl.dataset.idx);
@@ -7222,8 +7223,64 @@ function _initAxisPerturbation() {
         const vEl = document.getElementById(`axv-${idx}`);
         if (vEl) vEl.textContent = v.toFixed(2);
         sl.style.accentColor = v > 0.2 ? '#4caf50' : v < -0.2 ? '#f44336' : '#888';
+        // Debounce live preview
+        clearTimeout(_previewTimer);
+        _previewTimer = setTimeout(() => _updateLivePreview(selEl?.value), 250);
       });
     });
+  }
+
+  // Live cross-section preview using a tiny mini-grid (20 x 1 x 10 = 200 voxels)
+  function _updateLivePreview(conceptId) {
+    const canvas = document.getElementById('axis-perturb-preview');
+    const label  = document.getElementById('axis-perturb-preview-label');
+    if (!canvas || !AppState.trainedModel || !AppState.voxelGrid || !conceptId) return;
+
+    // Build modified concept store from current slider values
+    const modStore = AppState.conceptStore?.cloneScaled(1.0);
+    if (!modStore) return;
+    const mc = modStore.concepts.find(c => c.id === conceptId);
+    if (!mc) return;
+    CONCEPT_AXES.forEach((_, i) => {
+      const sl = document.getElementById(`axsl-${i}`);
+      if (sl) mc.embedding[i] = parseFloat(sl.value);
+    });
+
+    const grid = AppState.voxelGrid;
+    // Mini grid: 22 E-W × 1 N-S (centre) × 10 depth levels
+    const MINI_NX = 22, MINI_NY = 1, MINI_NZ = 10;
+    const cs = grid.cellSize, ch = grid.cellHeight;
+    const centreY = grid.origin.z + (grid.ny / 2) * cs;
+    const miniGrid = {
+      nx: MINI_NX, ny: MINI_NY, nz: MINI_NZ,
+      cellSize: cs * (grid.nx / MINI_NX),
+      cellHeight: ch * (grid.nz / MINI_NZ),
+      origin: { x: grid.origin.x, y: grid.origin.y, z: centreY },
+    };
+    const result = inferGeoImplicit(AppState.trainedModel, miniGrid, AppState.geoUnits, modStore);
+    if (!result?.unitIds) return;
+
+    // Render to canvas: columns are E-W, rows are depth (top=shallow)
+    canvas.style.display = 'block';
+    if (label) label.style.display = 'block';
+    const cw = canvas.width / MINI_NX, ch2 = canvas.height / MINI_NZ;
+    const ctx2d = canvas.getContext('2d');
+    ctx2d.clearRect(0, 0, canvas.width, canvas.height);
+    const unitById = {};
+    AppState.geoUnits.forEach(u => { unitById[u.id] = u; });
+    for (let iz = 0; iz < MINI_NZ; iz++) {
+      for (let ix = 0; ix < MINI_NX; ix++) {
+        const unitId = result.unitIds[ix + 0 * MINI_NX + iz * MINI_NX];
+        const unit   = unitById[unitId];
+        ctx2d.fillStyle = unit?.color ?? '#333';
+        ctx2d.fillRect(ix * cw, (MINI_NZ - 1 - iz) * ch2, Math.ceil(cw), Math.ceil(ch2));
+      }
+    }
+    // Overlay "W" and "E" labels
+    ctx2d.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx2d.font = '9px monospace';
+    ctx2d.fillText('W', 2, 10);
+    ctx2d.fillText('E', canvas.width - 12, 10);
   }
 
   selEl?.addEventListener('change', () => _loadSliders(selEl.value));

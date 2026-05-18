@@ -730,6 +730,10 @@
             <button id="btn-axis-perturb-reset" class="btn btn-ghost btn-sm" style="flex:1" title="Restore the original concept embedding and re-infer">↺ Reset</button>
           </div>
           <div id="axis-perturb-status" style="font-size:9px;color:var(--text-muted);margin-top:4px;text-align:center;min-height:14px"></div>
+          <canvas id="axis-perturb-preview" width="220" height="80"
+            style="display:none;width:100%;border-radius:4px;background:#1a1e24;margin-top:6px;image-rendering:pixelated"
+            title="Live E-W cross-section preview (20×10 mini grid). Updates as you adjust axis sliders."></canvas>
+          <div id="axis-perturb-preview-label" style="display:none;font-size:8.5px;color:var(--text-dim);text-align:center;margin-top:2px">Live cross-section preview (E-W slice)</div>
         </div>
 
         <!-- Geological Events Timeline — Leapfrog-style chronological ordering -->
