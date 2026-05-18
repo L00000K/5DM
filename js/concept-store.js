@@ -136,16 +136,20 @@ export class ConceptStore {
 
   // Compute effective embedding for a concept, blending in parent embedding if set.
   // Inheritance weight: each level contributes (INHERIT_W)^depth to the blend.
-  _effectiveEmbedding(concept, depth = 0) {
-    const INHERIT_W = 0.4; // parent contributes 40% at each level
+  _effectiveEmbedding(concept, depth = 0, visited = null) {
+    const INHERIT_W = 0.4;
     const MAX_DEPTH = 3;
+    const seen = visited ?? new Set();
+    seen.add(concept.id);
     if (depth >= MAX_DEPTH || !concept.parentId) return concept.embedding;
+    if (seen.has(concept.parentId)) return concept.embedding; // break circular chain
     const parent = this._concepts.find(p => p.id === concept.parentId);
     if (!parent) return concept.embedding;
-    const parentEmb = this._effectiveEmbedding(parent, depth + 1);
-    const result = new Float32Array(concept.embedding.length);
+    const parentEmb = this._effectiveEmbedding(parent, depth + 1, seen);
+    const DIM = Math.min(concept.embedding.length, parentEmb.length);
+    const result = new Float32Array(32);
     const selfW = 1 - INHERIT_W;
-    for (let i = 0; i < result.length; i++) {
+    for (let i = 0; i < DIM; i++) {
       result[i] = selfW * concept.embedding[i] + INHERIT_W * parentEmb[i];
     }
     return result;
@@ -415,8 +419,10 @@ export class ConceptStore {
     store._nextId = this._nextId;
     store._concepts = this._concepts.map(c => ({
       ...c,
-      embedding: new Float32Array(c.embedding),
-      confidence: Math.max(0, Math.min(1, c.confidence * scale)),
+      embedding: (c.embedding instanceof Float32Array && c.embedding.length === 32)
+        ? new Float32Array(c.embedding)
+        : new Float32Array(32),
+      confidence: Math.max(0, Math.min(1, (c.confidence ?? 0.7) * scale)),
     }));
     return store;
   }

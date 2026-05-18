@@ -967,20 +967,25 @@ function initBuildModel() {
       AppState.trainedModel = AppState.voxelGrid?.trainedModel ?? null;
 
       // Build 3D parameter volumes (SPT, cu, phi, gamma) from borehole test data
-      {
-        const pvols = buildParamVolumes(bhForModel, AppState.geoUnits, AppState.voxelGrid);
-        if (pvols.size) {
+      if (AppState.voxelGrid) {
+        try {
+          const pvols = buildParamVolumes(bhForModel, AppState.geoUnits, AppState.voxelGrid);
           AppState.voxelGrid.paramVolumes = pvols;
-          const names = [...pvols.keys()].join(', ');
-          log(`Parameter volumes built: ${names}`, 'info');
+          if (pvols.size) log(`Parameter volumes built: ${[...pvols.keys()].join(', ')}`, 'info');
+        } catch (e) {
+          console.warn('buildParamVolumes error:', e.message);
         }
       }
 
       // Stratigraphic inversion correction
-      if (document.getElementById('correct-inversions')?.checked && _stratOrder?.length) {
-        const inv = detectAndCorrectInversions(AppState.voxelGrid, AppState.geoUnits, _stratOrder);
-        if (inv.invertedCount > 0) {
-          log(`Inversion correction: ${inv.invertedCount} inverted voxels → ${inv.corrections} corrected (${(inv.invertedFraction * 100).toFixed(1)}% of grid)`, 'info');
+      if (AppState.voxelGrid && document.getElementById('correct-inversions')?.checked && _stratOrder?.length) {
+        try {
+          const inv = detectAndCorrectInversions(AppState.voxelGrid, AppState.geoUnits, _stratOrder);
+          if (inv.invertedCount > 0) {
+            log(`Inversion correction: ${inv.invertedCount} inverted voxels → ${inv.corrections} corrected (${(inv.invertedFraction * 100).toFixed(1)}% of grid)`, 'info');
+          }
+        } catch (e) {
+          console.warn('detectAndCorrectInversions error:', e.message);
         }
       }
 
@@ -4651,8 +4656,9 @@ function initRiskAssessment() {
     if (units.length < 2) { log('Need at least 2 units for similarity analysis.', 'warn'); return; }
     const btn = document.getElementById('btn-unit-similarity');
     const resEl = document.getElementById('unit-similarity-results');
+    if (!resEl) { log('UI element missing: unit-similarity-results', 'error'); return; }
     setEnabled('btn-unit-similarity', false);
-    btn.textContent = '⊛ Analysing…';
+    if (btn) btn.textContent = '⊛ Analysing…';
     const apiKey = sessionStorage.getItem('anthropic_api_key') ?? '';
     try {
       const { pairs } = await analyseUnitSimilarity(units, apiKey, !apiKey || AppState.demoMode);
@@ -4674,9 +4680,11 @@ function initRiskAssessment() {
         log(`Unit similarity: ${pairs.length} similar pair(s) found — highest ${Math.round(pairs[0].similarity * 100)}% (${pairs[0].codeA} ↔ ${pairs[0].codeB})`, pairs[0].similarity > 0.88 ? 'warn' : 'info');
       }
     } catch (e) {
+      resEl.style.display = '';
+      resEl.innerHTML = `<p style="color:var(--error);font-size:10px">Error: ${e.message}</p>`;
       log(`Unit similarity error: ${e.message}`, 'error');
     } finally {
-      btn.textContent = '⊛ Analyse Unit Similarity';
+      if (btn) btn.textContent = '⊛ Analyse Unit Similarity';
       setEnabled('btn-unit-similarity', true);
     }
   });
@@ -7078,7 +7086,8 @@ function _initAxisPerturbation() {
     if (!selEl || !AppState.conceptStore) return;
     const prev = selEl.value;
     selEl.innerHTML = '<option value="">— select concept —</option>';
-    for (const c of (AppState.conceptStore.concepts ?? [])) {
+    for (const c of (AppState.conceptStore?.concepts ?? [])) {
+      if (!c?.id || !c?.description) continue;
       const opt = document.createElement('option');
       opt.value = c.id;
       opt.textContent = c.description.slice(0, 48);
@@ -7092,7 +7101,8 @@ function _initAxisPerturbation() {
   let _origEmb = null;
 
   function _loadSliders(conceptId) {
-    if (!sliderEl || !AppState.conceptStore) { sliderEl.innerHTML = ''; return; }
+    if (!sliderEl) return;
+    if (!AppState.conceptStore || !conceptId) { sliderEl.innerHTML = ''; return; }
     const concept = AppState.conceptStore.concepts.find(c => c.id === conceptId);
     if (!concept) { sliderEl.innerHTML = ''; _origEmb = null; return; }
     _origEmb = new Float32Array(concept.embedding);
@@ -7144,7 +7154,8 @@ function _initAxisPerturbation() {
           const newEmb = new Float32Array(32);
           for (let i = 0; i < 32; i++) {
             const sl = document.getElementById(`axsl-${i}`);
-            newEmb[i] = sl ? parseFloat(sl.value) : concept.embedding[i];
+            const raw = sl?.value != null ? parseFloat(sl.value) : NaN;
+            newEmb[i] = isFinite(raw) ? raw : (concept.embedding[i] ?? 0);
           }
           mc.embedding = newEmb;
         }
@@ -7163,8 +7174,12 @@ function _initAxisPerturbation() {
         if (newResult.unitIds[i] !== grid.unitIds[i]) changed++;
       }
 
-      grid.unitIds.set(newResult.unitIds);
-      grid.certainty.set(newResult.certainty);
+      if (typeof grid.unitIds.set === 'function' && newResult.unitIds.length === grid.unitIds.length)
+        grid.unitIds.set(newResult.unitIds);
+      else grid.unitIds = newResult.unitIds;
+      if (typeof grid.certainty.set === 'function' && newResult.certainty.length === grid.certainty.length)
+        grid.certainty.set(newResult.certainty);
+      else grid.certainty = newResult.certainty;
       AppState.scene.buildVoxels(grid, AppState.geoUnits, AppState.classifiedBH);
 
       const pct = (changed / n * 100).toFixed(1);
@@ -9522,19 +9537,24 @@ window._runConceptContributionReport = async function() {
 
   // Helper: count how many BH layer observations the given unitIds array predicts correctly
   function _bhAccuracy(unitIds) {
+    if (!unitIds?.length) return null;
     let correct = 0, count = 0;
     const unitById = {};
     AppState.geoUnits.forEach(u => { unitById[u.id] = u; });
     for (const bh of realBHs) {
+      if (!isFinite(bh.x) || !isFinite(bh.y)) continue;
       const ix = Math.max(0, Math.min(grid.nx - 1, Math.round((bh.x - grid.origin.x) / grid.cellSize - 0.5)));
       const iy = Math.max(0, Math.min(grid.ny - 1, Math.round((bh.y - grid.origin.z) / grid.cellSize - 0.5)));
       for (const layer of bh.layers) {
         if (!layer.unitCode) continue;
-        const elev = (bh.groundLevel ?? 0) - (layer.top + layer.base) / 2;
+        const elev = (bh.groundLevel ?? 0) - ((layer.top ?? 0) + (layer.base ?? 0)) / 2;
         const iz   = Math.max(0, Math.min(grid.nz - 1, Math.round((elev - grid.origin.y) / grid.cellHeight - 0.5)));
-        const pred = unitById[unitIds[ix + iy * grid.nx + iz * grid.nx * grid.ny]];
-        count++;
-        if (pred?.code === layer.unitCode) correct++;
+        const flat = ix + iy * grid.nx + iz * grid.nx * grid.ny;
+        if (flat >= 0 && flat < unitIds.length) {
+          const pred = unitById[unitIds[flat]];
+          count++;
+          if (pred?.code === layer.unitCode) correct++;
+        }
       }
     }
     return count > 0 ? correct / count : null;
@@ -9557,10 +9577,11 @@ window._runConceptContributionReport = async function() {
     const ablResult = inferGeoImplicit(AppState.trainedModel, gridMeta, AppState.geoUnits, ablatedStore);
 
     let changed = 0;
-    for (let i = 0; i < total; i++) {
+    const compareLen = Math.min(total, ablResult.unitIds?.length ?? 0, baselineResult.unitIds?.length ?? 0);
+    for (let i = 0; i < compareLen; i++) {
       if (ablResult.unitIds[i] !== baselineResult.unitIds[i]) changed++;
     }
-    const influence = changed / total;
+    const influence = compareLen > 0 ? changed / compareLen : 0;
 
     const ablAcc    = _bhAccuracy(ablResult.unitIds);
     const accDelta  = (baselineAcc != null && ablAcc != null) ? (baselineAcc - ablAcc) : null;
@@ -9599,7 +9620,7 @@ window._runConceptContributionReport = async function() {
     return `<div style="margin-bottom:6px;padding:5px 6px;background:var(--bg-surface);border-radius:3px;border-left:3px solid ${infCol}">
       <div style="font-size:9.5px;font-weight:600;color:var(--text)">${desc}</div>
       <div style="font-size:9px;color:${infCol};margin-top:2px;font-family:monospace">${infBar} ${infPct}%${accHtml}</div>
-      <div style="font-size:8.5px;color:var(--text-muted);margin-top:1px">Removing shifts ${infPct}% of voxels${r.accDelta != null ? ` · BH accuracy without: ${(r.ablAcc * 100).toFixed(1)}%` : ''}</div>
+      <div style="font-size:8.5px;color:var(--text-muted);margin-top:1px">Removing shifts ${infPct}% of voxels${r.ablAcc != null ? ` · BH accuracy without: ${(r.ablAcc * 100).toFixed(1)}%` : ''}</div>
     </div>`;
   }).join('');
 

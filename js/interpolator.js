@@ -1446,9 +1446,10 @@ export async function buildIndicatorKriging(boreholes, geoUnits, cellSizeParam, 
 // Modifies grid.unitIds and grid.certainty in-place.
 // Returns { invertedCount, corrections, invertedFraction }
 export function detectAndCorrectInversions(grid, geoUnits, stratOrder) {
-  if (!stratOrder?.length || !geoUnits?.length) return { invertedCount: 0, corrections: 0 };
+  if (!grid || !stratOrder?.length || !geoUnits?.length) return { invertedCount: 0, corrections: 0 };
 
   const { nx, ny, nz, unitIds, certainty } = grid;
+  if (!unitIds || !certainty) return { invertedCount: 0, corrections: 0 };
   const n2 = nx * ny;
 
   const rankByCode = new Map(stratOrder.map((code, i) => [code, i]));
@@ -1480,9 +1481,11 @@ export function detectAndCorrectInversions(grid, geoUnits, stratOrder) {
         } else {
           // Inversion: younger unit below an older unit already seen above
           invertedCount++;
-          unitIds[idx] = unitAtMaxRank;
-          certainty[idx] = Math.min(certainty[idx] * 0.65, 0.45);
-          corrections++;
+          if (idx < unitIds.length) {
+            unitIds[idx] = unitAtMaxRank;
+            certainty[idx] = Math.min((certainty[idx] ?? 1) * 0.65, 0.45);
+            corrections++;
+          }
         }
       }
     }
@@ -1503,7 +1506,9 @@ export function detectAndCorrectInversions(grid, geoUnits, stratOrder) {
 //   gamma — unit weight (from unit params)
 // Returns Map<paramName, Float32Array(nx*ny*nz)>
 export function buildParamVolumes(boreholes, geoUnits, grid) {
+  if (!grid || !boreholes?.length || !geoUnits?.length) return new Map();
   const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin, unitIds } = grid;
+  if (!unitIds || !nx || !ny || !nz) return new Map();
   const ox = origin.x, oy = origin.y, oz = origin.z;
   const total = nx * ny * nz;
   const n2    = nx * ny;
@@ -1556,10 +1561,12 @@ export function buildParamVolumes(boreholes, geoUnits, grid) {
 function _idw3D(obs, nx, ny, nz, ox, oy, oz, cs, ch, k, power) {
   const n2   = nx * ny;
   const vol  = new Float32Array(nx * ny * nz).fill(NaN);
+  if (!obs?.length) return vol;
 
   // Bucket by (ix, iy) column for fast 2D neighbor search
   const buckets = new Map();
   for (const o of obs) {
+    if (!isFinite(o.x) || !isFinite(o.y) || !isFinite(o.z) || !isFinite(o.v)) continue;
     const ix = Math.floor((o.x - ox) / cs);
     const iy = Math.floor((o.y - oz) / cs);
     const key = `${ix},${iy}`;
@@ -1567,7 +1574,8 @@ function _idw3D(obs, nx, ny, nz, ox, oy, oz, cs, ch, k, power) {
     buckets.get(key).push(o);
   }
 
-  const SEARCH_R = Math.max(3, Math.ceil(Math.sqrt(nx * ny / obs.length) * 2));
+  const validObs = obs.length || 1;
+  const SEARCH_R = Math.max(3, Math.ceil(Math.sqrt(nx * ny / validObs) * 2));
 
   for (let iz = 0; iz < nz; iz++) {
     const wz = oy + iz * ch + ch * 0.5;
@@ -1594,6 +1602,7 @@ function _idw3D(obs, nx, ny, nz, ox, oy, oz, cs, ch, k, power) {
           return da - db;
         });
         const near = cands.slice(0, k);
+        if (!near.length) continue;
         const d0 = Math.sqrt((near[0].x - wx) ** 2 + (near[0].y - wy) ** 2 + (near[0].z - wz) ** 2);
         if (d0 < 0.001) { vol[ix + iy * nx + iz * n2] = near[0].v; continue; }
 
@@ -1603,7 +1612,8 @@ function _idw3D(obs, nx, ny, nz, ox, oy, oz, cs, ch, k, power) {
           const w = 1 / Math.pow(Math.max(d, 0.01), power);
           sum += w * n.v; wsum += w;
         }
-        vol[ix + iy * nx + iz * n2] = wsum > 0 ? sum / wsum : NaN;
+        const result = wsum > 0 ? sum / wsum : NaN;
+        vol[ix + iy * nx + iz * n2] = isFinite(result) ? result : NaN;
       }
     }
   }

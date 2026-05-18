@@ -1898,19 +1898,24 @@ Return ONLY a JSON array (no markdown, no prose):
   try {
     const resp = await _claudeRequest([{ role: 'user', content: prompt }], apiKey, 'claude-haiku-4-5-20251001', 512);
     const text  = resp.content?.[0]?.text ?? '';
-    const raw   = JSON.parse(text.match(/\[[\s\S]*\]/)?.[0] ?? '[]');
+    let raw = [];
+    try { raw = JSON.parse(text.match(/\[[\s\S]*\]/)?.[0] ?? '[]'); } catch { raw = []; }
     const unitMap = new Map(geoUnits.map(u => [u.code, u]));
 
     const pairs = raw
       .filter(p => p?.code_a && p?.code_b && unitMap.has(p.code_a) && unitMap.has(p.code_b))
-      .map(p => ({
-        codeA: p.code_a, nameA: unitMap.get(p.code_a)?.name ?? p.code_a,
-        codeB: p.code_b, nameB: unitMap.get(p.code_b)?.name ?? p.code_b,
-        similarity: Math.max(0, Math.min(1, parseFloat(p.similarity) || 0)),
-        sharedTokens: [],
-        suggestion: p.suggestion ?? p.reason ?? '',
-        reason: p.reason ?? '',
-      }))
+      .map(p => {
+        const sim = parseFloat(p.similarity);
+        return {
+          codeA: p.code_a, nameA: unitMap.get(p.code_a)?.name ?? p.code_a,
+          codeB: p.code_b, nameB: unitMap.get(p.code_b)?.name ?? p.code_b,
+          similarity: isNaN(sim) ? 0 : Math.max(0, Math.min(1, sim)),
+          sharedTokens: [],
+          suggestion: p.suggestion ?? p.reason ?? '',
+          reason: p.reason ?? '',
+        };
+      })
+      .filter(p => p.similarity > 0)
       .sort((a, b) => b.similarity - a.similarity);
 
     return { pairs };
