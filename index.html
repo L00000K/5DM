@@ -1062,6 +1062,10 @@
           <input type="checkbox" id="mc-enabled">
           <span>Monte Carlo (N=<input type="number" id="mc-n" value="20" min="5" max="100" step="5" style="width:44px;background:none;border:none;border-bottom:1px solid var(--border);color:var(--text-main);font-size:10px"> realisations) — boundary perturbation uncertainty</span>
         </label>
+        <label class="checkbox-row" style="margin-top:4px;gap:8px;align-items:center;cursor:pointer;font-size:10px;color:var(--text-mid)" title="After building, scan each vertical column for stratigraphic inversions (younger unit below older unit) and replace them with the expected older unit. Uses the stratigraphic order defined in the Analysis panel.">
+          <input type="checkbox" id="correct-inversions" checked>
+          <span>Correct stratigraphic inversions</span>
+        </label>
       </div>
 
       <div id="status-log" class="status-log" aria-live="polite">

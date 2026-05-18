@@ -4,7 +4,7 @@ import { initTextInput } from './text-input.js';
 import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel, oracleRefinement, generateReportNarrative, parseGeologicalFeatures, suggestConceptsFromBoreholes } from './claude-client.js';
 import { parseShapesFromClaude, generateShapeBoreholes } from './geo-shapes.js';
 import { exportConfig, importConfig } from './project-config.js';
-import { buildVoxelGrid, buildVoxelGridMonteCarlo, buildIndicatorKriging } from './interpolator.js';
+import { buildVoxelGrid, buildVoxelGridMonteCarlo, buildIndicatorKriging, detectAndCorrectInversions } from './interpolator.js';
 import { inferGeoImplicit } from './geo-implicit.js';
 import { initScene } from './scene.js';
 import { initLayerControls } from './layer-controls.js';
@@ -965,6 +965,15 @@ function initBuildModel() {
       }
       // Cache trained neural model for fast concept-ensemble re-inference
       AppState.trainedModel = AppState.voxelGrid?.trainedModel ?? null;
+
+      // Stratigraphic inversion correction
+      if (document.getElementById('correct-inversions')?.checked && _stratOrder?.length) {
+        const inv = detectAndCorrectInversions(AppState.voxelGrid, AppState.geoUnits, _stratOrder);
+        if (inv.invertedCount > 0) {
+          log(`Inversion correction: ${inv.invertedCount} inverted voxels → ${inv.corrections} corrected (${(inv.invertedFraction * 100).toFixed(1)}% of grid)`, 'info');
+        }
+      }
+
       showBuildProgress(false);
       updateInfoPanel();
       AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);

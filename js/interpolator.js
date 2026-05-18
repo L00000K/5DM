@@ -1439,6 +1439,62 @@ export async function buildIndicatorKriging(boreholes, geoUnits, cellSizeParam, 
   return { ...ikBase, unitIds, certainty, blendUnitIds, blendRatios, probVolumes, method: 'indicator-kriging' };
 }
 
+// ── Stratigraphic inversion detection + correction ─────────────────────────────
+// Scans each vertical column for stratigraphic inversions — voxels where a younger
+// unit (lower stratOrder index) appears BELOW an older unit (higher index).
+// stratOrder: array of unit codes youngest-first [MADE, FILL, CLAY, …, BEDROCK]
+// Modifies grid.unitIds and grid.certainty in-place.
+// Returns { invertedCount, corrections, invertedFraction }
+export function detectAndCorrectInversions(grid, geoUnits, stratOrder) {
+  if (!stratOrder?.length || !geoUnits?.length) return { invertedCount: 0, corrections: 0 };
+
+  const { nx, ny, nz, unitIds, certainty } = grid;
+  const n2 = nx * ny;
+
+  const rankByCode = new Map(stratOrder.map((code, i) => [code, i]));
+  const rankById   = new Map();
+  for (const u of geoUnits) {
+    const r = rankByCode.get(u.code);
+    if (r != null) rankById.set(u.id, r);
+  }
+  if (!rankById.size) return { invertedCount: 0, corrections: 0 };
+
+  let invertedCount = 0, corrections = 0;
+
+  for (let iy = 0; iy < ny; iy++) {
+    for (let ix = 0; ix < nx; ix++) {
+      // Top → bottom: rank should non-decrease (older units deeper)
+      let maxRank = -1;
+      let unitAtMaxRank = 0;
+
+      for (let iz = nz - 1; iz >= 0; iz--) {
+        const idx = ix + iy * nx + iz * n2;
+        const uid = unitIds[idx];
+        if (uid === 0) continue;
+        const rank = rankById.get(uid);
+        if (rank == null) continue;
+
+        if (rank >= maxRank) {
+          maxRank = rank;
+          unitAtMaxRank = uid;
+        } else {
+          // Inversion: younger unit below an older unit already seen above
+          invertedCount++;
+          unitIds[idx] = unitAtMaxRank;
+          certainty[idx] = Math.min(certainty[idx] * 0.65, 0.45);
+          corrections++;
+        }
+      }
+    }
+  }
+
+  return {
+    invertedCount,
+    corrections,
+    invertedFraction: n2 * nz > 0 ? invertedCount / (n2 * nz) : 0,
+  };
+}
+
 export function voxelIndex(ix, iy, iz, grid) {
   return ix + iy * grid.nx + iz * grid.nx * grid.ny;
 }
