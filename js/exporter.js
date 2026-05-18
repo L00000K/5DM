@@ -100,38 +100,89 @@ export function initExporter() {
   });
 
   // ── Export formation contacts as CSV ─────────────────────────────────────
+  // Includes P10/P50/P90 depth uncertainty when MC probability volumes exist.
   document.getElementById('btn-export-contacts')?.addEventListener('click', () => {
     const grid = AppState.voxelGrid;
     if (!grid) { log('No voxel grid to export.', 'warn'); return; }
-    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds } = grid;
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, probVolumes } = grid;
     const unitById = {};
     AppState.geoUnits.forEach(u => { unitById[u.id] = u; });
 
-    const rows = ['Unit_Code,Unit_Name,IX,IY,X,Y,Top_Z_mAOD'];
+    const hasMC = probVolumes?.size > 0;
+    const header = hasMC
+      ? 'Unit_Code,Unit_Name,IX,IY,X_m,Y_m,Top_Z_P50_mAOD,Top_Z_P10_mAOD,Top_Z_P90_mAOD,Depth_P50_m,Depth_P10_m,Depth_P90_m'
+      : 'Unit_Code,Unit_Name,IX,IY,X_m,Y_m,Top_Z_mAOD,Depth_bGL_m';
+    const rows = [header];
+
     for (let iy = 0; iy < ny; iy++) {
       for (let ix = 0; ix < nx; ix++) {
-        // Per unit: find topmost voxel (highest iz)
-        const topByUnit = {};
-        for (let iz = nz - 1; iz >= 0; iz--) {
-          const uid = unitIds[ix + iy * nx + iz * nx * ny];
-          if (uid && topByUnit[uid] === undefined) topByUnit[uid] = iz;
-        }
-        for (const [uid, iz] of Object.entries(topByUnit)) {
-          const unit = unitById[uid];
-          if (!unit) continue;
-          const x   = (O.x + (ix + 0.5) * cs).toFixed(2);
-          const y   = (O.z + (iy + 0.5) * cs).toFixed(2);
-          const top = (O.y + (parseInt(iz) + 1) * ch).toFixed(2);
-          rows.push([
-            unit.code,
-            `"${(unit.name ?? '').replace(/"/g, '""')}"`,
-            ix, iy, x, y, top,
-          ].join(','));
+        const x = O.x + (ix + 0.5) * cs;
+        const y = O.z + (iy + 0.5) * cs;
+
+        if (hasMC) {
+          // For each unit with a probability volume, find P10/P50/P90 top contact
+          for (const [code, probVol] of probVolumes) {
+            const unit = AppState.geoUnits.find(u => u.code === code);
+            if (!unit) continue;
+
+            let izP50 = -1, izP10 = -1, izP90 = -1;
+            for (let iz = nz - 1; iz >= 0; iz--) {
+              const p = probVol[ix + iy * nx + iz * nx * ny];
+              if (izP10 < 0 && p >= 0.10) izP10 = iz;
+              if (izP50 < 0 && p >= 0.50) izP50 = iz;
+              if (izP90 < 0 && p >= 0.90) izP90 = iz;
+              if (izP10 >= 0 && izP50 >= 0 && izP90 >= 0) break;
+            }
+            if (izP50 < 0) continue; // unit not present in this column
+
+            const zP50 = O.y + (izP50 + 1) * ch;
+            const zP10 = izP10 >= 0 ? O.y + (izP10 + 1) * ch : zP50 + ch;
+            const zP90 = izP90 >= 0 ? O.y + (izP90 + 1) * ch : zP50 - ch;
+
+            // Estimate ground surface from topmost voxel in column
+            let surfZ = O.y + nz * ch;
+            for (let iz = nz - 1; iz >= 0; iz--) {
+              if (unitIds[ix + iy * nx + iz * nx * ny]) { surfZ = O.y + (iz + 1) * ch; break; }
+            }
+
+            rows.push([
+              code,
+              `"${(unit.name ?? '').replace(/"/g, '""')}"`,
+              ix, iy,
+              x.toFixed(2), y.toFixed(2),
+              zP50.toFixed(2), zP10.toFixed(2), zP90.toFixed(2),
+              (surfZ - zP50).toFixed(2), (surfZ - zP10).toFixed(2), (surfZ - zP90).toFixed(2),
+            ].join(','));
+          }
+        } else {
+          // Without probVolumes: deterministic top per unit
+          const topByUnit = {};
+          for (let iz = nz - 1; iz >= 0; iz--) {
+            const uid = unitIds[ix + iy * nx + iz * nx * ny];
+            if (uid && topByUnit[uid] === undefined) topByUnit[uid] = iz;
+          }
+          // Ground surface elevation (topmost occupied voxel)
+          const surfIz = Math.max(...Object.values(topByUnit));
+          const surfZ  = surfIz >= 0 ? O.y + (surfIz + 1) * ch : O.y + nz * ch;
+
+          for (const [uid, iz] of Object.entries(topByUnit)) {
+            const unit = unitById[uid];
+            if (!unit) continue;
+            const top = O.y + (parseInt(iz) + 1) * ch;
+            rows.push([
+              unit.code,
+              `"${(unit.name ?? '').replace(/"/g, '""')}"`,
+              ix, iy, x.toFixed(2), y.toFixed(2),
+              top.toFixed(2), (surfZ - top).toFixed(2),
+            ].join(','));
+          }
         }
       }
     }
+
     downloadBlob(new Blob([rows.join('\n')], { type: 'text/csv' }), 'formation-contacts.csv');
-    log(`Formation contacts exported — ${rows.length - 1} contact points.`, 'ok');
+    const suffix = hasMC ? ' (with P10/P50/P90 uncertainty)' : '';
+    log(`Formation contacts exported — ${rows.length - 1} contact points${suffix}.`, 'ok');
   });
 
   // ── Export point cloud CSV (every voxel centre) ──────────────────────────────
