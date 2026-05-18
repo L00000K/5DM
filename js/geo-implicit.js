@@ -1109,8 +1109,10 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore, options 
   const codeToId = {};
   geoUnits.forEach(u => { codeToId[u.code] = u.id; });
 
-  // Column-context cache: concept context only varies with (worldX, worldY) since
-  // all current domain types use only horizontal position for relevance.
+  // Column-context cache: concept context is normally horizontal-only (domain filtering
+  // is XY-based), but when any concept has a vertical domain (minZ/maxZ), context varies
+  // per voxel rather than per column. Use a 3D cache key in that case.
+  const hasVerticalDomains = conceptStore?._concepts?.some(c => c.domain?.minZ !== undefined) ?? false;
   const colCtxCache = new Map();
 
   for (let pass = 0; pass < nMCPasses; pass++) {
@@ -1124,8 +1126,8 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore, options 
           const worldX = origin.x + ix * cellSize + cellSize * 0.5;
           const idx    = ix + iy * nx + iz * nx * ny;
 
-          // Concept context — cached per column on first pass
-          const colKey = ix * ny + iy;
+          // Concept context — cached per column (or per voxel when vertical domains active)
+          const colKey = hasVerticalDomains ? ix + iy * nx + iz * nx * ny : ix * ny + iy;
           let ctx = colCtxCache.get(colKey);
           if (ctx === undefined) {
             ctx = conceptStore ? conceptStore.computeAt(worldX, worldY, worldZ) : null;
