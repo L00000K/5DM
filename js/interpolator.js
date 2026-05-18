@@ -635,14 +635,16 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
       // Fall through to IDW below
     } else {
       log('Inferring voxel grid from neural implicit field…', 'info');
+      const nMCPasses = options.nMCPasses ?? 8;
+      if (nMCPasses > 1) log(`MC uncertainty: ${nMCPasses} passes`, 'info');
       const gridMeta = { nx, ny, nz, cellSize, cellHeight: cellH, origin: { x: ox, y: oz, z: oy } };
-      const inferred = inferGeoImplicit(trainedModel, gridMeta, geoUnits, conceptStore);
+      const inferred = inferGeoImplicit(trainedModel, gridMeta, geoUnits, conceptStore, { nMCPasses });
       unitIds.set(inferred.unitIds);
       certainty.set(inferred.certainty);
       blendUnitIds.set(inferred.blendUnitIds);
       blendRatios.set(inferred.blendRatios);
-      // Pass through concept influence map for visualisation
       const conceptInfluence = inferred.conceptInfluence ?? null;
+      const probVolumes      = inferred.probVolumes ?? null;
 
       // Oracle refinement: find uncertain clusters and pass to injected oracle fn
       const oracleFn = options.oracleRefineFn;
@@ -727,6 +729,7 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
         unitIds, certainty, blendUnitIds, blendRatios,
         ...(conceptInfluence ? { conceptInfluence } : {}),
         ...(coverageDensity   ? { coverageDensity }  : {}),
+        ...(probVolumes       ? { probVolumes }       : {}),
       };
     }
   }

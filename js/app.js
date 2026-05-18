@@ -937,6 +937,7 @@ function initBuildModel() {
         varNugget: AppState.varNugget,
         faultPlanes: AppState.faultPlanes,
         conceptStore: AppState.conceptStore ?? null,
+        nMCPasses:   AppState.nMCPasses ?? 8,
         onProgress: (p, loss, meta) => setBuildProgress(p, loss, meta),
       };
 

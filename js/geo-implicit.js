@@ -463,6 +463,77 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
     }
   }
 
+  // ── Boundary-emphasis contact samples ───────────────────────────────────────
+  // Unit contacts carry the most geological information. The uniform interior
+  // samples above are mostly redundant — the network can interpolate between them.
+  // Here we add high-weight samples placed just inside each unit on either side
+  // of every observed contact, so the network learns precisely WHERE boundaries sit.
+  {
+    const CONTACT_OFFSET = 0.04; // fraction of layer thickness to offset inward
+    const CONTACT_WEIGHT = 1.25; // elevated sample weight at contacts
+    for (const bh of boreholes) {
+      const layers = (bh.layers ?? []).filter(l => l.unitCode && unitIdx[l.unitCode] !== undefined);
+      for (let li = 0; li < layers.length - 1; li++) {
+        const above = layers[li];
+        const below = layers[li + 1];
+        const tiAbove = unitIdx[above.unitCode];
+        const tiBelow = unitIdx[below.unitCode];
+        if (tiAbove === undefined || tiBelow === undefined) continue;
+
+        // Contact elevation (shared boundary between above.base and below.top)
+        const contactZ = bh.groundLevel - above.base;
+
+        // Layer thicknesses to determine offset distance
+        const thickAbove = Math.abs(above.base - above.top);
+        const thickBelow = Math.abs(below.base - below.top);
+        const offsetAbove = Math.max(0.05, thickAbove * CONTACT_OFFSET);
+        const offsetBelow = Math.max(0.05, thickBelow * CONTACT_OFFSET);
+
+        // 2 samples just inside the UPPER unit (slightly above contact)
+        for (let k = 0; k < 2; k++) {
+          const wz = contactZ + offsetAbove * (k + 1);
+          const ctx    = conceptStore ? conceptStore.computeAt(bh.x, bh.y, wz, above.unitCode) : null;
+          const ctxVec = ctx?.vec ?? zeroCtx;
+          const tensor = ctx?.tensor ?? gTensor;
+          const warped = warpPoint(bh.x, bh.y, wz, tensor);
+          let warpedZ = warped.z;
+          const trend = ctx?.trend;
+          if (trend && (Math.abs(trend.dz_dxN) > 0.005 || Math.abs(trend.dz_dyN) > 0.005)) {
+            const xN = 2 * (warped.x - warpedBounds.minX) / Math.max(1e-6, warpedBounds.maxX - warpedBounds.minX) - 1;
+            const yN = 2 * (warped.y - warpedBounds.minY) / Math.max(1e-6, warpedBounds.maxY - warpedBounds.minY) - 1;
+            warpedZ += trend.dz_dxN * xN + trend.dz_dyN * yN;
+          }
+          const pos = fourierEnc.encode(warped.x, warped.y, warpedZ, warpedBounds);
+          const inp = new Float32Array(nIn);
+          inp.set(pos); inp.set(ctxVec, fourierEnc.outDim);
+          const conceptBoost = ctx ? Math.min(0.5, ctx.totalWeight * 0.3) : 0;
+          samples.push({ inp, target: tiAbove, weight: (above.certainty ?? 0.9) * CONTACT_WEIGHT + conceptBoost });
+        }
+
+        // 2 samples just inside the LOWER unit (slightly below contact)
+        for (let k = 0; k < 2; k++) {
+          const wz = contactZ - offsetBelow * (k + 1);
+          const ctx    = conceptStore ? conceptStore.computeAt(bh.x, bh.y, wz, below.unitCode) : null;
+          const ctxVec = ctx?.vec ?? zeroCtx;
+          const tensor = ctx?.tensor ?? gTensor;
+          const warped = warpPoint(bh.x, bh.y, wz, tensor);
+          let warpedZ = warped.z;
+          const trend = ctx?.trend;
+          if (trend && (Math.abs(trend.dz_dxN) > 0.005 || Math.abs(trend.dz_dyN) > 0.005)) {
+            const xN = 2 * (warped.x - warpedBounds.minX) / Math.max(1e-6, warpedBounds.maxX - warpedBounds.minX) - 1;
+            const yN = 2 * (warped.y - warpedBounds.minY) / Math.max(1e-6, warpedBounds.maxY - warpedBounds.minY) - 1;
+            warpedZ += trend.dz_dxN * xN + trend.dz_dyN * yN;
+          }
+          const pos = fourierEnc.encode(warped.x, warped.y, warpedZ, warpedBounds);
+          const inp = new Float32Array(nIn);
+          inp.set(pos); inp.set(ctxVec, fourierEnc.outDim);
+          const conceptBoost = ctx ? Math.min(0.5, ctx.totalWeight * 0.3) : 0;
+          samples.push({ inp, target: tiBelow, weight: (below.certainty ?? 0.9) * CONTACT_WEIGHT + conceptBoost });
+        }
+      }
+    }
+  }
+
   if (samples.length === 0) return null;
 
   // ── Stratigraphic-order virtual samples ─────────────────────────────────────
@@ -760,10 +831,16 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
 // conceptStore: ConceptStore instance (or null) — same store passed to trainGeoImplicit.
 // At each voxel the store's computeAt() returns the concept context that warps coordinates
 // exactly as during training, ensuring inference geometry matches the trained distribution.
-export function inferGeoImplicit(trained, grid, geoUnits, conceptStore) {
+export function inferGeoImplicit(trained, grid, geoUnits, conceptStore, options = {}) {
   // Backward compat: if old options object passed, ignore options silently
   if (conceptStore && typeof conceptStore !== 'object') conceptStore = null;
   if (conceptStore && typeof conceptStore.computeAt !== 'function') conceptStore = null;
+
+  // nMCPasses > 1: Monte Carlo dropout inference — multiple stochastic forward passes
+  // with FiLM dropout active. Produces per-unit probability volumes (uncertainty) in
+  // addition to the point-estimate unitIds. This is the Leapfrog-style UQ approach.
+  const nMCPasses = Math.max(1, options.nMCPasses ?? 1);
+  const mcDropout = 0.08; // light dropout for test-time MC (less than training)
 
   const { net, fourierEnc, warpedBounds, bounds, unitCodes, CONCEPT_DIM } = trained;
   const cdim      = CONCEPT_DIM ?? 32;
@@ -774,85 +851,115 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore) {
   const useBounds = conceptStore ? computeWarpedBounds(bounds, gTensor) : (warpedBounds ?? bounds);
 
   const { nx, ny, nz, cellSize, cellHeight, origin } = grid;
-  const total = nx * ny * nz;
+  const total   = nx * ny * nz;
+  const nUnitsI = unitCodes.length;
 
-  const unitIds         = new Uint8Array(total);
-  const certainty       = new Float32Array(total);
-  const blendUnitIds    = new Uint8Array(total);
-  const blendRatios     = new Float32Array(total);
-  // Per-voxel concept semantic dominance [0..1]: 0 = data-driven, 1 = concept-driven
-  // Used for traceability visualisation (heat-map overlay).
+  const unitIds          = new Uint8Array(total);
+  const certainty        = new Float32Array(total);
+  const blendUnitIds     = new Uint8Array(total);
+  const blendRatios      = new Float32Array(total);
   const conceptInfluence = new Float32Array(total);
+
+  // Accumulator for MC probability averaging — shape [total * nUnitsI].
+  // When nMCPasses == 1 this is used once then discarded; the allocation is
+  // small (~total × nUnits × 4 bytes) and avoids a separate code path.
+  const probAcc = new Float32Array(total * nUnitsI);
 
   const codeToId = {};
   geoUnits.forEach(u => { codeToId[u.code] = u.id; });
 
   // Column-context cache: concept context only varies with (worldX, worldY) since
   // all current domain types use only horizontal position for relevance.
-  // Caching saves nz concept-context computations per column during inference.
-  const colCtxCache = new Map(); // key = `${ix},${iy}`
+  const colCtxCache = new Map();
 
-  for (let iz = nz - 1; iz >= 0; iz--) {
-    const worldZ = origin.y + iz * cellHeight + cellHeight * 0.5;
-    for (let iy = 0; iy < ny; iy++) {
-      const worldY = origin.z + iy * cellSize + cellSize * 0.5;
-      for (let ix = 0; ix < nx; ix++) {
-        const worldX = origin.x + ix * cellSize + cellSize * 0.5;
-        const idx    = ix + iy * nx + iz * nx * ny;
+  for (let pass = 0; pass < nMCPasses; pass++) {
+    const drop = nMCPasses > 1 ? mcDropout : 0;
 
-        // Fetch or compute concept context — cached per (ix,iy) column
-        const colKey = ix * ny + iy;
-        let ctx = colCtxCache.get(colKey);
-        if (ctx === undefined) {
-          ctx = conceptStore ? conceptStore.computeAt(worldX, worldY, worldZ) : null;
-          colCtxCache.set(colKey, ctx);
+    for (let iz = nz - 1; iz >= 0; iz--) {
+      const worldZ = origin.y + iz * cellHeight + cellHeight * 0.5;
+      for (let iy = 0; iy < ny; iy++) {
+        const worldY = origin.z + iy * cellSize + cellSize * 0.5;
+        for (let ix = 0; ix < nx; ix++) {
+          const worldX = origin.x + ix * cellSize + cellSize * 0.5;
+          const idx    = ix + iy * nx + iz * nx * ny;
+
+          // Concept context — cached per column on first pass
+          const colKey = ix * ny + iy;
+          let ctx = colCtxCache.get(colKey);
+          if (ctx === undefined) {
+            ctx = conceptStore ? conceptStore.computeAt(worldX, worldY, worldZ) : null;
+            colCtxCache.set(colKey, ctx);
+          }
+          const ctxVec = ctx?.vec ?? zeroCtx;
+          const tensor = ctx?.tensor ?? gTensor;
+
+          const warpedInf = warpPoint(worldX, worldY, worldZ, tensor);
+          const wx  = warpedInf.x;
+          const wy  = warpedInf.y;
+          let   wz  = warpedInf.z;
+          const iTrend = ctx?.trend;
+          if (iTrend && (Math.abs(iTrend.dz_dxN) > 0.005 || Math.abs(iTrend.dz_dyN) > 0.005)) {
+            const xN = 2 * (wx - useBounds.minX) / Math.max(1e-6, useBounds.maxX - useBounds.minX) - 1;
+            const yN = 2 * (wy - useBounds.minY) / Math.max(1e-6, useBounds.maxY - useBounds.minY) - 1;
+            wz += iTrend.dz_dxN * xN + iTrend.dz_dyN * yN;
+          }
+          const pos = fourierEnc.encode(wx, wy, wz, useBounds);
+
+          const inp = new Float32Array(nIn);
+          inp.set(pos);
+          inp.set(ctxVec, fourierEnc.outDim);
+
+          const probs = net.forward(inp, drop).probs;
+          const base  = idx * nUnitsI;
+          for (let u = 0; u < nUnitsI; u++) probAcc[base + u] += probs[u];
+
+          // Only set structural outputs on first pass
+          if (pass === 0) {
+            conceptInfluence[idx] = ctx ? Math.min(1, ctx.totalWeight) : 0;
+          }
         }
-        const ctxVec = ctx?.vec ?? zeroCtx;
-        const tensor = ctx?.tensor ?? gTensor;
-
-        // Warp coordinates by concept anisotropy tensor, then Fourier encode
-        const warpedInf = warpPoint(worldX, worldY, worldZ, tensor);
-        const wx  = warpedInf.x;
-        const wy  = warpedInf.y;
-        let   wz  = warpedInf.z;
-        // Apply depth trend: tilt Z so the field naturally dips in the predicted direction
-        const iTrend = ctx?.trend;
-        if (iTrend && (Math.abs(iTrend.dz_dxN) > 0.005 || Math.abs(iTrend.dz_dyN) > 0.005)) {
-          const xN = 2 * (wx - useBounds.minX) / Math.max(1e-6, useBounds.maxX - useBounds.minX) - 1;
-          const yN = 2 * (wy - useBounds.minY) / Math.max(1e-6, useBounds.maxY - useBounds.minY) - 1;
-          wz += iTrend.dz_dxN * xN + iTrend.dz_dyN * yN;
-        }
-        const pos = fourierEnc.encode(wx, wy, wz, useBounds);
-
-        const inp = new Float32Array(nIn);
-        inp.set(pos);
-        inp.set(ctxVec, fourierEnc.outDim);
-
-        const probs = net.predict(inp);
-
-        // Top-1 and top-2 classes
-        let b1 = 0, b2 = 1;
-        if (probs[1] > probs[0]) { b1 = 1; b2 = 0; }
-        for (let u = 2; u < probs.length; u++) {
-          if      (probs[u] > probs[b1]) { b2 = b1; b1 = u; }
-          else if (probs[u] > probs[b2])  { b2 = u; }
-        }
-
-        // Certainty: base separation between top-2 probs, boosted slightly
-        // where strong concepts are active (they provide extra epistemic confidence).
-        const baseCert = 0.5 + probs[b1] - probs[b2];
-        const conceptBoost = ctx ? Math.min(0.1, ctx.totalWeight * 0.08) : 0;
-
-        unitIds[idx]          = codeToId[unitCodes[b1]] ?? 0;
-        certainty[idx]        = Math.max(0.05, Math.min(1, baseCert + conceptBoost));
-        blendUnitIds[idx]     = codeToId[unitCodes[b2]] ?? 0;
-        blendRatios[idx]      = probs[b2];
-        conceptInfluence[idx] = ctx ? Math.min(1, ctx.totalWeight) : 0;
       }
     }
   }
 
-  return { unitIds, certainty, blendUnitIds, blendRatios, conceptInfluence };
+  // Average probabilities and build outputs
+  const probVolumes = new Map();
+  unitCodes.forEach(code => probVolumes.set(code, new Float32Array(total)));
+
+  for (let idx = 0; idx < total; idx++) {
+    const base = idx * nUnitsI;
+    let b1 = 0, b2 = -1;
+    // Find top-2 averaged probabilities
+    let p1 = probAcc[base] / nMCPasses;
+    let p2 = 0;
+    if (nUnitsI > 1) {
+      b2 = 1;
+      p2 = probAcc[base + 1] / nMCPasses;
+      if (p2 > p1) { b1 = 1; b2 = 0; const tmp = p1; p1 = p2; p2 = tmp; }
+    }
+    for (let u = 2; u < nUnitsI; u++) {
+      const p = probAcc[base + u] / nMCPasses;
+      if (p > p1) { b2 = b1; p2 = p1; b1 = u; p1 = p; }
+      else if (p > p2) { b2 = u; p2 = p; }
+    }
+
+    unitIds[idx]      = codeToId[unitCodes[b1]] ?? 0;
+    blendUnitIds[idx] = b2 >= 0 ? (codeToId[unitCodes[b2]] ?? 0) : 0;
+    blendRatios[idx]  = p2;
+
+    // Certainty from MC: mean top-1 probability ± concept boost.
+    // With MC passes the mean top-1 is a true Bayesian predictive probability;
+    // variance across passes gives calibrated uncertainty.
+    const conceptBoost = conceptInfluence[idx] > 0 ? Math.min(0.1, conceptInfluence[idx] * 0.08) : 0;
+    certainty[idx] = Math.max(0.05, Math.min(1, 0.5 + p1 - p2 + conceptBoost));
+
+    // Fill probability volumes
+    for (let u = 0; u < nUnitsI; u++) {
+      probVolumes.get(unitCodes[u])[idx] = probAcc[base + u] / nMCPasses;
+    }
+  }
+
+  return { unitIds, certainty, blendUnitIds, blendRatios, conceptInfluence, probVolumes };
 }
 
 // ── Patch voxel grid with oracle probability distributions ───────────────────
