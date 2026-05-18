@@ -4605,6 +4605,31 @@ function updateUnitStats() {
   const { cellSize: cs } = grid;
   const voxelVol = cs * cs * ch;
 
+  // Probabilistic volume bounds from MC probability volumes (when available).
+  // E[V] = Σ P(unit) × voxelVol; Var[V] = Σ P(unit)(1-P(unit)) × voxelVol²
+  // P10 ≈ E - 1.28σ, P90 ≈ E + 1.28σ (normal approximation of Bernoulli sum)
+  const probVolMap = grid.probVolumes; // Map<unitCode, Float32Array> or undefined
+  const probStats = {};
+  if (probVolMap?.size > 0) {
+    const total = nx * ny * nz;
+    for (const [code, probArr] of probVolMap) {
+      let eVol = 0, varVol = 0;
+      for (let i = 0; i < total; i++) {
+        const p = probArr[i];
+        eVol   += p;
+        varVol += p * (1 - p);
+      }
+      eVol   *= voxelVol;
+      varVol *= voxelVol * voxelVol;
+      const sigma = Math.sqrt(Math.max(0, varVol));
+      probStats[code] = {
+        mean: eVol,
+        p10:  Math.max(0, eVol - 1.28 * sigma),
+        p90:  eVol + 1.28 * sigma,
+      };
+    }
+  }
+
   el.innerHTML = '';
   geoUnits.forEach(unit => {
     const s = stats[unit.id];
@@ -4612,6 +4637,7 @@ function updateUnitStats() {
     const avgCert  = (s.certSum / s.count * 100).toFixed(0);
     const thick    = (s.maxElev - s.minElev).toFixed(1);
     const volume   = (s.count * voxelVol).toFixed(0);
+    const ps       = probStats[unit.code];
     const maxDC    = Math.max(...s.depthCounts);
 
     // Build inline depth histogram SVG (horizontal bars, each iz = one row)
@@ -4644,7 +4670,11 @@ function updateUnitStats() {
           <span class="stat-lbl">Cert.</span><span class="stat-val">${avgCert}%</span>
           <span class="stat-lbl">Top</span><span class="stat-val">${s.maxElev.toFixed(1)} m</span>
           <span class="stat-lbl">Base</span><span class="stat-val">${s.minElev.toFixed(1)} m</span>
-          <span class="stat-lbl">Vol</span><span class="stat-val">${Number(volume).toLocaleString()} m³</span>
+          ${ps
+            ? `<span class="stat-lbl">Vol (P50)</span><span class="stat-val">${Math.round(ps.mean).toLocaleString()} m³</span>
+               <span class="stat-lbl" title="10th–90th percentile from MC uncertainty">P10–P90</span><span class="stat-val" style="font-size:9px">${Math.round(ps.p10).toLocaleString()}–${Math.round(ps.p90).toLocaleString()} m³</span>`
+            : `<span class="stat-lbl">Vol</span><span class="stat-val">${Number(volume).toLocaleString()} m³</span>`
+          }
         </div>
       </div>`;
     el.appendChild(div);
