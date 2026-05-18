@@ -454,6 +454,19 @@
           space — shaping the <em>geometry</em> of the output model, not just adding point constraints.</p>
         </div>
 
+        <!-- One-shot site concept setup -->
+        <div style="margin-bottom:10px;padding:6px 8px;background:linear-gradient(135deg,rgba(67,133,245,0.08),rgba(67,133,245,0.02));border:1px solid rgba(67,133,245,0.25);border-radius:5px">
+          <div style="font-size:10px;font-weight:600;color:var(--accent);margin-bottom:3px">⚡ Quick Setup</div>
+          <p class="hint" style="font-size:9.5px;margin-bottom:5px">Paste a brief site description and Claude sets up concepts, events &amp; strat order automatically.</p>
+          <textarea id="site-setup-text" rows="3"
+            placeholder="e.g. 'The site comprises made ground over alluvial clay, with a palaeochannel trending E–W incised into chalk. Alluvial gravel occurs as a laterally variable lens. Chalk rockhead is irregular with dissolution features…'"
+            style="width:100%;box-sizing:border-box;font-size:10px;background:var(--bg-deep);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:5px;resize:vertical;line-height:1.4"></textarea>
+          <button id="btn-site-setup" class="btn btn-secondary btn-sm" style="width:100%;margin-top:4px;font-size:10px">
+            ✦ Setup concepts &amp; events from description
+          </button>
+          <div id="site-setup-result" style="display:none;margin-top:4px;font-size:9.5px;color:var(--text-mid)"></div>
+        </div>
+
         <div class="field-group">
           <label>Concept Description</label>
           <textarea id="concept-description" rows="4"

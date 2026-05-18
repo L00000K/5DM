@@ -36,7 +36,7 @@ import { parseSectionFromText, sectionToVirtualBoreholes,
 import { SectionSketch } from './section-sketch.js';
 import { FourierEncoder, measureConceptGeometry, analyzeBoreholeGeometry } from './geo-implicit.js';
 import { ConceptStore, CONCEPT_AXES } from './concept-store.js';
-import { encodeGeologicalConcept, refineConceptsWithClaude, extractConceptsFromText, analyseBoreholeGaps } from './claude-client.js';
+import { encodeGeologicalConcept, refineConceptsWithClaude, extractConceptsFromText, analyseBoreholeGaps, setupConceptsFromSiteDescription } from './claude-client.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -6637,6 +6637,76 @@ function initConceptPanel() {
       log(`Concept suggestion failed: ${err.message}`, 'error');
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = '✦ Auto-suggest concepts from data'; }
+    }
+  });
+
+  // ── One-shot site concept setup ───────────────────────────────────────────
+  document.getElementById('btn-site-setup')?.addEventListener('click', async () => {
+    const btn    = document.getElementById('btn-site-setup');
+    const txtEl  = document.getElementById('site-setup-text');
+    const resEl  = document.getElementById('site-setup-result');
+    const txt    = txtEl?.value?.trim();
+    if (!txt) { log('Enter a site description first.', 'warn'); return; }
+    if (!AppState.geoUnits.length) { log('Run AI Analysis first to define geological units.', 'warn'); return; }
+
+    btn.disabled = true; btn.textContent = '⟳ Setting up…';
+    if (resEl) { resEl.style.display = 'none'; resEl.innerHTML = ''; }
+
+    try {
+      const apiKey = sessionStorage.getItem('anthropic_api_key') ?? '';
+      const setup  = await setupConceptsFromSiteDescription(txt, AppState.geoUnits, apiKey, !apiKey);
+
+      if (!AppState.conceptStore) AppState.conceptStore = new ConceptStore();
+      let nConcepts = 0;
+      for (const c of setup.concepts) {
+        try {
+          const emb = await encodeGeologicalConcept(c.description, apiKey, !apiKey);
+          const embArr = emb instanceof Float32Array ? emb : emb.embedding;
+          AppState.conceptStore.add({
+            description:  c.description,
+            embedding:    embArr,
+            confidence:   c.confidence,
+            domain:       { type: 'global' },
+            unitAffinity: c.unitAffinity ?? [],
+          });
+          nConcepts++;
+        } catch (_) { /* skip failed encodes */ }
+      }
+
+      // Apply geological event timeline
+      for (const evt of setup.events) {
+        const id = `evt_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+        AppState.geoEvents.push({ id, type: evt.type, name: evt.name, unitCodes: evt.unitCodes });
+      }
+
+      // Apply strat order if provided
+      if (setup.stratOrder.length) {
+        AppState.stratOrder = [...setup.stratOrder];
+        AppState._stratDisplayOrder = [...setup.stratOrder];
+        const lockEl = document.getElementById('strat-manual-lock');
+        if (lockEl) lockEl.checked = true;
+        updateStratColumn?.();
+      }
+
+      _renderConceptList();
+      _saveConceptStore();
+      _renderGeoEventList?.();
+
+      const summary = [
+        nConcepts ? `${nConcepts} concept(s) added` : null,
+        setup.events.length ? `${setup.events.length} event(s) added to timeline` : null,
+        setup.stratOrder.length ? `Strat order set (${setup.stratOrder.join(' → ')})` : null,
+      ].filter(Boolean).join(' · ');
+
+      if (resEl) {
+        resEl.style.display = 'block';
+        resEl.innerHTML = `<span style="color:var(--accent)">✓ ${escHtml(summary)}</span>`;
+      }
+      log(`Site setup complete: ${summary}`, 'ok');
+    } catch (err) {
+      log(`Site setup failed: ${err.message}`, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = '✦ Setup concepts & events from description';
     }
   });
 

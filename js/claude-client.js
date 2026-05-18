@@ -1687,3 +1687,123 @@ function _demoBoreholeGaps(topCells, geoCheck, classifiedBH) {
     score:   c.score,
   }));
 }
+
+// ── One-shot site concept setup from a site description paragraph ─────────────
+// Takes a free-form site description and returns a structured setup object:
+//   concepts: [{description, confidence, unitAffinity}]
+//   events:   [{type, name, unitCodes}] — geological event timeline entries, oldest first
+//   stratOrder: string[]  — unit codes oldest→youngest
+//
+// This allows the user to paste a brief geological description and have Claude
+// configure the entire conceptual model automatically.
+export async function setupConceptsFromSiteDescription(description, geoUnits, apiKey, demoMode) {
+  if (!description?.trim()) return { concepts: [], events: [], stratOrder: [] };
+  if (demoMode || !apiKey) return _demoSiteSetup(description, geoUnits);
+
+  const unitList = geoUnits.map(u => `${u.code}: ${u.name ?? u.code}`).join('\n');
+  const eventTypes = 'deposition | erosion | fault | intrusion | folding | karst | fill | terrace';
+
+  const prompt = `You are an expert geotechnical modeller. Given the site description below, set up a complete geological conceptual model configuration.
+
+AVAILABLE UNITS:
+${unitList}
+
+SITE DESCRIPTION:
+"""
+${description.slice(0, 3000)}
+"""
+
+Return ONLY a JSON object (no markdown, no prose):
+{
+  "concepts": [
+    {
+      "description": "concise 1-sentence geometric/morphological concept (≤120 chars)",
+      "confidence": 0.0-1.0,
+      "unit_codes": ["CODE"] or []
+    }
+  ],
+  "events": [
+    {
+      "type": "deposition"|"erosion"|"fault"|"intrusion"|"folding"|"karst"|"fill"|"terrace",
+      "name": "brief event name (≤30 chars)",
+      "unit_codes": ["CODE"] or []
+    }
+  ],
+  "strat_order": ["OLDEST_CODE", ..., "YOUNGEST_CODE"]
+}
+
+Rules:
+- concepts: 3-6 distinct geometric/morphological concept statements. Focus on shape, orientation, directional trend, erosional surfaces, structural controls.
+- events: list 2-6 geological events in STRATIGRAPHIC ORDER (oldest first = index 0).
+  Use only the event types listed. Link each event to 0-2 unit codes.
+- strat_order: list unit codes from oldest (deepest) to youngest (shallowest). Only include codes from the unit list.
+- confidence: 0.9 if described as certain, 0.75 if inferred, 0.6 if speculative.
+- unit_codes: only from the list above.`;
+
+  try {
+    const resp = await _claudeRequest([{ role: 'user', content: prompt }], apiKey, 'claude-haiku-4-5-20251001', 900);
+    const text = resp.content?.[0]?.text ?? '';
+    const obj  = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? '{}');
+
+    const concepts = (obj.concepts ?? [])
+      .filter(c => c?.description?.trim())
+      .map(c => ({
+        description:  c.description.trim(),
+        confidence:   Math.max(0.1, Math.min(1, parseFloat(c.confidence) || 0.7)),
+        unitAffinity: Array.isArray(c.unit_codes) ? c.unit_codes.filter(Boolean) : [],
+      }))
+      .slice(0, 8);
+
+    const events = (obj.events ?? [])
+      .filter(e => e?.type)
+      .map(e => ({
+        type:      e.type,
+        name:      e.name ?? '',
+        unitCodes: Array.isArray(e.unit_codes) ? e.unit_codes.filter(Boolean) : [],
+      }))
+      .slice(0, 10);
+
+    const stratOrder = Array.isArray(obj.strat_order)
+      ? obj.strat_order.filter(c => geoUnits.some(u => u.code === c))
+      : [];
+
+    return { concepts, events, stratOrder };
+  } catch (e) {
+    console.warn('setupConceptsFromSiteDescription error:', e.message);
+    return _demoSiteSetup(description, geoUnits);
+  }
+}
+
+function _demoSiteSetup(text, geoUnits) {
+  const lower = text.toLowerCase();
+  const codes  = geoUnits.filter(u => u.code !== 'UNKN').map(u => u.code);
+  const concepts = [];
+  const events   = [];
+
+  if (/channel|palaeochannel/i.test(lower)) {
+    concepts.push({ description: 'Palaeochannel — incised erosional feature with concave-up base, E-W trend', confidence: 0.8, unitAffinity: [] });
+    events.push({ type: 'erosion',     name: 'Channel incision', unitCodes: [] });
+    events.push({ type: 'fill',        name: 'Channel fill',     unitCodes: codes.slice(0, 1) });
+  } else if (/terrace|river.?terrace/i.test(lower)) {
+    concepts.push({ description: 'River terrace deposits — laterally continuous, gently dipping toward valley', confidence: 0.8, unitAffinity: [] });
+    events.push({ type: 'deposition', name: 'Terrace formation', unitCodes: codes.slice(0, 1) });
+  } else if (/fault|faulted/i.test(lower)) {
+    concepts.push({ description: 'Fault-controlled geometry — stepped boundaries and abrupt lateral unit changes', confidence: 0.75, unitAffinity: [] });
+    events.push({ type: 'fault', name: 'Faulting event', unitCodes: [] });
+  } else {
+    concepts.push({ description: 'Sub-horizontal stratified sequence — broadly layered, laterally continuous', confidence: 0.65, unitAffinity: [] });
+    events.push({ type: 'deposition', name: 'Primary deposition', unitCodes: codes.slice(0, 1) });
+  }
+
+  if (/chalk|limestone|karst/i.test(lower)) {
+    concepts.push({ description: 'Irregular dissolution features in bedrock — localised hollows and pinnacles', confidence: 0.7, unitAffinity: [] });
+    events.push({ type: 'karst', name: 'Dissolution', unitCodes: codes.slice(-1) });
+  }
+  if (/alluvial|alluvium|fill|made.?ground/i.test(lower)) {
+    events.unshift({ type: 'deposition', name: 'Made ground / fill', unitCodes: [] });
+  }
+
+  // Build strat order: older codes last, younger first
+  const stratOrder = [...codes].reverse();
+  return { concepts, events, stratOrder };
+}
