@@ -6648,7 +6648,12 @@ function initConceptPanel() {
         units: AppState.geoUnits.map(u => ({ code: u.code, name: u.name })),
         description: AppState.siteContext?.description ?? '',
       };
-      const emb  = await encodeGeologicalConcept(text, AppState.apiKey, AppState.demoMode, { siteContext });
+      // Request rationale when using live API (not demo mode) — adds ~100 extra tokens
+      const encodeResult = await encodeGeologicalConcept(text, AppState.apiKey, AppState.demoMode, {
+        siteContext, withRationale: !AppState.demoMode && !!AppState.apiKey,
+      });
+      const emb  = encodeResult instanceof Float32Array ? encodeResult : encodeResult.embedding;
+      const encodeRationale = encodeResult?.rationale ?? null;
       const conf = parseFloat(confidence?.value ?? 0.7);
 
       // ── Pre-add checks ───────────────────────────────────────────────────────
@@ -6708,6 +6713,16 @@ function initConceptPanel() {
       AppState.conceptStore.add({ description: text, embedding: emb, confidence: conf, domain, unitAffinity });
       _renderConceptList();
       _saveConceptStore();
+
+      // Show AI rationale if returned (API mode only)
+      if (encodeRationale && warnEl) {
+        warnEl.style.display = 'block';
+        const rationaleHtml = `<div style="border-left:2px solid var(--accent);padding:3px 6px;margin-bottom:3px;font-size:9.5px;color:var(--text-mid);font-style:italic">
+          <span style="color:var(--accent);margin-right:4px">ℹ</span>${escHtml(encodeRationale)}
+        </div>`;
+        warnEl.innerHTML = rationaleHtml + warnEl.innerHTML;
+      }
+
       if (textarea) textarea.value = '';
       // Clear selection after encoding
       if (unitAffinitySel) Array.from(unitAffinitySel.options).forEach(o => o.selected = false);

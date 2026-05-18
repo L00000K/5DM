@@ -902,6 +902,8 @@ export async function encodeGeologicalConcept(description, apiKey, demoMode, opt
   ];
   const axisLines = CONCEPT_AXES.map((a, i) => `[${i}] ${a}: ${AXIS_HINTS[i]}`).join('\n');
 
+  const withRationale = options.withRationale ?? false;
+
   const resp = await fetch(API_URL, {
     method: 'POST',
     headers: {
@@ -911,8 +913,8 @@ export async function encodeGeologicalConcept(description, apiKey, demoMode, opt
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 350,
-      system: 'You are an expert structural geologist and sedimentologist encoding geological concepts as geometric embeddings. Return ONLY a JSON array of 32 numbers — no explanation, no markdown, no prose.',
+      max_tokens: withRationale ? 600 : 350,
+      system: 'You are an expert structural geologist and sedimentologist encoding geological concepts as geometric embeddings.',
       messages: [{
         role: 'user',
         content: `Rate the following geological concept on each of the 32 morphological geometry axes.
@@ -925,7 +927,10 @@ Concept: "${description}"
 Axes (index: name: geometric meaning):
 ${axisLines}
 
-Respond with ONLY a JSON array of exactly 32 numbers, e.g.: [0.8, -0.2, 0.5, ...]`,
+${withRationale
+  ? `Respond with a JSON object: {"embedding": [32 numbers], "rationale": "1–2 sentence plain-language explanation of the key geometric axes chosen and why"}\nExample: {"embedding": [0.8, -0.2, ...], "rationale": "This concept implies E-W elongation (axis 3=+0.9) and a concave-up channel morphology (axis 5=+1.0) because..."}`
+  : `Respond with ONLY a JSON array of exactly 32 numbers, e.g.: [0.8, -0.2, 0.5, ...]`
+}`,
       }],
     }),
   });
@@ -939,16 +944,30 @@ Respond with ONLY a JSON array of exactly 32 numbers, e.g.: [0.8, -0.2, 0.5, ...
   const text = (data.content?.[0]?.text ?? '')
     .replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim();
 
-  let arr;
-  try { arr = JSON.parse(text); } catch {
-    throw new Error(`Concept encoding returned non-JSON: ${text.slice(0, 100)}`);
+  let arr, rationale = null;
+  if (withRationale) {
+    let parsed;
+    try { parsed = JSON.parse(text); } catch {
+      // Fallback: try extracting array from within the text
+      const m = text.match(/\[([^\]]+)\]/);
+      if (m) parsed = { embedding: JSON.parse(`[${m[1]}]`) };
+      else throw new Error(`Concept encoding returned non-JSON: ${text.slice(0, 100)}`);
+    }
+    arr       = parsed.embedding ?? parsed;
+    rationale = parsed.rationale ?? null;
+  } else {
+    try { arr = JSON.parse(text); } catch {
+      throw new Error(`Concept encoding returned non-JSON: ${text.slice(0, 100)}`);
+    }
   }
+
   if (!Array.isArray(arr) || arr.length < 32) {
     throw new Error(`Expected 32 values, got ${arr?.length ?? 0}`);
   }
 
   const emb = new Float32Array(32);
   for (let i = 0; i < 32; i++) emb[i] = Math.max(-1, Math.min(1, +arr[i] || 0));
+  if (withRationale) return { embedding: emb, rationale };
   return emb;
 }
 
