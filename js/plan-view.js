@@ -115,20 +115,26 @@ export class PlanView {
   }
 
   draw(grid, geoUnits, boreholes, conceptStore = null) {
-    if (!grid) return;
+    const mode = this._modeSelect?.value ?? 'unit';
+    // concept_territory mode can render without a built grid
+    if (!grid && mode !== 'concept_territory') return;
+    if (!grid && (!conceptStore || conceptStore.isEmpty)) return;
+
     this._lastArgs = { grid, geoUnits, boreholes, conceptStore };
 
-    const { origin: O, nz, cellHeight: ch } = grid;
-    const minElev = O.y;
-    const maxElev = O.y + nz * ch;
+    if (grid) {
+      const { origin: O, nz, cellHeight: ch } = grid;
+      const minElev = O.y;
+      const maxElev = O.y + nz * ch;
 
-    if (this._slider) {
-      this._slider.min  = minElev.toFixed(2);
-      this._slider.max  = maxElev.toFixed(2);
-      this._slider.step = (ch * 0.5).toFixed(2);
-      const cur = parseFloat(this._slider.value);
-      if (cur < minElev || cur > maxElev) {
-        this._slider.value = ((minElev + maxElev) / 2).toFixed(2);
+      if (this._slider) {
+        this._slider.min  = minElev.toFixed(2);
+        this._slider.max  = maxElev.toFixed(2);
+        this._slider.step = (ch * 0.5).toFixed(2);
+        const cur = parseFloat(this._slider.value);
+        if (cur < minElev || cur > maxElev) {
+          this._slider.value = ((minElev + maxElev) / 2).toFixed(2);
+        }
       }
     }
 
@@ -150,11 +156,32 @@ export class PlanView {
     const args = this._lastArgs;
     if (!args || !this._canvas || !this._ctx) return;
     const { grid, geoUnits, boreholes, conceptStore } = args;
-    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty } = grid;
 
     const mode = this._modeSelect?.value ?? 'unit';
-    const elev = parseFloat(this._slider?.value ?? O.y);
-    const iz   = Math.max(0, Math.min(nz - 1, Math.floor((elev - O.y) / ch)));
+
+    // concept_territory can render with a synthetic grid derived from boreholes/conceptStore
+    const hasSiteGrid = !!grid;
+    let nx, ny, nz, cs, ch, O, unitIds, certainty;
+    if (hasSiteGrid) {
+      ({ nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty } = grid);
+    } else if (mode === 'concept_territory' && conceptStore && !conceptStore.isEmpty) {
+      // Build a synthetic spatial extent from borehole positions or fallback 100×100m
+      const bhs = boreholes?.filter(b => b.x != null && b.z != null) ?? [];
+      const xs = bhs.map(b => b.x), ys = bhs.map(b => b.z);
+      const minX = xs.length ? Math.min(...xs) - 20 : 0;
+      const maxX = xs.length ? Math.max(...xs) + 20 : 100;
+      const minY = ys.length ? Math.min(...ys) - 20 : 0;
+      const maxY = ys.length ? Math.max(...ys) + 20 : 100;
+      cs = 5; ch = 2; nz = 1; nx = Math.max(10, Math.ceil((maxX - minX) / cs));
+      ny = Math.max(10, Math.ceil((maxY - minY) / cs));
+      O = { x: minX, y: parseFloat(this._slider?.value ?? 0), z: minY };
+      unitIds = null; certainty = null;
+    } else {
+      return;
+    }
+
+    const elev = parseFloat(this._slider?.value ?? (hasSiteGrid ? O.y : 0));
+    const iz   = hasSiteGrid ? Math.max(0, Math.min(nz - 1, Math.floor((elev - O.y) / ch))) : 0;
     if (this._elevLabel) this._elevLabel.textContent = `${elev.toFixed(1)} mAOD`;
 
     const unitMap = {};
@@ -276,6 +303,7 @@ export class PlanView {
 
     for (let iy = 0; iy < ny; iy++) {
       for (let ix = 0; ix < nx; ix++) {
+        if (!unitIds) break;
         const flat  = ix + iy * nx + iz * nx * ny;
         const uid   = unitIds[flat];
         const unit  = unitMap[uid];
@@ -459,6 +487,89 @@ export class PlanView {
       paramMin = 0; paramMax = 100;
     }
 
+    // Concept territory map — overlay showing which concept is spatially dominant
+    // Each concept gets a distinct hue; brightness scales with influence weight.
+    // Rendered at the current slice elevation without requiring the voxel model.
+    if (mode === 'concept_territory' && conceptStore && !conceptStore.isEmpty) {
+      const concepts = conceptStore.concepts;
+      const nC = concepts.length;
+      if (nC > 0) {
+        // Assign a hue to each concept (golden-angle stepping for distinct colors)
+        const hues = concepts.map((_, i) => (i * 137.508) % 360);
+        for (let iy = 0; iy < ny; iy++) {
+          for (let ix = 0; ix < nx; ix++) {
+            const wx = O.x + (ix + 0.5) * cs;
+            const wy = O.z + (iy + 0.5) * cs;
+            // Find dominant concept at this position
+            let domIdx = -1, domW = 0;
+            const conceptWeights = concepts.map((c, ci) => {
+              // Inline relevance: same logic as ConceptStore._relevance
+              let w = c.confidence;
+              if (c.domain?.minZ !== undefined || c.domain?.maxZ !== undefined) {
+                const dz = c.domain.minZ !== undefined && elev < c.domain.minZ
+                  ? c.domain.minZ - elev
+                  : c.domain.maxZ !== undefined && elev > c.domain.maxZ
+                    ? elev - c.domain.maxZ : 0;
+                const sz = c.domain.sigmaZ ?? Math.max(1, (((c.domain.maxZ ?? elev) - (c.domain.minZ ?? elev)) * 0.2));
+                w *= Math.exp(-(dz * dz) / (2 * sz * sz));
+              }
+              if (c.domain?.type === 'bbox') {
+                const { minX = 0, maxX = 0, minY = 0, maxY = 0, sigma = 50 } = c.domain;
+                const cx2 = (minX + maxX) / 2, cy2 = (minY + maxY) / 2;
+                const dx2 = Math.max(0, Math.abs(wx - cx2) - (maxX - minX) / 2);
+                const dy2 = Math.max(0, Math.abs(wy - cy2) - (maxY - minY) / 2);
+                const dist2 = Math.hypot(dx2, dy2);
+                w *= Math.exp(-(dist2 * dist2) / (2 * sigma * sigma));
+              }
+              if (w > domW) { domW = w; domIdx = ci; }
+              return w;
+            });
+            const totalW = conceptWeights.reduce((a, b) => a + b, 0);
+            if (domIdx < 0 || totalW < 0.02) continue;
+            const brightness = Math.round(20 + (domW / Math.max(totalW, 0.01)) * 55);
+            const saturation = Math.min(80, 40 + domW * 35);
+            ctx.fillStyle = `hsl(${hues[domIdx]},${saturation}%,${brightness}%)`;
+            ctx.globalAlpha = Math.min(0.75, domW * 1.2);
+            ctx.fillRect(
+              PAD + ix * cellPxW,
+              PAD + (ny - 1 - iy) * cellPxH,
+              Math.ceil(cellPxW + 0.5),
+              Math.ceil(cellPxH + 0.5)
+            );
+          }
+        }
+        ctx.globalAlpha = 1;
+
+        // Legend: concept names with their hue
+        ctx.font = '8.5px Inter, sans-serif';
+        concepts.forEach((c, i) => {
+          const ly = PAD + 14 * i + 10;
+          ctx.fillStyle = `hsl(${hues[i]},60%,40%)`;
+          ctx.fillRect(PAD + 4, ly - 6, 10, 8);
+          ctx.fillStyle = '#aabbc8';
+          ctx.textAlign = 'left';
+          ctx.fillText(c.description.slice(0, 28), PAD + 18, ly);
+        });
+
+        // Draw bbox domain outlines
+        concepts.forEach((c, ci) => {
+          if (c.domain?.type !== 'bbox') return;
+          const { minX, maxX, minY, maxY } = c.domain;
+          const px1 = PAD + ((minX - O.x) / cs) * cellPxW;
+          const px2 = PAD + ((maxX - O.x) / cs) * cellPxW;
+          const py1 = PAD + (ny - (maxY - O.z) / cs) * cellPxH;
+          const py2 = PAD + (ny - (minY - O.z) / cs) * cellPxH;
+          ctx.strokeStyle = `hsl(${hues[ci]},75%,50%)`;
+          ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+          ctx.strokeRect(px1, py1, px2 - px1, py2 - py1);
+          ctx.setLineDash([]);
+        });
+
+        paramLabel = 'Concept Territory';
+        paramMin = 0; paramMax = 100;
+      }
+    }
+
     // Drill target priority heatmap — post-pass
     if (mode === 'drill_targets') {
       const LOG2 = Math.log(2);
@@ -534,6 +645,7 @@ export class PlanView {
     ctx.setLineDash([3, 2]);
     for (let iy = 0; iy < ny; iy++) {
       for (let ix = 0; ix < nx; ix++) {
+        if (!unitIds || !certainty) break;
         const flat  = ix + iy * nx + iz * nx * ny;
         const c     = certainty[flat];
         if (!unitIds[flat] || c >= CERT_THRESHOLD) continue;
@@ -720,6 +832,7 @@ export class PlanView {
     const MODE_LABELS = { unit: 'Geology', cert: 'Certainty', cu: 'Undrained Strength (Cu)',
       N_spt: 'SPT N', settlement: 'Settlement Risk (Cc)', bearing: 'Bearing Capacity Risk (Cu)',
       probability: `P(${probUnitCode})`, concept: 'Concept Influence (semantic warp)',
+      concept_territory: 'Concept Territory Map',
       depth: `Top of ${depthUnitCode} (mAOD)` };
     const modeLabel = MODE_LABELS[mode] ?? mode;
     ctx.fillStyle = '#8898a8';

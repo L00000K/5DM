@@ -2385,7 +2385,10 @@ function initPlanView() {
   AppState.planView = new PlanView();
 
   document.getElementById('btn-plan-view')?.addEventListener('click', () => {
-    if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
+    const mode = document.getElementById('plan-view-mode')?.value ?? 'unit';
+    if (!AppState.voxelGrid && mode !== 'concept_territory') {
+      log('Build the 3D model first.', 'warn'); return;
+    }
     AppState.planView.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH, AppState.conceptStore);
   });
 
@@ -2395,7 +2398,8 @@ function initPlanView() {
     const depthWrap = document.getElementById('plan-view-depth-unit-wrap');
     if (probWrap)  probWrap.style.display  = e.target.value === 'probability' ? 'flex' : 'none';
     if (depthWrap) depthWrap.style.display = e.target.value === 'depth'       ? 'flex' : 'none';
-    if (AppState.voxelGrid && AppState.planView?.visible) {
+    const canDraw = AppState.voxelGrid || (e.target.value === 'concept_territory' && AppState.conceptStore && !AppState.conceptStore.isEmpty);
+    if (canDraw && AppState.planView?.visible) {
       AppState.planView.draw(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH, AppState.conceptStore);
     }
   });
