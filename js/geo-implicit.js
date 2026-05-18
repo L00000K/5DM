@@ -1093,34 +1093,230 @@ export function measureConceptGeometry(grid, geoUnits, conceptStore) {
     const ewRatio = extentX / Math.max(1, extentY);
     const nsRatio = extentY / Math.max(1, extentX);
 
-    // Concept prediction: sample concept context at centroid of unit bbox
-    let predictedEW = 1, predictedNS = 1;
+    // Concept prediction: sample concept context at centroid of unit bbox.
+    // Use rotated-tensor fields (Amaj, theta) for direction-aware matching.
+    let predictedEW = 1, predictedNS = 1, predictedAmaj = 1, predictedAmin = 1;
+    let predictedTheta = 0, predictedThetaDeg = 0;
     if (conceptStore && !conceptStore.isEmpty) {
       const cx = origin.x + (minIX + maxIX) / 2 * cellSize;
       const cy = origin.z + (minIY + maxIY) / 2 * cellSize;
       const cz = origin.y + (minIZ + maxIZ) / 2 * cellHeight;
       const ctx = conceptStore.computeAt(cx, cy, cz, u.code);
-      predictedEW = ctx.tensor.Ax; // > 1 → field predicted E-W elongation
-      predictedNS = ctx.tensor.Ay;
+      predictedEW        = ctx.tensor.Ax;
+      predictedNS        = ctx.tensor.Ay;
+      predictedAmaj      = ctx.tensor.Amaj ?? Math.max(ctx.tensor.Ax, ctx.tensor.Ay);
+      predictedAmin      = ctx.tensor.Amin ?? Math.min(ctx.tensor.Ax, ctx.tensor.Ay);
+      predictedTheta     = ctx.tensor.theta ?? 0;
+      predictedThetaDeg  = predictedTheta * 180 / Math.PI;
     }
 
-    // Concept match: 0 = geometry contradicts concept, 1 = perfect agreement
-    // A concept predicting Ax=3 (E-W elongation) matches if ewRatio > nsRatio
-    const ewConcept = predictedEW > predictedNS;
-    const ewActual  = ewRatio   > nsRatio;
-    const conceptMatch = ewConcept === ewActual ? 1 : 0.5;
+    // Direction-aware concept match: project actual voxel bbox onto the concept's
+    // predicted major axis direction (theta) and compare elongation ratios.
+    // This handles diagonal concepts (NE-SW, NW-SE) correctly.
+    const cosT = Math.cos(predictedTheta);
+    const sinT = Math.sin(predictedTheta);
+    // Project bbox extent E-W (extentX) and N-S (extentY) onto major/minor axes
+    const actualMajorExtent = Math.abs(extentX * cosT) + Math.abs(extentY * sinT);
+    const actualMinorExtent = Math.abs(extentX * sinT) + Math.abs(extentY * cosT);
+    const actualElongation  = actualMajorExtent / Math.max(1, actualMinorExtent);
+
+    // conceptMatch: 1 = geometry is elongated in concept's predicted direction,
+    //              0.5 = no strong elongation detected,
+    //              0 = elongated in the WRONG direction
+    let conceptMatch;
+    if (predictedAmaj < 1.15) {
+      // Concept predicts roughly isotropic — any result is acceptable
+      conceptMatch = 0.75;
+    } else {
+      const ratio = actualElongation / Math.max(1, predictedAmaj);
+      conceptMatch = Math.min(1, Math.max(0, ratio));
+    }
 
     results.push({
-      unitCode:    u.code,
-      unitName:    u.name,
-      unitColor:   u.color,
+      unitCode:          u.code,
+      unitName:          u.name,
+      unitColor:         u.color,
       extentX, extentY, extentZ, count,
-      ewRatio:     +ewRatio.toFixed(2),
-      nsRatio:     +nsRatio.toFixed(2),
-      predictedEW: +predictedEW.toFixed(2),
-      predictedNS: +predictedNS.toFixed(2),
-      conceptMatch,
+      ewRatio:           +ewRatio.toFixed(2),
+      nsRatio:           +nsRatio.toFixed(2),
+      predictedEW:       +predictedEW.toFixed(2),
+      predictedNS:       +predictedNS.toFixed(2),
+      predictedAmaj:     +predictedAmaj.toFixed(2),
+      predictedAmin:     +predictedAmin.toFixed(2),
+      predictedThetaDeg: +predictedThetaDeg.toFixed(1),
+      actualElongation:  +actualElongation.toFixed(2),
+      conceptMatch:      +conceptMatch.toFixed(2),
     });
   }
   return results;
+}
+
+// ── Data-derived concept embeddings from borehole geometry ────────────────────
+// Analyzes lateral thickness variation, depth trends, and occurrence patterns of
+// each geological unit across the borehole network and directly computes 32-dim
+// concept embeddings from the geometric statistics — no API call needed.
+// Complements suggestConceptsFromBoreholes (in claude-client.js) which asks
+// Claude to describe the concepts; this version encodes them directly.
+//
+// Returns [{unitCode, unitName, description, embedding: Float32Array(32), confidence, reason}]
+// The embeddings can be passed directly to ConceptStore.add().
+export function analyzeBoreholeGeometry(boreholes, geoUnits) {
+  if (!boreholes.length || !geoUnits.length) return [];
+
+  const suggestions = [];
+  const unitIdx = {};
+  geoUnits.forEach((u, i) => { unitIdx[u.code] = i; });
+
+  // Per-unit borehole observation: {x, y, top, base, thickness, midZ}
+  const unitObs = {};
+  geoUnits.forEach(u => { unitObs[u.code] = []; });
+
+  for (const bh of boreholes) {
+    const gl = bh.groundLevel ?? 0;
+    for (const layer of (bh.layers ?? [])) {
+      if (!layer.unitCode || !unitObs[layer.unitCode]) continue;
+      const thickness = Math.abs(layer.base - layer.top);
+      if (thickness < 0.05) continue;
+      const midZ = gl - (layer.top + layer.base) / 2;
+      unitObs[layer.unitCode].push({ x: bh.x, y: bh.y, top: gl - layer.top, base: gl - layer.base, thickness, midZ });
+    }
+  }
+
+  for (const u of geoUnits) {
+    const obs = unitObs[u.code];
+    if (obs.length < 2) continue;
+
+    const emb = new Float32Array(CONCEPT_AXES.length);
+    const reasons = [];
+
+    // ── Compute lateral statistics ────────────────────────────────────────────
+    const xs = obs.map(o => o.x);
+    const ys = obs.map(o => o.y);
+    const ts = obs.map(o => o.thickness);
+    const zs = obs.map(o => o.midZ);
+    const n  = obs.length;
+
+    const meanX = xs.reduce((a, b) => a + b, 0) / n;
+    const meanY = ys.reduce((a, b) => a + b, 0) / n;
+    const meanT = ts.reduce((a, b) => a + b, 0) / n;
+    const meanZ = zs.reduce((a, b) => a + b, 0) / n;
+
+    // Variance in X, Y, Z directions
+    const varX = xs.reduce((s, x) => s + (x - meanX) ** 2, 0) / n;
+    const varY = ys.reduce((s, y) => s + (y - meanY) ** 2, 0) / n;
+
+    // ── E-W vs N-S elongation from spatial distribution of observations ───────
+    // If the unit appears in BHs that span more E-W than N-S, likely E-W elongated
+    const spanX = Math.max(...xs) - Math.min(...xs);
+    const spanY = Math.max(...ys) - Math.min(...ys);
+    if (spanX > 1 || spanY > 1) {
+      const ewScore  = Math.min(1, spanX / Math.max(1, spanX + spanY) * 2 - 0.5);
+      const nsScore  = Math.min(1, spanY / Math.max(1, spanX + spanY) * 2 - 0.5);
+      if (Math.abs(ewScore - nsScore) > 0.2) {
+        emb[3] = Math.max(-0.5, Math.min(0.9, ewScore * 1.2));
+        emb[4] = Math.max(-0.5, Math.min(0.9, nsScore * 1.2));
+        const dir = spanX > spanY ? 'E-W' : 'N-S';
+        reasons.push(`unit found across ${(Math.max(spanX, spanY)).toFixed(0)}m ${dir} extent`);
+      }
+    }
+
+    // ── Thickness-gradient: does thickness increase E→W or S→N? ─────────────
+    // Linear regression: thickness ~ a*x + b*y + c
+    if (n >= 3) {
+      // Correlate thickness with x (E-W) and y (N-S) separately
+      const covTX = obs.reduce((s, o) => s + (o.x - meanX) * (o.thickness - meanT), 0) / n;
+      const covTY = obs.reduce((s, o) => s + (o.y - meanY) * (o.thickness - meanT), 0) / n;
+      const stdX  = Math.sqrt(varX) || 1;
+      const stdY  = Math.sqrt(varY) || 1;
+      const stdT  = Math.sqrt(ts.reduce((s, t) => s + (t - meanT) ** 2, 0) / n) || 1;
+      const rTX   = covTX / (stdX * stdT);
+      const rTY   = covTY / (stdY * stdT);
+
+      // Thinning: negative correlation = thins in that direction
+      if (rTX < -0.5) { emb[10] = Math.min(0.9, -rTX); reasons.push('thins eastward'); }
+      if (rTX >  0.5) { emb[11] = Math.min(0.9,  rTX); reasons.push('thickens eastward'); }
+      if (rTY < -0.5) { emb[12] = Math.min(0.9, -rTY); reasons.push('thins northward'); }
+      if (rTY >  0.5) { emb[13] = Math.min(0.9,  rTY); reasons.push('thickens northward'); }
+    }
+
+    // ── Depth trend: does the unit deepen in a particular direction? ──────────
+    if (n >= 3) {
+      const covZX = obs.reduce((s, o) => s + (o.x - meanX) * (o.midZ - meanZ), 0) / n;
+      const covZY = obs.reduce((s, o) => s + (o.y - meanY) * (o.midZ - meanZ), 0) / n;
+      const stdX  = Math.sqrt(varX) || 1;
+      const stdY  = Math.sqrt(varY) || 1;
+      const stdZ  = Math.sqrt(zs.reduce((s, z) => s + (z - meanZ) ** 2, 0) / n) || 1;
+      const rZX   = covZX / (stdX * stdZ);  // positive = deepens east
+      const rZY   = covZY / (stdY * stdZ);  // positive = deepens north
+
+      if (rZX >  0.45) { emb[14] = Math.min(0.9,  rZX); emb[1] = 0.5; reasons.push('deepens eastward'); }
+      if (rZX < -0.45) { emb[15] = Math.min(0.9, -rZX); emb[1] = 0.5; reasons.push('deepens westward'); }
+      if (rZY >  0.45) { emb[16] = Math.min(0.9,  rZY); emb[1] = 0.5; reasons.push('deepens northward'); }
+      if (rZY < -0.45) { emb[17] = Math.min(0.9, -rZY); emb[1] = 0.5; reasons.push('deepens southward'); }
+    }
+
+    // ── Lateral continuity: is the unit consistently present? ─────────────────
+    const presentFraction = obs.length / boreholes.filter(b => b.layers?.length).length;
+    if (presentFraction > 0.6) {
+      emb[9]  = 0.7;  // laterally continuous
+      emb[27] = 0.5;  // lateral anisotropy
+      reasons.push(`present in ${(presentFraction * 100).toFixed(0)}% of BHs`);
+    } else if (presentFraction < 0.3) {
+      emb[9]  = -0.4; // discontinuous/lenticular
+      emb[10] += 0.3; emb[11] += 0.3; // some thinning
+    }
+
+    // ── Horizontal layering: near-constant depth → horizontal ─────────────────
+    const zCoV = (meanZ !== 0) ? Math.abs(Math.sqrt(zs.reduce((s,z) => s+(z-meanZ)**2,0)/n) / Math.abs(meanZ)) : 1;
+    if (zCoV < 0.05 && n >= 3) {
+      emb[0] = 0.7;  // horizontal_layering
+      reasons.push('consistent depth across BHs');
+    }
+
+    // ── Thickness consistency: erosional base → irregular ─────────────────────
+    const tCoV = meanT > 0 ? Math.sqrt(ts.reduce((s, t) => s + (t - meanT) ** 2, 0) / n) / meanT : 0;
+    if (tCoV > 0.4) {
+      emb[19] = Math.min(0.8, tCoV); // irregular_base
+      emb[8]  = 0.5;                  // erosional_contact
+      reasons.push(`thickness varies (CoV ${(tCoV * 100).toFixed(0)}%)`);
+    }
+
+    // ── Incision depth: thin on average but variable → incised channel ────────
+    const meanThickM = meanT;
+    const siteSpan = Math.max(spanX, spanY, 1);
+    const incisionRatio = meanThickM / siteSpan;
+    if (incisionRatio < 0.03 && tCoV > 0.3) {
+      emb[29] = 0.7;  // incision_depth_ratio
+      emb[5]  = 0.6;  // channel_morphology
+      reasons.push('thin/incised relative to site span');
+    }
+
+    // Clamp all
+    for (let i = 0; i < emb.length; i++) emb[i] = Math.max(-1, Math.min(1, emb[i]));
+
+    // Only suggest if we have at least one meaningful observation
+    if (reasons.length === 0) continue;
+
+    // Build description from reasons
+    const dirTerms   = reasons.filter(r => /E-W|N-S|east|west|north|south/.test(r));
+    const shapeTerms = reasons.filter(r => !/E-W|N-S|east|west|north|south/.test(r));
+    let description  = `${u.name} (${u.code})`;
+    if (dirTerms.length) description += ` — ${dirTerms[0]}`;
+    if (shapeTerms.length) description += ` — ${shapeTerms[0]}`;
+
+    const confidence = Math.min(0.85, 0.45 + Math.min(n / 8, 0.25) + Math.min(reasons.length * 0.07, 0.15));
+
+    suggestions.push({
+      unitCode:    u.code,
+      unitName:    u.name,
+      unitColor:   u.color,
+      description,
+      embedding:   emb,
+      confidence:  +confidence.toFixed(2),
+      reason:      reasons.join('; '),
+      nObservations: n,
+    });
+  }
+
+  return suggestions;
 }

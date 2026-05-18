@@ -34,7 +34,7 @@ import { computeMohrCircle, renderMohrCircle } from './mohr-circle.js';
 import { parseSectionFromText, sectionToVirtualBoreholes,
          sketchToVirtualBoreholes, fenceLength } from './section-interpreter.js';
 import { SectionSketch } from './section-sketch.js';
-import { FourierEncoder, measureConceptGeometry } from './geo-implicit.js';
+import { FourierEncoder, measureConceptGeometry, analyzeBoreholeGeometry } from './geo-implicit.js';
 import { ConceptStore, CONCEPT_AXES } from './concept-store.js';
 import { encodeGeologicalConcept, refineConceptsWithClaude } from './claude-client.js';
 
@@ -6118,17 +6118,27 @@ function initConceptPanel() {
     if (btn) { btn.disabled = true; btn.textContent = '⟳ Analysing patterns…'; }
     try {
       const apiKey = sessionStorage.getItem('anthropic_api_key') ?? '';
-      const suggestions = await suggestConceptsFromBoreholes(
-        AppState.classifiedBH, AppState.geoUnits, apiKey, !apiKey
-      );
+
+      // Run geometric analysis immediately (no API) + Claude suggestions in parallel.
+      // geomSuggestions have pre-computed embeddings; Claude suggestions need encode step.
+      const [geomSuggestions, aiSuggestions] = await Promise.all([
+        Promise.resolve(analyzeBoreholeGeometry(AppState.classifiedBH.filter(b => !b.synthetic), AppState.geoUnits)),
+        suggestConceptsFromBoreholes(AppState.classifiedBH, AppState.geoUnits, apiKey, !apiKey),
+      ]);
+
+      // Merge: geometry-derived first (instant add), then Claude-suggested (need encode)
+      const suggestions = [
+        ...geomSuggestions.map(s => ({ ...s, _preEncoded: true })),
+        ...aiSuggestions.filter(s => !geomSuggestions.some(g => g.unitCode === s.unit_codes?.[0])),
+      ];
       if (!suggestions.length) { log('No concept suggestions generated.', 'info'); return; }
       if (out) {
         out.style.display = 'block';
         out.innerHTML = suggestions.map((s, i) => `
           <div class="suggestion-row" style="border:1px solid var(--border);border-radius:4px;padding:5px 6px;margin-bottom:4px;font-size:10px">
             <div style="font-weight:600;color:var(--text-primary);margin-bottom:2px">${escHtml(s.description)}</div>
-            <div style="color:var(--text-dim);margin-bottom:4px;font-size:9px">${escHtml(s.reason ?? '')}</div>
-            <button class="btn-ghost btn-sm" style="font-size:9px;padding:1px 6px" data-sug-idx="${i}">+ Add this concept</button>
+            <div style="color:var(--text-dim);margin-bottom:4px;font-size:9px">${escHtml(s.reason ?? '')}${s._preEncoded ? ' <span style="color:var(--accent);opacity:.7">[geometric analysis]</span>' : ''}</div>
+            <button class="btn-ghost btn-sm" style="font-size:9px;padding:1px 6px" data-sug-idx="${i}">+ Add${s._preEncoded ? ' (instant)' : ''}</button>
           </div>
         `).join('');
         out.querySelectorAll('[data-sug-idx]').forEach(btn => {
@@ -6138,13 +6148,18 @@ function initConceptPanel() {
             btn.disabled = true; btn.textContent = '⟳';
             const apiKey2 = sessionStorage.getItem('anthropic_api_key') ?? '';
             try {
-              const emb = await encodeGeologicalConcept(s.description, apiKey2, !apiKey2);
+              // Pre-encoded geometric suggestions use stored embedding directly;
+              // Claude-suggested descriptions still need the encode step.
+              const emb = s._preEncoded && s.embedding
+                ? s.embedding
+                : await encodeGeologicalConcept(s.description, apiKey2, !apiKey2);
+              if (!AppState.conceptStore) AppState.conceptStore = new ConceptStore();
               AppState.conceptStore.add({
                 description:  s.description,
                 embedding:    emb,
                 confidence:   s.confidence ?? 0.7,
                 domain:       { type: 'global' },
-                unitAffinity: s.unit_codes ?? [],
+                unitAffinity: s.unit_codes ?? s.unitCode ? [s.unitCode] : [],
               });
               _renderConceptList();
               _saveConceptStore();
