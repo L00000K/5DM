@@ -128,21 +128,23 @@ class GeoImplicitNet {
       this._rand(nHidden, nHidden, k1),
       this._rand(nOut,    nHidden, k1),
     ];
-    // FiLM scale projections Wg0, Wg1  (nHidden × CTX_DIM) — small random init
+    // FiLM scale projections Wg0..Wg2  (nHidden × CTX_DIM) — small random init
     this.Wg = [
       this._rand(nHidden, CTX_DIM, kg * 0.1),
       this._rand(nHidden, CTX_DIM, kg * 0.1),
+      this._rand(nHidden, CTX_DIM, kg * 0.1),  // layer 2
     ];
-    // FiLM shift projections Wb0, Wb1  (nHidden × CTX_DIM) — zero init
+    // FiLM shift projections Wb0..Wb2  (nHidden × CTX_DIM) — zero init
     this.Wb = [
       new Float32Array(nHidden * CTX_DIM),
       new Float32Array(nHidden * CTX_DIM),
+      new Float32Array(nHidden * CTX_DIM),  // layer 2
     ];
     this.b = [
       new Float32Array(nHidden), new Float32Array(nHidden),
       new Float32Array(nHidden), new Float32Array(nOut),
     ];
-    // _params order: [W0,W1,W2,W3, Wg0,Wg1, Wb0,Wb1, b0,b1,b2,b3]
+    // _params order: [W0,W1,W2,W3, Wg0,Wg1,Wg2, Wb0,Wb1,Wb2, b0,b1,b2,b3]
     this._params = [...this.W, ...this.Wg, ...this.Wb, ...this.b];
   }
 
@@ -230,25 +232,40 @@ class GeoImplicitNet {
     // Layer 2 (takes modulated H1f, skip from H0f)
     const H2_raw = this._linear(W[2], b[2], H1f, nHidden, nHidden);
     const H2_pre = new Float32Array(nHidden);
-    for (let i = 0; i < nHidden; i++) H2_pre[i] = H2_raw[i] + 0.1 * H0f[i]; // skip uses H0f
+    for (let i = 0; i < nHidden; i++) H2_pre[i] = H2_raw[i] + 0.1 * H0f[i];
     const H2     = this._relu(H2_pre);
+    // FiLM layer 2: final concept shaping pass before output
+    // Receives lower FiLM dropout so concept influence is retained at the output stage.
+    const gamma2_raw = this._filmProj(Wg[2], ctx, nHidden, CTX_DIM);
+    const beta2      = this._filmProj(Wb[2], ctx, nHidden, CTX_DIM);
+    const gamma2     = new Float32Array(nHidden);
+    const H2f        = new Float32Array(nHidden);
+    const filmDrop2  = filmDropout * 0.5; // half-rate dropout at deepest FiLM layer
+    for (let i = 0; i < nHidden; i++) {
+      const keep  = filmDrop2 > 0 ? (Math.random() > filmDrop2 ? 1 : 0) : 1;
+      gamma2[i] = 1 + gamma2_raw[i] * keep;
+      H2f[i]    = gamma2[i] * H2[i] + beta2[i] * keep;
+    }
 
-    // Output layer
-    const logits = this._linear(W[3], b[3], H2, nOut, nHidden);
+    // Output layer takes FiLM-modulated H2f
+    const logits = this._linear(W[3], b[3], H2f, nOut, nHidden);
     const probs  = this._softmax(logits);
 
-    return { H0_pre, H0, gamma0, beta0, H0f, H1_pre, H1, gamma1, beta1, H1f, H2_pre, H2, logits, probs };
+    return { H0_pre, H0, gamma0, beta0, H0f, H1_pre, H1, gamma1, beta1, H1f,
+             H2_pre, H2, gamma2, beta2, H2f, logits, probs };
   }
 
   predict(inp) { return this.forward(inp).probs; }
 
-  // Returns grads in same order as _params = [dW0,dW1,dW2,dW3, dWg0,dWg1, dWb0,dWb1, db0,db1,db2,db3]
+  // Returns grads in same order as _params = [dW0,dW1,dW2,dW3, dWg0,dWg1,dWg2, dWb0,dWb1,dWb2, db0,db1,db2,db3]
   // sampleWeight scales the gradient — allows high-confidence samples to drive stronger updates.
   backward(inp, act, targetIdx, l2 = 0.001, sampleWeight = 1.0) {
     const { nHidden, nIn, nOut, W, Wg, Wb, fourierDim } = this;
     const CTX_DIM = 32;
     const ctx = inp.subarray(fourierDim);
-    const { H0_pre, H0, gamma0, beta0, H0f, H1_pre, H1, gamma1, beta1, H1f, H2_pre, H2, probs } = act;
+    const { H0_pre, H0, gamma0, beta0, H0f,
+            H1_pre, H1, gamma1, beta1, H1f,
+            H2_pre, H2, gamma2, beta2, H2f, probs } = act;
 
     const dLogits = new Float32Array(nOut);
     for (let i = 0; i < nOut; i++) dLogits[i] = (probs[i] - (i === targetIdx ? 1 : 0)) * sampleWeight;
@@ -281,37 +298,45 @@ class GeoImplicitNet {
       return dW;
     };
 
-    // ── Layer 3 ──────────────────────────────────────────────────────────────
-    const { dW: dW3, db: db3 } = outerGrad(dLogits, H2, nOut, nHidden, W[3]);
-    const dH2     = matVecT(W[3], dLogits, nOut, nHidden);
-    const dH2_pre = reluBack(dH2, H2_pre);
+    // ── Layer 3 (input was H2f) ───────────────────────────────────────────
+    const { dW: dW3, db: db3 } = outerGrad(dLogits, H2f, nOut, nHidden, W[3]);
+    const dH2f = matVecT(W[3], dLogits, nOut, nHidden);
 
-    // ── Layer 2 (input was H1f; skip from H0f) ────────────────────────────
+    // ── FiLM layer 2 (H2f = γ2 ⊙ H2 + β2) ───────────────────────────────
+    const dH2       = new Float32Array(nHidden);
+    const dGamma2   = new Float32Array(nHidden);
+    const dBeta2    = dH2f;
+    for (let i = 0; i < nHidden; i++) {
+      dH2[i]     = dH2f[i] * gamma2[i];
+      dGamma2[i] = dH2f[i] * H2[i];
+    }
+    const dWg2 = filmOuterGrad(dGamma2, ctx, Wg[2]);
+    const dWb2 = filmOuterGrad(dBeta2,  ctx, Wb[2]);
+
+    // ── Layer 2 (input was H1f; skip from H0f) ───────────────────────────
+    const dH2_pre = reluBack(dH2, H2_pre);
     const { dW: dW2, db: db2 } = outerGrad(dH2_pre, H1f, nHidden, nHidden, W[2]);
-    const dH1f       = matVecT(W[2], dH2_pre, nHidden, nHidden);
-    // Skip gradient flows back to H0f
-    const dH0f_skip  = new Float32Array(nHidden);
+    const dH1f      = matVecT(W[2], dH2_pre, nHidden, nHidden);
+    const dH0f_skip = new Float32Array(nHidden);
     for (let i = 0; i < nHidden; i++) dH0f_skip[i] = 0.1 * dH2_pre[i];
 
     // ── FiLM layer 1 (H1f = γ1 ⊙ H1 + β1) ───────────────────────────────
-    // dH1  = dH1f ⊙ γ1
     const dH1       = new Float32Array(nHidden);
-    const dGamma1   = new Float32Array(nHidden); // d(γ1_raw) = dH1f ⊙ H1
-    const dBeta1    = dH1f;                      // d(β1) = dH1f
+    const dGamma1   = new Float32Array(nHidden);
+    const dBeta1    = dH1f;
     for (let i = 0; i < nHidden; i++) {
       dH1[i]     = dH1f[i] * gamma1[i];
-      dGamma1[i] = dH1f[i] * H1[i];             // grad into Wg1@ctx
+      dGamma1[i] = dH1f[i] * H1[i];
     }
     const dWg1 = filmOuterGrad(dGamma1, ctx, Wg[1]);
     const dWb1 = filmOuterGrad(dBeta1,  ctx, Wb[1]);
 
     // ── Layer 1 (input was H0f) ───────────────────────────────────────────
-    const dH1_pre    = reluBack(dH1, H1_pre);
+    const dH1_pre     = reluBack(dH1, H1_pre);
     const { dW: dW1, db: db1 } = outerGrad(dH1_pre, H0f, nHidden, nHidden, W[1]);
-    // Gradient into H0f from layer 1
     const dH0f_layer1 = matVecT(W[1], dH1_pre, nHidden, nHidden);
 
-    // Combine H0f gradients (layer1 path + skip)
+    // Combine H0f gradients (layer1 + skip)
     const dH0f = new Float32Array(nHidden);
     for (let i = 0; i < nHidden; i++) dH0f[i] = dH0f_layer1[i] + dH0f_skip[i];
 
@@ -330,8 +355,8 @@ class GeoImplicitNet {
     const dH0_pre = reluBack(dH0, H0_pre);
     const { dW: dW0, db: db0 } = outerGrad(dH0_pre, inp, nHidden, nIn, W[0]);
 
-    // Return in same order as _params: [W0,W1,W2,W3, Wg0,Wg1, Wb0,Wb1, b0,b1,b2,b3]
-    return [dW0, dW1, dW2, dW3, dWg0, dWg1, dWb0, dWb1, db0, db1, db2, db3];
+    // Return order matches _params: [W0,W1,W2,W3, Wg0,Wg1,Wg2, Wb0,Wb1,Wb2, b0,b1,b2,b3]
+    return [dW0, dW1, dW2, dW3, dWg0, dWg1, dWg2, dWb0, dWb1, dWb2, db0, db1, db2, db3];
   }
 }
 
@@ -673,7 +698,7 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
   }
   if (onProgress) onProgress(0, 0, { nSamples: allSamples.length, nReal: nRealSamples, nVirtual: nVirtualSamples });
 
-  const net = new GeoImplicitNet(nIn, 64, nUnits, fourierEnc.outDim);
+  const net = new GeoImplicitNet(nIn, 80, nUnits, fourierEnc.outDim);
   const opt = new AdamOpt(net._params, lr);
 
   // FiLM warmup: for the first FILM_WARMUP fraction of training, scale the FiLM
@@ -681,8 +706,8 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
   // first, then FiLM takes over to shape geometry toward the conceptual model.
   // We scale GRADIENTS (not weights) so Adam momentum doesn't destroy trained values.
   const FILM_WARMUP    = 0.25; // fraction of epochs for FiLM ramp
-  const filmParamStart = 4;    // _params[4..7] are Wg0,Wg1,Wb0,Wb1
-  const filmParamEnd   = 8;
+  const filmParamStart = 4;    // _params[4..9] are Wg0,Wg1,Wg2,Wb0,Wb1,Wb2
+  const filmParamEnd   = 10;
 
   for (let ep = 0; ep < epochs; ep++) {
     opt.setLr(lrMin + 0.5 * (lr - lrMin) * (1 + Math.cos(Math.PI * ep / epochs)));

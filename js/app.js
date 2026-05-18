@@ -5922,7 +5922,16 @@ function _updateConceptInfluenceBar() {
   const el = document.getElementById('concept-global-tensor');
   if (!el || !AppState.conceptStore) return;
   const t = AppState.conceptStore.globalTensor();
-  el.textContent = `Global warp: E-W ×${t.Ax.toFixed(1)} · N-S ×${t.Ay.toFixed(1)} · Z ×${t.Az.toFixed(1)}`;
+  const amaj = t.Amaj ?? Math.max(t.Ax, t.Ay);
+  const amin = t.Amin ?? Math.min(t.Ax, t.Ay);
+  const tDeg = ((t.theta ?? 0) * 180 / Math.PI).toFixed(0);
+  // Compass direction: 0°=E-W, 45°=NE-SW, 90°=N-S, 135°=NW-SE
+  const dirs = ['E-W', 'NE-SW', 'N-S', 'NW-SE'];
+  const dirIdx = Math.round((parseFloat(tDeg) % 180 + 180) / 45) % 4;
+  const hasAniso = amaj > 1.1;
+  el.textContent = hasAniso
+    ? `Warp: ${dirs[dirIdx]} major ×${amaj.toFixed(1)} · minor ×${amin.toFixed(2)} · Z ×${t.Az.toFixed(2)}`
+    : `Warp: isotropic (no strong horizontal elongation) · Z ×${t.Az.toFixed(2)}`;
   el.style.display = AppState.conceptStore.isEmpty ? 'none' : 'block';
 }
 
