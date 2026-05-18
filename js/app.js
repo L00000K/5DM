@@ -11302,6 +11302,143 @@ window._analyseUnitConceptSignatures = async function() {
   log(`Unit concept signatures: ${geoUnits.length} units analysed`, 'ok');
 };
 
+// Concept Completeness Scanner
+// Analyses coverage of all 32 geological axes across the current concept store.
+// Groups axes into geological themes, finds under-specified dimensions, and
+// suggests specific concept descriptions to improve the conceptual model.
+window._scanConceptCompleteness = function() {
+  const el    = document.getElementById('concept-completeness-output');
+  const store = AppState.conceptStore;
+  if (!el) return;
+  el.style.display = 'block';
+
+  if (!store || store.isEmpty) {
+    el.innerHTML = '<div style="font-size:10px;color:#e06c75">No active concepts. Encode concepts first.</div>';
+    return;
+  }
+
+  // Thematic axis groups with suggestions
+  const THEMES = [
+    {
+      name: 'Horizontal geometry',
+      axes: [3, 4, 27],  // ew_elong, ns_elong, lateral_aniso
+      suggestion: 'Add a concept specifying orientation: e.g. "Sand body trending NE-SW" or "Laterally isotropic deposit"',
+    },
+    {
+      name: 'Vertical structure',
+      axes: [0, 1, 2, 28],  // h_layer, inclined, dip_mag, vert_aniso
+      suggestion: 'Add a concept for bedding geometry: e.g. "Horizontally stratified" or "Steeply dipping beds at 20°"',
+    },
+    {
+      name: 'Channel / palaeovalley',
+      axes: [5, 20, 29],  // channel, nested, incision
+      suggestion: 'Add a palaeochannel concept: e.g. "Incised buried channel with concave-up base" or "Multi-storey stacked channels"',
+    },
+    {
+      name: 'Structural controls',
+      axes: [7, 18, 25],  // fault, stepped, complex
+      suggestion: 'Add a structural concept: e.g. "Stepped fault-controlled rockhead deepening to north" or "NE-SW trending fault with downthrow"',
+    },
+    {
+      name: 'Contact character',
+      axes: [8, 19],  // erosional, irregular
+      suggestion: 'Specify the contact: e.g. "Sharp erosional unconformity at base of Quaternary" or "Irregular karstic rockhead surface"',
+    },
+    {
+      name: 'Lateral extent',
+      axes: [9, 10, 11, 12, 13],  // continuity, thin directions
+      suggestion: 'Add a lateral character concept: e.g. "Laterally extensive tabular deposit" or "Sand lens pinching out to west"',
+    },
+    {
+      name: 'Grain size sequence',
+      axes: [21, 22, 23],  // coarsening, fining, gravel_lag
+      suggestion: 'Encode grain size trend: e.g. "Fining-upward point bar sequence" or "Dense gravel basal lag below sands"',
+    },
+    {
+      name: 'Dissolution / karst',
+      axes: [24],  // dissolution
+      suggestion: 'Add a karst concept: e.g. "Dissolution-enhanced chalk surface with localised voids and irregular relief"',
+    },
+    {
+      name: 'Depth / dip direction',
+      axes: [14, 15, 16, 17],  // deepens directions
+      suggestion: 'Specify dip direction: e.g. "Rockhead deepening toward the north at approximately 1:20" or "Surface dips east"',
+    },
+    {
+      name: 'Overburden / preconsolidation',
+      axes: [30],  // overburden
+      suggestion: 'Add overburden context: e.g. "Deposit loaded by glacial ice — preconsolidated, higher stiffness"',
+    },
+    {
+      name: 'Data confidence',
+      axes: [26],  // data_confidence
+      suggestion: 'Qualify confidence: e.g. "High confidence interpretation — supported by >5 BHs" or "Inferred from sparse data"',
+    },
+    {
+      name: 'Dome / structural high',
+      axes: [6],  // dome_anticline
+      suggestion: 'Add structural relief concept: e.g. "Positive structural high — dome or anticline form visible on rockhead contours"',
+    },
+  ];
+
+  // Compute per-axis coverage: max |emb[i]| × confidence across all concepts
+  const coverage = new Float32Array(32);
+  for (const c of store.concepts) {
+    if (!c.embedding) continue;
+    for (let i = 0; i < 32; i++) {
+      const v = Math.abs(c.embedding[i] ?? 0) * c.confidence;
+      if (v > coverage[i]) coverage[i] = v;
+    }
+  }
+
+  // Overall completeness score (mean coverage)
+  const mean = coverage.reduce((s, v) => s + v, 0) / 32;
+  const pct  = Math.round(mean * 100);
+
+  // Score each theme
+  const themeScores = THEMES.map(t => {
+    const maxCov = Math.max(...t.axes.map(i => coverage[i]));
+    return { ...t, maxCov };
+  }).sort((a, b) => a.maxCov - b.maxCov);
+
+  const gapsHtml = themeScores.slice(0, 5).map(t => {
+    const pctCov = Math.round(t.maxCov * 100);
+    const col    = pctCov < 15 ? '#e06c75' : pctCov < 35 ? '#c8a855' : 'var(--text-mid)';
+    const axisNames = t.axes.map(i => CONCEPT_AXES[i].replace(/_/g, ' ')).join(', ');
+    return `<div style="padding:5px;background:var(--bg-surface);border:1px solid var(--border);border-radius:4px;margin-bottom:4px;border-left:3px solid ${col}">
+      <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+        <span style="font-size:9.5px;font-weight:600;color:var(--text);flex:1">${t.name}</span>
+        <span style="font-size:9px;color:${col};font-family:monospace">${pctCov}%</span>
+      </div>
+      <div style="font-size:8.5px;color:var(--text-dim);margin-bottom:3px">Axes: ${axisNames}</div>
+      <div style="font-size:8.5px;color:var(--text-mid);font-style:italic">${t.suggestion}</div>
+    </div>`;
+  }).join('');
+
+  const wellCoveredHtml = themeScores.slice(-3).filter(t => t.maxCov > 0.3).map(t => {
+    const axPeak = t.axes.reduce((best, i) => coverage[i] > coverage[best] ? i : best, t.axes[0]);
+    return `<span style="font-size:9px;color:#5ab97d">✓ ${t.name} (${CONCEPT_AXES[axPeak].replace(/_/g, ' ')})</span>`;
+  }).join('  ·  ');
+
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <div style="font-size:22px;font-weight:700;color:${pct > 50 ? 'var(--accent)' : pct > 25 ? '#c8a855' : '#e06c75'}">${pct}%</div>
+      <div>
+        <div style="font-size:10px;font-weight:600;color:var(--text)">Concept space coverage</div>
+        <div style="font-size:9px;color:var(--text-dim)">Mean axis activation across 32 geological dimensions</div>
+      </div>
+    </div>
+    ${wellCoveredHtml ? `<div style="margin-bottom:6px">${wellCoveredHtml}</div>` : ''}
+    <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:4px">Top gaps to address:</div>
+    ${gapsHtml}
+    <div style="font-size:9px;color:var(--text-dim);margin-top:4px;font-style:italic">
+      Coverage = max concept activation × confidence per axis group.
+      Click "✦ Encode Concept" and paste a suggestion above to fill a gap.
+    </div>`;
+
+  log(`Concept completeness: ${pct}% coverage · top gap: ${themeScores[0].name} (${Math.round(themeScores[0].maxCov * 100)}%)`, 'ok');
+};
+
 // Concept-Driven Geomechanical Parameter Inference
 // Maps 32-axis concept embeddings → geomechanical parameter ranges (SPT N, Cu, φ′, γ).
 // No borehole test data required — purely semantic embeddings → engineering parameters.

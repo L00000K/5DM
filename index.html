@@ -723,6 +723,15 @@
           <div id="knowledge-uncert-output" style="display:none;margin-top:6px"></div>
         </div>
 
+        <!-- Concept Completeness Scanner — axis coverage gaps and suggestions -->
+        <div style="margin-top:4px">
+          <button class="btn btn-ghost" style="font-size:10px;width:100%" onclick="_scanConceptCompleteness()"
+            title="Analyse which of the 32 geological axes are under-specified by the current concept store. Highlights blind spots and suggests what additional concepts would improve coverage.">
+            ◉ Concept completeness scan
+          </button>
+          <div id="concept-completeness-output" style="display:none;margin-top:6px"></div>
+        </div>
+
         <!-- Concept interpretation narrative — report-ready text -->
         <div style="margin-top:4px">
           <button id="btn-concept-narrative" class="btn btn-ghost" style="font-size:10px;width:100%" title="Generate a report-ready paragraph describing the conceptual model interpretation">
