@@ -4,7 +4,7 @@ import { initTextInput } from './text-input.js';
 import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel, oracleRefinement, generateReportNarrative, parseGeologicalFeatures, suggestConceptsFromBoreholes, scoreConceptCoherence } from './claude-client.js';
 import { parseShapesFromClaude, generateShapeBoreholes } from './geo-shapes.js';
 import { exportConfig, importConfig } from './project-config.js';
-import { buildVoxelGrid, buildVoxelGridMonteCarlo, buildIndicatorKriging, detectAndCorrectInversions, buildParamVolumes, detectPinchouts, identifySequenceSurfaces } from './interpolator.js';
+import { buildVoxelGrid, buildVoxelGridMonteCarlo, buildIndicatorKriging, detectAndCorrectInversions, buildParamVolumes, detectPinchouts, identifySequenceSurfaces, predictBoreholeLog } from './interpolator.js';
 import { inferGeoImplicit } from './geo-implicit.js';
 import { initScene } from './scene.js';
 import { initLayerControls } from './layer-controls.js';
@@ -10780,4 +10780,175 @@ window._runKnowledgeUncertainty = async function(K = 6, baseNoise = 0.12) {
     </div>`;
 
   log(`Knowledge uncertainty: K=${K} realisations · mean entropy ${meanH.toFixed(3)} bits · ${pctHigh.toFixed(1)}% high-uncertainty voxels`, 'ok');
+};
+
+// Predictive Borehole Log — render a synthetic log at any (x,y) from the voxel grid.
+// Shows unit sequence, certainty, concept context samples, and nearest real BH comparison.
+window._predictBoreholeLog = function() {
+  const el = document.getElementById('pred-bh-output');
+  const grid  = AppState.voxelGrid;
+  const store = AppState.conceptStore;
+  if (!el) return;
+
+  if (!grid) {
+    el.style.display = 'block';
+    el.innerHTML = '<div style="font-size:10px;color:#e06c75">Build the model first.</div>';
+    return;
+  }
+
+  const xIn = parseFloat(document.getElementById('pred-bh-x')?.value ?? 'NaN');
+  const yIn = parseFloat(document.getElementById('pred-bh-y')?.value ?? 'NaN');
+  if (isNaN(xIn) || isNaN(yIn)) {
+    el.style.display = 'block';
+    el.innerHTML = '<div style="font-size:10px;color:#e06c75">Enter valid X, Y coordinates (world units).</div>';
+    return;
+  }
+
+  el.style.display = 'block';
+  el.innerHTML = '<div style="font-size:10px;color:var(--text-mid)">Extracting log…</div>';
+
+  const realBHs = AppState.boreholes ?? [];
+  const result  = predictBoreholeLog(xIn, yIn, grid, AppState.geoUnits, store, realBHs);
+
+  if (!result || !result.runs.length) {
+    el.innerHTML = '<div style="font-size:10px;color:#e06c75">Location is outside the model grid.</div>';
+    return;
+  }
+
+  const { runs, conceptSamples, nearestBH } = result;
+  const topZ = runs[0].fromZ;
+  const botZ = runs[runs.length - 1].toZ;
+  const range = topZ - botZ || 1;
+
+  // SVG dimensions
+  const SVG_H     = Math.max(200, Math.min(480, range * 7));
+  const SVG_W     = nearestBH ? 290 : 180;
+  const DEPTH_W   = 38;  // left depth axis
+  const LOG_W     = 70;  // predicted log column
+  const GAP       = 8;
+  const COMP_X    = DEPTH_W + LOG_W + GAP + 8; // nearest BH comparison start
+  const COMP_W    = nearestBH ? 60 : 0;
+  const SPARK_X   = DEPTH_W + LOG_W + GAP;
+
+  const zToY = z => ((topZ - z) / range) * SVG_H;
+  const escSvg = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+
+  // Predicted log blocks
+  let logBlocks = runs.map(r => {
+    const y1  = zToY(r.fromZ);
+    const y2  = zToY(r.toZ);
+    const h   = Math.max(1, y2 - y1);
+    const col = r.unit.color ?? '#888';
+    const opa = 0.35 + r.certainty * 0.65;
+    const midY = (y1 + y2) / 2;
+    const label = h > 10 ? r.unit.code : '';
+    const certPct = Math.round(r.certainty * 100);
+    return `<rect x="${DEPTH_W}" y="${y1.toFixed(1)}" width="${LOG_W}" height="${h.toFixed(1)}"
+              fill="${escSvg(col)}" opacity="${opa.toFixed(2)}" stroke="none"/>
+            <rect x="${DEPTH_W}" y="${y1.toFixed(1)}" width="${(LOG_W * r.certainty).toFixed(1)}" height="2"
+              fill="rgba(255,255,255,0.4)" />
+            ${label ? `<text x="${DEPTH_W + LOG_W / 2}" y="${midY + 3}" font-size="8" text-anchor="middle"
+              fill="rgba(0,0,0,0.75)" font-family="monospace">${escSvg(r.unit.code)}</text>` : ''}
+            <title>${escSvg(r.unit.name)} ${r.fromZ.toFixed(1)}–${r.toZ.toFixed(1)}m AOD · ${certPct}% certainty · ${r.thickness.toFixed(1)}m thick</title>`;
+  }).join('');
+
+  // Depth tick marks every 2m
+  let ticks = '';
+  const tickStep = range < 15 ? 1 : range < 40 ? 2 : 5;
+  const firstTick = Math.ceil(botZ / tickStep) * tickStep;
+  for (let z = firstTick; z <= topZ; z += tickStep) {
+    const ty = zToY(z).toFixed(1);
+    ticks += `<line x1="${DEPTH_W - 4}" y1="${ty}" x2="${DEPTH_W + LOG_W}" y2="${ty}" stroke="rgba(255,255,255,0.12)" stroke-width="0.5"/>
+              <text x="${DEPTH_W - 6}" y="${parseFloat(ty) + 3}" font-size="7" text-anchor="end" fill="var(--text-dim)">${z.toFixed(0)}</text>`;
+  }
+
+  // Concept sparklines at sampled depths (right side of log)
+  let sparkLines = '';
+  if (conceptSamples.length && store && !store.isEmpty) {
+    const SBAR_W  = 2;
+    const SBAR_GAP = 0.5;
+    const SPARK_TOTAL_W = 32 * (SBAR_W + SBAR_GAP);
+    conceptSamples.forEach(s => {
+      if (!s.vec) return;
+      const sy = zToY(s.z).toFixed(1);
+      let bars = '';
+      for (let i = 0; i < 32; i++) {
+        const v   = s.vec[i] ?? 0;
+        const bh  = Math.abs(v) * 12;
+        const bx  = DEPTH_W + LOG_W + GAP + i * (SBAR_W + SBAR_GAP);
+        const col2 = v >= 0 ? '#5ab97d' : '#e06c75';
+        bars += `<rect x="${bx.toFixed(1)}" y="${(parseFloat(sy) - bh / 2).toFixed(1)}" width="${SBAR_W}" height="${bh.toFixed(1)}" fill="${col2}" opacity="0.8"/>`;
+      }
+      sparkLines += `<g title="Concept context at ${s.z.toFixed(1)}m AOD">${bars}
+        <line x1="${DEPTH_W + LOG_W + 2}" y1="${sy}" x2="${DEPTH_W + LOG_W + GAP + SPARK_TOTAL_W}" y2="${sy}" stroke="rgba(255,255,255,0.1)" stroke-width="0.5"/>
+      </g>`;
+    });
+  }
+
+  // Nearest BH comparison column
+  let bhCol = '';
+  if (nearestBH?.layers?.length) {
+    const bhTopZ = Math.max(...nearestBH.layers.map(l => l.fromDepth ?? topZ));
+    const bhBotZ = Math.min(...nearestBH.layers.map(l => l.toDepth   ?? botZ));
+    const unitByCode = Object.fromEntries(AppState.geoUnits.map(u => [u.code, u]));
+    nearestBH.layers.forEach(layer => {
+      const unit = unitByCode[layer.unitCode];
+      if (!unit) return;
+      const ly1 = zToY(layer.fromDepth ?? topZ);
+      const ly2 = zToY(layer.toDepth   ?? botZ);
+      const lh  = Math.max(1, ly2 - ly1);
+      bhCol += `<rect x="${COMP_X}" y="${ly1.toFixed(1)}" width="${COMP_W}" height="${lh.toFixed(1)}"
+        fill="${escSvg(unit.color ?? '#888')}" opacity="0.8" stroke="none"/>
+        <title>${escSvg(unit.code)} (real BH: ${escSvg(nearestBH.id)})</title>`;
+    });
+    bhCol += `<text x="${COMP_X + COMP_W / 2}" y="${SVG_H + 12}" font-size="7" text-anchor="middle" fill="var(--text-dim)">BH ${escSvg(nearestBH.id)}</text>
+              <text x="${COMP_X + COMP_W / 2}" y="${SVG_H + 20}" font-size="6.5" text-anchor="middle" fill="var(--text-dim)">${nearestBH.dist}m away</text>`;
+  }
+
+  const SPARK_LABEL_W = conceptSamples.length && store && !store.isEmpty ? 32 * 2.5 : 0;
+  const totalW = DEPTH_W + LOG_W + (SPARK_LABEL_W ? GAP + SPARK_LABEL_W + 4 : 0) + (nearestBH ? GAP + COMP_W + 4 : 0);
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${totalW}" height="${SVG_H + 30}"
+      style="display:block;background:var(--bg-deep);border-radius:4px;overflow:visible">
+    <!-- depth axis -->
+    <line x1="${DEPTH_W}" y1="0" x2="${DEPTH_W}" y2="${SVG_H}" stroke="rgba(255,255,255,0.25)" stroke-width="1"/>
+    <text x="${DEPTH_W - 6}" y="-4" font-size="7" text-anchor="end" fill="var(--text-dim)">mAOD</text>
+    ${ticks}
+    <!-- log blocks -->
+    ${logBlocks}
+    <!-- column header -->
+    <text x="${DEPTH_W + LOG_W / 2}" y="-4" font-size="7.5" text-anchor="middle" fill="var(--text-mid)" font-weight="600">Predicted</text>
+    <!-- concept sparklines -->
+    ${sparkLines}
+    ${conceptSamples.length ? `<text x="${DEPTH_W + LOG_W + GAP}" y="-4" font-size="7" fill="var(--text-dim)">Concept context →</text>` : ''}
+    <!-- nearest BH -->
+    ${bhCol}
+    ${nearestBH ? `<text x="${COMP_X + COMP_W / 2}" y="-4" font-size="7.5" text-anchor="middle" fill="var(--text-mid)" font-weight="600">Nearest BH</text>` : ''}
+    <!-- base line -->
+    <line x1="${DEPTH_W}" y1="${SVG_H}" x2="${DEPTH_W + LOG_W}" y2="${SVG_H}" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+    <text x="${DEPTH_W + LOG_W / 2}" y="${SVG_H + 12}" font-size="7" text-anchor="middle" fill="var(--text-dim)">X ${result.x} Y ${result.y}</text>
+  </svg>`;
+
+  // Legend table
+  const seen = new Set();
+  const legendItems = runs
+    .filter(r => { if (seen.has(r.unit.id)) return false; seen.add(r.unit.id); return true; })
+    .map(r => `<span style="display:inline-flex;align-items:center;gap:3px;margin-right:6px;font-size:9px">
+      <span style="display:inline-block;width:10px;height:10px;background:${r.unit.color ?? '#888'};border-radius:2px"></span>
+      ${escHtml(r.unit.code)}
+    </span>`).join('');
+
+  el.innerHTML = `
+    <div style="font-size:10px;font-weight:600;margin-bottom:6px;color:var(--text)">
+      Predicted log @ X=${result.x} Y=${result.y}
+      ${nearestBH ? `<span style="font-weight:400;color:var(--text-dim)"> · nearest BH: ${escHtml(nearestBH.id ?? '?')} (${nearestBH.dist}m)</span>` : ''}
+    </div>
+    <div style="overflow-x:auto;padding:4px 0 16px">${svg}</div>
+    <div style="margin-top:4px;display:flex;flex-wrap:wrap">${legendItems}</div>
+    <div style="margin-top:6px;font-size:9px;color:var(--text-dim)">
+      ${runs.length} unit run(s) · ${topZ.toFixed(1)}m → ${botZ.toFixed(1)}m AOD · ${range.toFixed(1)}m total depth
+      ${store && !store.isEmpty ? ' · concept context bars show active axes at each sampled depth' : ''}
+    </div>`;
+
+  log(`Predictive BH log: ${runs.length} units at (${result.x}, ${result.y}) · ${range.toFixed(1)}m depth`, 'ok');
 };

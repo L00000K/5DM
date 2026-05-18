@@ -1754,6 +1754,23 @@
       </div>
 
       <div class="panel-section">
+        <h3>Predictive Borehole Log</h3>
+        <p class="hint" style="font-size:10px;margin-bottom:6px">Generate a synthetic borehole log at any plan location from the neural implicit field. Shows predicted unit sequence, certainty, and concept context at each depth. Compare to the nearest real borehole.</p>
+        <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
+          <label style="font-size:10px;color:var(--text-mid);white-space:nowrap">X:</label>
+          <input type="number" id="pred-bh-x" step="1" placeholder="Easting"
+            style="flex:1;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px">
+          <label style="font-size:10px;color:var(--text-mid);white-space:nowrap">Y:</label>
+          <input type="number" id="pred-bh-y" step="1" placeholder="Northing"
+            style="flex:1;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px">
+        </div>
+        <button onclick="_predictBoreholeLog()" class="btn-secondary btn-sm" style="width:100%;margin-bottom:4px">
+          ⊙ Generate Predictive Log
+        </button>
+        <div id="pred-bh-output" style="display:none;margin-top:4px"></div>
+      </div>
+
+      <div class="panel-section">
         <h3>Geotechnical Risk</h3>
         <p class="hint" style="font-size:10px;margin-bottom:6px">Identifies settlement, bearing, liquefaction and uncertainty hazards from the model.</p>
         <button id="btn-assess-risk" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:6px">⚠ Assess Risk Zones</button>

@@ -1800,3 +1800,73 @@ export function identifySequenceSurfaces(grid, geoUnits, conceptStore) {
     voxelCount:  s.voxelCount,
   })).sort((a, b) => b.voxelCount - a.voxelCount);
 }
+
+// Predict a synthetic borehole log at world (x, y) from the voxel grid.
+// Returns unit runs from surface to base with certainty and concept context samples.
+export function predictBoreholeLog(x, y, grid, geoUnits, conceptStore = null, realBoreholes = null) {
+  if (!grid || !geoUnits.length) return null;
+
+  const ix = Math.round((x - grid.origin[0]) / grid.cellSize - 0.5);
+  const iy = Math.round((y - grid.origin[1]) / grid.cellSize - 0.5);
+  if (ix < 0 || ix >= grid.nx || iy < 0 || iy >= grid.ny) return null;
+
+  const unitById = Object.fromEntries(geoUnits.map(u => [u.id, u]));
+  const { nx, ny, nz, cellHeight, origin, unitIds, certainty, probVolumes } = grid;
+
+  // Scan column top → bottom to build runs
+  const runs = [];
+  let prevId = null;
+
+  for (let iz = nz - 1; iz >= 0; iz--) {
+    const flat = ix + iy * nx + iz * nx * ny;
+    const uid  = unitIds[flat];
+    const cert = certainty?.[flat] ?? 0.5;
+    const topZ = origin[2] + (iz + 1) * cellHeight;
+    const botZ = origin[2] + iz * cellHeight;
+    const unit = unitById[uid];
+    if (!unit) continue;
+
+    if (uid !== prevId) {
+      runs.push({ unit, fromZ: topZ, toZ: botZ, certSum: cert, count: 1,
+                  p10: null, p90: null });
+      prevId = uid;
+    } else {
+      const r = runs[runs.length - 1];
+      r.toZ    = botZ;
+      r.certSum += cert;
+      r.count++;
+    }
+  }
+
+  for (const r of runs) {
+    r.certainty = +(r.certSum / r.count).toFixed(3);
+    r.thickness = +(r.fromZ - r.toZ).toFixed(2);
+    delete r.certSum;
+    delete r.count;
+  }
+
+  // Concept context sampled at 5 evenly-spaced depths across the log
+  const conceptSamples = [];
+  if (conceptStore && !conceptStore.isEmpty && runs.length > 0) {
+    const topZ = runs[0].fromZ;
+    const botZ = runs[runs.length - 1].toZ;
+    const range = topZ - botZ;
+    for (let i = 0; i < 5; i++) {
+      const wz  = topZ - (i / 4) * range;
+      const ctx = conceptStore.computeAt(x, y, wz);
+      conceptSamples.push({ z: +wz.toFixed(2), vec: ctx?.vec ?? null, tensor: ctx?.tensor ?? null });
+    }
+  }
+
+  // Nearest real borehole (for comparison)
+  let nearestBH = null;
+  if (realBoreholes?.length) {
+    let minD = Infinity;
+    for (const bh of realBoreholes) {
+      const d = Math.hypot(bh.x - x, bh.y - y);
+      if (d < minD) { minD = d; nearestBH = { ...bh, dist: +d.toFixed(1) }; }
+    }
+  }
+
+  return { runs, x: +x.toFixed(1), y: +y.toFixed(1), ix, iy, conceptSamples, nearestBH };
+}
