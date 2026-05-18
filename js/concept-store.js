@@ -283,6 +283,32 @@ export class ConceptStore {
   }
 
   /**
+   * Compute soft unit-affinity probability boosts at (wx, wy, wz).
+   * Returns a Float32Array of length unitCodes.length where values > 1.0 mean
+   * the active concepts in this location favour that unit.
+   * Used in inferGeoImplicit to give concepts a direct, interpretable effect on unit prediction.
+   * @param {number}   wx - world X
+   * @param {number}   wy - world Y
+   * @param {number}   wz - world Z
+   * @param {string[]} unitCodes - ordered array of unit codes (matches network output indices)
+   * @returns {Float32Array}
+   */
+  computeAffinityBoostsAt(wx, wy, wz, unitCodes) {
+    const boosts = new Float32Array(unitCodes.length).fill(1.0);
+    for (const c of this._concepts) {
+      if (!c.unitAffinity?.length) continue; // no affinity → skip
+      const rel = this._relevance(c, wx, wy, wz);
+      if (rel < 0.01) continue;
+      // Gentle boost: max 30% increase to avoid overwhelming the network's learned distribution
+      const boost = 1 + Math.min(0.3, rel * c.confidence * 0.4);
+      for (let ui = 0; ui < unitCodes.length; ui++) {
+        if (c.unitAffinity.includes(unitCodes[ui])) boosts[ui] *= boost;
+      }
+    }
+    return boosts;
+  }
+
+  /**
    * Derive anisotropy tensor from a 32-dim composite embedding.
    *
    * Supports both axis-aligned and diagonally-rotated elongation:

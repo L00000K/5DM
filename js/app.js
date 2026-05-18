@@ -9761,12 +9761,10 @@ window._runConceptContributionReport = async function() {
     cellSize: grid.cellSize, cellHeight: grid.cellHeight, origin: grid.origin,
   };
   const total = grid.unitIds.length;
-  const realBHs = AppState.classifiedBH.filter(b => !b.synthetic && b.layers?.length >= 1);
 
   function _bhAccuracy(unitIds) {
     return _bhAccuracyVsGrid(unitIds, grid);
   }
-  // Suppress unused-variable lint — realBHs still used by _bhAccuracyVsGrid via AppState
   // Baseline: full concept store
   const baselineResult = inferGeoImplicit(AppState.trainedModel, gridMeta, AppState.geoUnits, store);
   const baselineAcc    = _bhAccuracy(baselineResult.unitIds);

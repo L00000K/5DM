@@ -1216,6 +1216,14 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore, options 
 
           const probs = net.forward(inp, drop).probs;
           const base  = idx * nUnitsI;
+          // Apply concept unit-affinity soft boosts: concepts specifying unitAffinity
+          // give those units a gentle probability boost in their spatial domain.
+          if (conceptStore && !conceptStore.isEmpty) {
+            const boosts = conceptStore.computeAffinityBoostsAt(worldX, worldY, worldZ, unitCodes);
+            let bSum = 0;
+            for (let u = 0; u < nUnitsI; u++) { probs[u] *= boosts[u]; bSum += probs[u]; }
+            if (bSum > 1e-9) for (let u = 0; u < nUnitsI; u++) probs[u] /= bSum;
+          }
           for (let u = 0; u < nUnitsI; u++) probAcc[base + u] += probs[u];
 
           // Only set structural outputs on first pass
