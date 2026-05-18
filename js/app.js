@@ -7038,6 +7038,7 @@ function _renderScenarioList() {
   const scenarios = _loadScenarios();
   if (!scenarios.length) {
     el.innerHTML = '<div class="concept-empty" style="font-size:10px">No saved scenarios.</div>';
+    document.getElementById('btn-compare-scenarios')?.style.setProperty('display','none');
     return;
   }
   el.innerHTML = scenarios.map((sc, i) => {
@@ -7049,7 +7050,91 @@ function _renderScenarioList() {
       <button class="scenario-del" onclick="_deleteConceptScenario(${i})" title="Delete">×</button>
     </div>`;
   }).join('');
+  const compareBtn = document.getElementById('btn-compare-scenarios');
+  if (compareBtn) compareBtn.style.display = scenarios.length >= 2 ? '' : 'none';
 }
+
+window._compareConceptScenarios = function() {
+  const scenarios = _loadScenarios();
+  const out = document.getElementById('concept-scenario-compare');
+  if (!out || scenarios.length < 2) return;
+
+  // Compare first two saved scenarios — plus current
+  const current = AppState.conceptStore && !AppState.conceptStore.isEmpty
+    ? { name: '(current)', store: AppState.conceptStore }
+    : null;
+  const stores = [
+    { name: scenarios[0].name, store: ConceptStore.deserialize(scenarios[0].json) },
+    { name: scenarios[1].name, store: ConceptStore.deserialize(scenarios[1].json) },
+    ...(current ? [current] : []),
+  ];
+
+  // Build comparison: per-axis aggregate embedding for each scenario
+  const aggEmb = stores.map(s => {
+    const vec = new Float32Array(32);
+    for (const c of s.store.concepts) {
+      for (let i = 0; i < 32; i++) vec[i] += c.embedding[i] * c.confidence;
+    }
+    const n = Math.max(1, s.store.concepts.length);
+    for (let i = 0; i < 32; i++) vec[i] /= n;
+    return vec;
+  });
+
+  // Top-5 most divergent axes across scenarios
+  const diffs = CONCEPT_AXES.map((name, i) => {
+    const vals = aggEmb.map(e => e[i]);
+    const mn   = vals.reduce((a,b) => a+b, 0) / vals.length;
+    const variance = vals.reduce((s,v) => s + (v-mn)**2, 0) / vals.length;
+    return { i, name, vals, variance };
+  }).sort((a,b) => b.variance - a.variance);
+
+  let html = `<div style="font-size:10px;font-weight:600;margin-bottom:5px;color:var(--text-mid)">
+    Scenario comparison — aggregate embedding (${stores.length} scenarios)</div>`;
+
+  // Legend
+  const HUE = [0.6, 0.95, 0.42]; // blue, red, green
+  html += `<div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap">` +
+    stores.map((s,i) => {
+      const col = `hsl(${Math.round(HUE[i]*360)},70%,50%)`;
+      return `<span style="font-size:9px"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${col};vertical-align:middle;margin-right:3px"></span>${escHtml(s.name)}</span>`;
+    }).join('') + `</div>`;
+
+  // Top divergent axes
+  html += `<div style="font-size:9px;color:var(--text-dim);margin-bottom:4px">Top divergent axes:</div>`;
+  for (const { name, vals } of diffs.slice(0, 8)) {
+    const bars = vals.map((v, si) => {
+      const pct = Math.abs(v) * 100;
+      const col = v >= 0 ? `hsl(${Math.round(HUE[si]*360)},70%,45%)` : `hsl(${Math.round(HUE[si]*360)},70%,45%)`;
+      const dir = v >= 0 ? '' : '-';
+      return `<div title="${name}: ${dir}${Math.abs(v).toFixed(2)}" style="flex:1;height:6px;border-radius:2px;background:var(--bg-deep);overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:${col}"></div>
+      </div>`;
+    }).join('');
+    const valStr = vals.map((v, si) => `<span style="color:hsl(${Math.round(HUE[si]*360)},70%,50%)">${v >= 0 ? '+' : ''}${v.toFixed(2)}</span>`).join(' ');
+    html += `<div style="margin-bottom:3px">
+      <div style="font-size:9px;color:var(--text-primary);margin-bottom:1px">${escHtml(name)}</div>
+      <div style="display:flex;gap:2px;margin-bottom:1px">${bars}</div>
+      <div style="font-size:8px;font-family:var(--font-mono)">${valStr}</div>
+    </div>`;
+  }
+
+  // Concept overlap analysis
+  html += `<div style="font-size:9px;color:var(--text-dim);margin-top:6px;margin-bottom:3px">Concept overlap:</div>`;
+  const A = stores[0].store.concepts.map(c => c.description.slice(0, 40).toLowerCase());
+  const B = stores[1].store.concepts.map(c => c.description.slice(0, 40).toLowerCase());
+  const onlyA   = A.filter(d => !B.some(b => b.includes(d.slice(0,15)) || d.includes(b.slice(0,15))));
+  const onlyB   = B.filter(d => !A.some(a => a.includes(d.slice(0,15)) || d.includes(a.slice(0,15))));
+  const shared  = A.filter(d => B.some(b => b.includes(d.slice(0,15)) || d.includes(b.slice(0,15))));
+  html += `<div style="font-size:9px;color:var(--text-mid)">
+    Unique to <b>${escHtml(stores[0].name)}</b>: ${onlyA.length} &nbsp;
+    Unique to <b>${escHtml(stores[1].name)}</b>: ${onlyB.length} &nbsp;
+    Shared: ${shared.length}
+  </div>`;
+
+  out.style.display = 'block';
+  out.innerHTML = html;
+  log(`Compared scenarios: "${stores[0].name}" vs "${stores[1].name}"`, 'info');
+};
 
 // ── Geological Event Timeline ─────────────────────────────────────────────────
 // Leapfrog-style ordered list of geological events (oldest → youngest).
