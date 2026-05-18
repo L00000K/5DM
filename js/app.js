@@ -7395,6 +7395,7 @@ export function _renderConceptList() {
         <span class="concept-desc" title="${c.description}">${c.description.slice(0, 55)}${c.description.length > 55 ? '…' : ''}</span>
         <div style="display:flex;gap:2px">
           <button class="concept-radar-btn" title="Show radar chart" onclick="_toggleConceptRadar('${c.id}', this)">◎</button>
+          <button class="concept-hl-btn" title="Highlight this concept's influence in 3D" onclick="_highlightConcept3D('${c.id}', this)" style="font-size:10px;padding:1px 4px;background:none;border:1px solid var(--border);border-radius:3px;color:var(--text-dim);cursor:pointer">🔦</button>
           <button class="concept-remove" title="Remove concept" onclick="_removeConcept('${c.id}')">×</button>
         </div>
       </div>
@@ -7574,6 +7575,39 @@ window._removeConcept = function(id) {
   _renderConceptList();
   _saveConceptStore();
   log(`Concept removed`, 'info');
+};
+
+window._highlightConcept3D = function(id, btn) {
+  if (!AppState.scene || !AppState.conceptStore) {
+    log('Build the 3D model first to highlight concept influence.', 'warn');
+    return;
+  }
+  // Toggle: if already highlighted for this id, reset to unit colors
+  if (btn._activeId === id) {
+    AppState.scene.resetUnitColors();
+    btn._activeId = null;
+    btn.style.color = 'var(--text-dim)';
+    btn.style.background = 'none';
+    log('Concept highlight cleared.', 'info');
+    return;
+  }
+  // Highlight this concept
+  const ok = AppState.scene.colorBySingleConcept(id, AppState.conceptStore);
+  if (!ok) {
+    log('No model built yet — build with Neural Implicit method to see concept volumes.', 'warn');
+    return;
+  }
+  // Clear previous highlight button state
+  document.querySelectorAll('.concept-hl-btn').forEach(b => {
+    b._activeId = null;
+    b.style.color = 'var(--text-dim)';
+    b.style.background = 'none';
+  });
+  btn._activeId = id;
+  btn.style.color = 'var(--accent)';
+  btn.style.background = 'rgba(var(--accent-rgb,67,133,245),0.15)';
+  const c = AppState.conceptStore.concepts.find(x => x.id === id);
+  log(`3D: highlighting influence of "${c?.description?.slice(0,50) ?? id}"`, 'ok');
 };
 
 window._conceptTemporalInc = function(id) {

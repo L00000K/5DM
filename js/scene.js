@@ -324,6 +324,10 @@ class SceneManager {
     return this._builder?.colorByDominantConcept(conceptStore) ?? false;
   }
 
+  colorBySingleConcept(conceptId, conceptStore) {
+    return this._builder?.colorBySingleConcept(conceptId, conceptStore) ?? false;
+  }
+
   colorByConceptInfluence() {
     return this._builder?.colorByConceptInfluence() ?? false;
   }
