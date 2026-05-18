@@ -10665,3 +10665,119 @@ window._runConceptContributionReport = async function() {
     'ok'
   );
 };
+
+// Geological Knowledge Uncertainty — stochastic concept embedding sampling
+// Runs K inference passes with Box-Muller-perturbed concept embeddings, then
+// computes per-voxel entropy across realisations and colours the model.
+window._runKnowledgeUncertainty = async function(K = 6, baseNoise = 0.12) {
+  const el    = document.getElementById('knowledge-uncert-output');
+  const grid  = AppState.voxelGrid;
+  const store = AppState.conceptStore;
+  if (!el) return;
+  el.style.display = 'block';
+
+  if (!AppState.trainedModel || !grid) {
+    el.innerHTML = '<div style="font-size:10px;color:#e06c75">Requires neural-implicit method — build model first.</div>';
+    return;
+  }
+  if (!store || store.isEmpty) {
+    el.innerHTML = '<div style="font-size:10px;color:#e06c75">No active concepts. Add concepts to quantify knowledge uncertainty.</div>';
+    return;
+  }
+
+  el.innerHTML = `<div style="font-size:10px;color:var(--text-mid)">Sampling concept space… 0/${K}</div>`;
+
+  const gridMeta = {
+    nx: grid.nx, ny: grid.ny, nz: grid.nz,
+    cellSize: grid.cellSize, cellHeight: grid.cellHeight, origin: grid.origin,
+  };
+  const nVox = grid.unitIds.length;
+  const nUnits = AppState.geoUnits.length;
+
+  // Accumulate per-voxel unit-assignment counts across K realisations
+  const counts = new Float32Array(nVox * nUnits); // counts[vox*nUnits + unitIdx]
+
+  const unitIdxMap = {};
+  AppState.geoUnits.forEach((u, i) => { unitIdxMap[u.id] = i; });
+
+  for (let k = 0; k < K; k++) {
+    el.innerHTML = `<div style="font-size:10px;color:var(--text-mid)">Sampling concept space… ${k + 1}/${K}</div>`;
+    await new Promise(r => setTimeout(r, 0)); // yield to UI
+
+    const pertStore = store.clonePerturbed(baseNoise);
+    const result    = inferGeoImplicit(AppState.trainedModel, gridMeta, AppState.geoUnits, pertStore);
+    const ids       = result.unitIds;
+
+    for (let v = 0; v < nVox; v++) {
+      const ui = unitIdxMap[ids[v]];
+      if (ui !== undefined) counts[v * nUnits + ui] += 1;
+    }
+  }
+
+  // Per-voxel entropy H = -Σ p_k log2(p_k)
+  const entropy = new Float32Array(nVox);
+  let sumH = 0, nHigh = 0;
+  for (let v = 0; v < nVox; v++) {
+    let h = 0;
+    for (let u = 0; u < nUnits; u++) {
+      const p = counts[v * nUnits + u] / K;
+      if (p > 0) h -= p * Math.log2(p);
+    }
+    entropy[v] = h;
+    sumH += h;
+    if (h > 0.5) nHigh++;
+  }
+  const maxH     = Math.log2(nUnits) || 1;
+  const meanH    = nVox > 0 ? sumH / nVox : 0;
+  const pctHigh  = nVox > 0 ? (nHigh / nVox * 100) : 0;
+
+  // Normalise 0-1 for colour mapping
+  const normEntropy = new Float32Array(nVox);
+  for (let v = 0; v < nVox; v++) normEntropy[v] = entropy[v] / maxH;
+
+  // Colour model: low entropy = green (borehole-anchored), high entropy = red (concept-sensitive)
+  if (AppState.scene?.colorByParameter) {
+    AppState.scene.colorByParameter('knowledge_uncertainty', AppState.geoUnits, normEntropy);
+  }
+
+  // Distribution histogram: 10 bins
+  const BINS = 10;
+  const hist = new Array(BINS).fill(0);
+  for (let v = 0; v < nVox; v++) {
+    const bin = Math.min(BINS - 1, Math.floor(normEntropy[v] * BINS));
+    hist[bin]++;
+  }
+  const histMax = Math.max(...hist, 1);
+  const histBars = hist.map((n, i) => {
+    const pct = (n / histMax * 40).toFixed(0);
+    const label = (i / BINS * 100).toFixed(0) + '%';
+    return `<div title="${n} voxels · entropy ${label}–${((i + 1) / BINS * 100).toFixed(0)}%" style="display:flex;flex-direction:column;align-items:center;gap:1px">
+      <div style="width:16px;height:${pct}px;background:hsl(${120 - i * 12},60%,45%);border-radius:1px 1px 0 0"></div>
+      ${i === 0 || i === BINS - 1 ? `<div style="font-size:7px;color:var(--text-dim)">${label}</div>` : '<div style="font-size:7px;color:transparent">·</div>'}
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:5px">Knowledge uncertainty — ${K} concept-space realisations</div>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <div style="flex:1;padding:5px;background:var(--bg-surface);border:1px solid var(--border);border-radius:4px;text-align:center">
+        <div style="font-size:16px;font-weight:700;color:var(--accent)">${meanH.toFixed(2)}</div>
+        <div style="font-size:9px;color:var(--text-dim)">mean entropy (bits)</div>
+      </div>
+      <div style="flex:1;padding:5px;background:var(--bg-surface);border:1px solid var(--border);border-radius:4px;text-align:center">
+        <div style="font-size:16px;font-weight:700;color:${pctHigh > 20 ? '#e06c75' : '#5ab97d'}">${pctHigh.toFixed(1)}%</div>
+        <div style="font-size:9px;color:var(--text-dim)">high-uncertainty voxels</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:flex-end;height:44px;gap:1px;padding:0 2px;margin-bottom:4px">${histBars}</div>
+    <div style="font-size:9px;color:var(--text-dim);margin-bottom:6px">Distribution: low entropy (left) = stable interpretation; high (right) = concept-sensitive</div>
+    <div style="font-size:9px;color:var(--text-mid);padding:4px 6px;background:var(--bg-surface);border-left:2px solid var(--accent);border-radius:0 3px 3px 0">
+      Model coloured by knowledge uncertainty. <strong>Green</strong> = interpretation stable across concept perturbations. <strong>Red</strong> = high sensitivity to how you have described the geology.
+    </div>
+    <div style="margin-top:6px;display:flex;gap:4px">
+      <button class="btn btn-ghost btn-sm" style="font-size:9px;flex:1" onclick="AppState.scene?.colorByParameter(null, AppState.geoUnits, null)">Reset colour</button>
+      <button class="btn btn-ghost btn-sm" style="font-size:9px;flex:1" onclick="_runKnowledgeUncertainty(${K}, 0.20)">Re-run (noise ×1.7)</button>
+    </div>`;
+
+  log(`Knowledge uncertainty: K=${K} realisations · mean entropy ${meanH.toFixed(3)} bits · ${pctHigh.toFixed(1)}% high-uncertainty voxels`, 'ok');
+};

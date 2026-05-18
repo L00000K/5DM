@@ -453,6 +453,32 @@ export class ConceptStore {
     return store;
   }
 
+  // Create a perturbed clone for stochastic knowledge uncertainty sampling.
+  // Each axis is jittered by N(0, sigma_i) where sigma_i = baseNoise × (1 - data_confidence).
+  // data_confidence = embedding[26]; lower confidence → larger perturbation.
+  clonePerturbed(baseNoise = 0.12) {
+    const store = new ConceptStore();
+    store._nextId = this._nextId;
+    // Box-Muller for standard normal samples
+    const randn = () => {
+      let u = 0, v = 0;
+      while (!u) u = Math.random();
+      while (!v) v = Math.random();
+      return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    };
+    store._concepts = this._concepts.map(c => {
+      const emb = c.embedding instanceof Float32Array ? new Float32Array(c.embedding) : new Float32Array(32);
+      const dataConf = Math.max(0.1, Math.min(0.9, emb[26] || 0.6));
+      const sigma = baseNoise * (1 - dataConf);
+      for (let i = 0; i < 32; i++) {
+        if (i === 26) continue; // don't perturb the confidence axis itself
+        emb[i] = Math.max(-1, Math.min(1, emb[i] + randn() * sigma));
+      }
+      return { ...c, embedding: emb };
+    });
+    return store;
+  }
+
   // ── Serialisation ───────────────────────────────────────────────────────────
 
   serialize() {

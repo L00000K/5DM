@@ -714,6 +714,15 @@
           <div id="concept-ensemble-output" style="display:none;margin-top:6px"></div>
         </div>
 
+        <!-- Geological Knowledge Uncertainty — stochastic concept embedding sampling -->
+        <div style="margin-top:4px">
+          <button class="btn btn-ghost" style="font-size:10px;width:100%" onclick="_runKnowledgeUncertainty()"
+            title="Sample the concept embedding space (K perturbed copies, Box-Muller noise scaled by 1−confidence) and compute per-voxel entropy across realisations. Reveals which zones are sensitive to geological interpretation uncertainty vs borehole-anchored.">
+            ◈ Geological knowledge uncertainty
+          </button>
+          <div id="knowledge-uncert-output" style="display:none;margin-top:6px"></div>
+        </div>
+
         <!-- Concept interpretation narrative — report-ready text -->
         <div style="margin-top:4px">
           <button id="btn-concept-narrative" class="btn btn-ghost" style="font-size:10px;width:100%" title="Generate a report-ready paragraph describing the conceptual model interpretation">
