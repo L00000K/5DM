@@ -676,6 +676,61 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
     }
   }
 
+  // ── Stepped-boundary contact sharpening samples ──────────────────────────────
+  // For concepts with high stepped_boundary (axis 18) or fault_controlled (axis 7),
+  // inject training samples immediately above and below observed contacts to force
+  // a steep gradient at the boundary. This teaches the network that the contact is
+  // abrupt, not gradational — a direct geological rule from the concept embedding.
+  if (conceptStore && !conceptStore.isEmpty) {
+    const AX_STEPPED = 18; // stepped_boundary axis
+    const AX_FAULT   = 7;  // fault_controlled axis
+    const SHARP_WEIGHT = 1.5; // higher than normal — this boundary matters
+    const SHARP_EPSILON = 0.08; // fraction of layer thickness for tight sampling
+
+    // Check if ANY concept has high stepped_boundary or fault_controlled
+    const sharpConceptActive = conceptStore.concepts.some(c =>
+      (c.embedding?.[AX_STEPPED] ?? 0) > 0.4 || (c.embedding?.[AX_FAULT] ?? 0) > 0.4
+    );
+
+    if (sharpConceptActive) {
+      for (const bh of boreholes) {
+        const layers = (bh.layers ?? []).filter(l => l.unitCode && unitIdx[l.unitCode] !== undefined);
+        for (let li = 0; li < layers.length - 1; li++) {
+          const above = layers[li], below = layers[li + 1];
+          const tiAbove = unitIdx[above.unitCode], tiBelow = unitIdx[below.unitCode];
+          if (tiAbove === undefined || tiBelow === undefined) continue;
+          const contactZ = bh.groundLevel - above.base;
+
+          // Check concept sharpness at this contact location
+          const ctx = conceptStore.computeAt(bh.x, bh.y, contactZ);
+          if (!ctx || ctx.totalWeight < 0.05) continue;
+          const steppedAx = ctx.vec[AX_STEPPED] ?? 0;
+          const faultAx   = ctx.vec[AX_FAULT]   ?? 0;
+          const sharpness = Math.max(steppedAx, faultAx);
+          if (sharpness < 0.3) continue;
+
+          const thickAbove = Math.abs(above.base - above.top);
+          const thickBelow = Math.abs(below.base - below.top);
+          const eps = Math.max(0.03, Math.min(thickAbove, thickBelow) * SHARP_EPSILON);
+          const w   = SHARP_WEIGHT * sharpness;
+
+          for (const [dz, ti] of [[eps, tiAbove], [-eps, tiBelow], [eps * 2, tiAbove], [-eps * 2, tiBelow]]) {
+            const wz = contactZ + dz;
+            if (wz < bounds.minZ || wz > bounds.maxZ) continue;
+            const pCtx    = conceptStore.computeAt(bh.x, bh.y, wz);
+            const pCtxVec = pCtx?.vec ?? zeroCtx;
+            const pTensor = pCtx?.tensor ?? gTensor;
+            const warped  = warpPoint(bh.x, bh.y, wz, pTensor);
+            const pos     = fourierEnc.encode(warped.x, warped.y, warped.z, warpedBounds);
+            const inp     = new Float32Array(nIn);
+            inp.set(pos); inp.set(pCtxVec, fourierEnc.outDim);
+            samples.push({ inp, target: ti, weight: w });
+          }
+        }
+      }
+    }
+  }
+
   // ── Stratigraphic-order virtual samples ─────────────────────────────────────
   // If the user has defined a stratigraphic column, inject synthetic samples at
   // unit transitions. For each adjacent pair (unit_a above unit_b) in stratOrder,
