@@ -5535,6 +5535,78 @@ async function init() {
     log(e.detail.key ? '✓ API key configured' : 'Demo mode active', 'ok');
   });
 
+  // Plan view click: show concept-based stratigraphic prediction popup
+  window.addEventListener('planview:click', e => {
+    const d = e.detail;
+    if (!d || !AppState.conceptStore || AppState.conceptStore.isEmpty) return;
+    const store    = AppState.conceptStore;
+    const geoUnits = AppState.geoUnits;
+    if (!geoUnits.length) return;
+
+    // Compute concept context at clicked position + a range of depths
+    const depth_range = AppState.voxelGrid
+      ? { min: AppState.voxelGrid.origin.y, max: AppState.voxelGrid.origin.y + AppState.voxelGrid.nz * AppState.voxelGrid.cellHeight }
+      : { min: d.elev - 20, max: d.elev + 5 };
+
+    // Sample 6 depths: from deepest to shallowest
+    const nLevels = 6;
+    const predictions = [];
+    for (let i = 0; i < nLevels; i++) {
+      const wz = depth_range.min + (i / (nLevels - 1)) * (depth_range.max - depth_range.min);
+      const ctx = store.computeAt(d.worldX, d.worldY, wz);
+      if (ctx.totalWeight < 0.05) continue;
+      // Find most likely unit based on unitAffinity of dominant concept
+      const topConcept = store.concepts.find(c => c.id === ctx.weights[0]?.id);
+      const affinityUnits = topConcept?.unitAffinity?.length ? topConcept.unitAffinity : null;
+      const dominantUnit  = affinityUnits
+        ? geoUnits.find(u => affinityUnits.includes(u.code)) ?? geoUnits[0]
+        : null;
+      predictions.push({
+        z: wz,
+        totalWeight: ctx.totalWeight,
+        dominantUnit,
+        topConceptDesc: topConcept?.description?.slice(0, 30) ?? '—',
+        axEW:  (ctx.vec[3] ?? 0).toFixed(2),
+        axNS:  (ctx.vec[4] ?? 0).toFixed(2),
+        axCh:  (ctx.vec[5] ?? 0).toFixed(2),
+      });
+    }
+
+    // Build a small popup element
+    let existing = document.getElementById('plan-concept-popup');
+    if (!existing) {
+      existing = document.createElement('div');
+      existing.id = 'plan-concept-popup';
+      existing.style.cssText = `
+        position:fixed;z-index:9999;background:var(--bg-panel);border:1px solid var(--border);
+        border-radius:6px;padding:8px 10px;font-size:10px;color:var(--text);
+        box-shadow:0 4px 16px rgba(0,0,0,0.4);max-width:240px;pointer-events:auto`;
+      document.body.appendChild(existing);
+    }
+    existing.style.left = `${d.canvasX + 16}px`;
+    existing.style.top  = `${d.canvasY - 10}px`;
+    existing.style.display = 'block';
+
+    const rows = predictions.map(p =>
+      `<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">
+        ${p.dominantUnit ? `<span style="width:8px;height:8px;border-radius:2px;background:${p.dominantUnit.color};flex-shrink:0"></span>` : '<span style="width:8px;height:8px;flex-shrink:0"></span>'}
+        <span style="color:var(--text-mid);min-width:40px;font-family:var(--font-mono)">${p.z.toFixed(1)}</span>
+        <span style="flex:1;color:var(--text-dim)">${escHtml(p.topConceptDesc)}</span>
+        <span style="color:var(--accent);font-family:var(--font-mono)">${(p.totalWeight * 100).toFixed(0)}%</span>
+      </div>`
+    ).join('');
+
+    existing.innerHTML = `
+      <div style="font-weight:600;margin-bottom:5px">Concept prediction at (${d.worldX.toFixed(0)}, ${d.worldY.toFixed(0)})</div>
+      <div style="color:var(--text-dim);font-size:9px;margin-bottom:5px">Depth / dominant concept / influence (without built model)</div>
+      ${rows || '<div style="color:var(--text-dim)">No active concepts at this position</div>'}
+      <button onclick="document.getElementById('plan-concept-popup').style.display='none'"
+        style="margin-top:5px;font-size:9px;padding:1px 6px;background:var(--bg-el);border:1px solid var(--border);border-radius:3px;cursor:pointer;color:var(--text-mid)">✕ Close</button>`;
+
+    // Auto-close after 8 seconds
+    setTimeout(() => { if (existing) existing.style.display = 'none'; }, 8000);
+  });
+
   // Traceability: show concept + BH attribution when hovering a voxel
   window.addEventListener('geomodel:voxel-hover', e => {
     const panel   = document.getElementById('traceability-panel');

@@ -81,14 +81,26 @@ export class PlanView {
   }
 
   _onMouseDown(e) {
-    if (this._drawMode !== 'bbox') return;
     const rect = this._canvas.getBoundingClientRect();
     const cx = (e.clientX - rect.left) * (this._canvas.width / rect.width);
     const cy = (e.clientY - rect.top)  * (this._canvas.height / rect.height);
     const world = this._canvasToWorld(cx, cy);
-    if (!world) return;
-    this._drawStart = { cx, cy, ...world };
-    this._drawRect  = { x1: world.worldX, y1: world.worldY, x2: world.worldX, y2: world.worldY };
+
+    if (this._drawMode === 'bbox') {
+      if (!world) return;
+      this._drawStart = { cx, cy, ...world };
+      this._drawRect  = { x1: world.worldX, y1: world.worldY, x2: world.worldX, y2: world.worldY };
+      return;
+    }
+
+    // General click: emit planview:click for consumers (e.g., concept prediction popup)
+    if (world) {
+      const elev = parseFloat(this._slider?.value ?? 0);
+      window.dispatchEvent(new CustomEvent('planview:click', {
+        detail: { worldX: world.worldX, worldY: world.worldY, elev,
+                  canvasX: e.clientX, canvasY: e.clientY },
+      }));
+    }
   }
 
   _onMouseMove(e) {
