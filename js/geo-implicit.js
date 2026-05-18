@@ -373,7 +373,7 @@ export function buildGeoContext(geoUnits, siteHistory, unitDescriptions) {
 // Returns { net, fourierEnc, conceptStore, warpedBounds, bounds, nUnits, unitCodes } or null
 export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, options = {}) {
   const {
-    epochs          = 400,
+    epochs          = 600,
     lr              = 0.01,
     lrMin           = 0.001,
     l2              = 0.001,
@@ -710,7 +710,12 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
   const filmParamEnd   = 10;
 
   for (let ep = 0; ep < epochs; ep++) {
-    opt.setLr(lrMin + 0.5 * (lr - lrMin) * (1 + Math.cos(Math.PI * ep / epochs)));
+    // LR schedule: linear warmup for first 5%, then cosine decay.
+    // Hold LR high during FiLM warmup so positional MLP trains fast before FiLM kicks in.
+    const warmupEps  = Math.max(1, Math.round(epochs * 0.05));
+    const lrWarmup   = ep < warmupEps ? (lr * (ep + 1) / warmupEps) : lr;
+    const cosPhase   = ep < warmupEps ? 0 : (ep - warmupEps) / (epochs - warmupEps);
+    opt.setLr(lrMin + 0.5 * (lrWarmup - lrMin) * (1 + Math.cos(Math.PI * cosPhase)));
 
     // filmGradScale: 0→1 over first 25% of epochs; full gradient after that
     const filmGradScale = Math.min(1, ep / Math.max(1, FILM_WARMUP * epochs));

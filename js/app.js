@@ -928,7 +928,7 @@ function initBuildModel() {
         semanticModel: AppState.semanticModel,
         semanticWeight: AppState.semanticWeight ?? 0.3,
         siteHistory, unitDescriptions: unitDescs,
-        niEpochs: AppState.niEpochs ?? 400,
+        niEpochs: AppState.niEpochs ?? 600,
         oracleApiKey: AppState.oracleEnabled && apiKey ? apiKey : null,
         oracleRefineFn: oracleRefinement,
         demoMode: !apiKey,

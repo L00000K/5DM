@@ -610,13 +610,13 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
       log(`Concept store: ${conceptStore.concepts.length} geological concept(s) active — coordinate warping enabled`, 'info');
     }
 
-    log(`Training neural implicit field (${options.niEpochs ?? 400} epochs)…`, 'info');
+    log(`Training neural implicit field (${options.niEpochs ?? 600} epochs)…`, 'info');
     if (onProgress) onProgress(0.02);
 
     const trainedModel = await trainGeoImplicit(
       allBoreholes, geoUnits, conceptStore,
       {
-        epochs:          options.niEpochs ?? 400,
+        epochs:          options.niEpochs ?? 600,
         lr:              0.01,
         lrMin:           0.001,
         l2:              0.001,
