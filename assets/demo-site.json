@@ -2531,11 +2531,15 @@
       ],
       "confidence": 0.8,
       "domain": {
-        "type": "global"
+        "type": "global",
+        "minZ": -8,
+        "maxZ": 2,
+        "sigmaZ": 4
       },
       "unitAffinity": [
         "ACL"
-      ]
+      ],
+      "temporalOrder": 2
     },
     {
       "description": "River Terrace Deposits \u2014 laterally continuous sheet gravel, erosional base on London Clay, thinning eastward",
@@ -2575,11 +2579,15 @@
       ],
       "confidence": 0.8,
       "domain": {
-        "type": "global"
+        "type": "global",
+        "minZ": -2,
+        "maxZ": 8,
+        "sigmaZ": 5
       },
       "unitAffinity": [
         "RTD"
-      ]
+      ],
+      "temporalOrder": 1
     },
     {
       "description": "Normal E-W fault at ~95m north with 3.5m downthrow to north \u2014 stepped bedrock boundary, fault controlled",
@@ -2621,7 +2629,8 @@
       "domain": {
         "type": "global"
       },
-      "unitAffinity": []
+      "unitAffinity": [],
+      "temporalOrder": null
     }
   ]
 }
