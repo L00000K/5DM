@@ -1,7 +1,7 @@
 import { log } from './app.js';
 import { buildStratRankMap, stratigraphicConsistencyPenalty,
          descriptionJaccard, meanDescriptionSimilarity, buildTransitionMatrix } from './semantic-engine.js';
-import { trainGeoImplicit, inferGeoImplicit,
+import { trainGeoImplicit, inferGeoImplicit, finetuneGeoImplicit,
          findUncertainClusters, patchWithOracle } from './geo-implicit.js';
 
 const MIN_BH_DIST = 0.1;
@@ -646,6 +646,104 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
       const conceptInfluence = inferred.conceptInfluence ?? null;
       const probVolumes      = inferred.probVolumes ?? null;
       const sharpnessT       = inferred.sharpnessT ?? null;
+
+      // ── Concept-driven iterative refinement ──────────────────────────────────
+      // After the first inference pass, identify voxel columns where:
+      //   (a) concept influence is active (semantics are driving prediction)
+      //   (b) borehole coverage is sparse (no nearby real data to anchor it)
+      //   (c) certainty is low (model is genuinely uncertain)
+      // Inject virtual "expectation" observations at those positions using the
+      // concept store's predicted unit profile, then fine-tune the network for
+      // a short pass to strengthen the concept-anchored regions.
+      if (conceptStore && !conceptStore.isEmpty && options.conceptRefinement !== false) {
+        const refineSamples = [];
+        const realBHs = allBoreholes.filter(b => !b.synthetic && b.layers?.length);
+        const bhSigmaSq = (() => {
+          if (realBHs.length < 2) return (Math.max(nx, ny) * cellSize * 0.3) ** 2;
+          let totalNN = 0;
+          for (const a of realBHs) {
+            let minD = Infinity;
+            for (const b of realBHs) { if (a !== b) { const d = Math.hypot(a.x - b.x, a.y - b.y); if (d < minD) minD = d; } }
+            totalNN += minD;
+          }
+          return ((totalNN / realBHs.length) * 1.5) ** 2;
+        })();
+
+        // Scan columns at coarse spacing (every 3rd cell) to find refinement targets
+        const stride = 3;
+        const targets = [];
+        for (let ciy = 0; ciy < ny; ciy += stride) {
+          for (let cix = 0; cix < nx; cix += stride) {
+            const wx = ox + (cix + 0.5) * cellSize;
+            const wy = oy + (ciy + 0.5) * cellSize;
+            // Borehole coverage density at this XY
+            const cov = realBHs.length ? realBHs.reduce((s, b) => {
+              const d2 = (b.x - wx) ** 2 + (b.y - wy) ** 2;
+              return s + Math.exp(-d2 / bhSigmaSq);
+            }, 0) / Math.max(1, realBHs.length) : 0;
+            if (cov > 0.4) continue; // well-constrained by boreholes — skip
+            // Average certainty and concept influence in this column
+            let sumCert = 0, sumCInf = 0, cnt = 0;
+            for (let ciz = 0; ciz < nz; ciz++) {
+              const f = cix + ciy * nx + ciz * nx * ny;
+              if (!inferred.unitIds[f]) continue;
+              sumCert  += inferred.certainty[f];
+              sumCInf  += conceptInfluence ? conceptInfluence[f] : 0;
+              cnt++;
+            }
+            if (!cnt) continue;
+            const avgCert = sumCert / cnt;
+            const avgCInf = sumCInf / cnt;
+            if (avgCert > 0.55) continue;    // already confident — skip
+            if (avgCInf < 0.2) continue;     // concept not driving this area — skip
+            targets.push({ cix, ciy, wx, wy, avgCert, avgCInf });
+          }
+        }
+
+        // Sort by (low certainty × high concept influence) and take top 20
+        targets.sort((a, b) => (b.avgCInf * (1 - b.avgCert)) - (a.avgCInf * (1 - a.avgCert)));
+        const topTargets = targets.slice(0, 20);
+
+        for (const { wx, wy } of topTargets) {
+          // Sample 3 depths in the model column
+          for (let zi = 0; zi < 3; zi++) {
+            const wz = oz + cellH * (nz * (zi + 0.5) / 3);
+            const ctx = conceptStore.computeAt(wx, wy, wz);
+            if (ctx.totalWeight < 0.15 || !ctx.weights.length) continue;
+            // Predict unit from concept: use dominant unit affinity of top concept
+            const topConcept = conceptStore.concepts.find(c => c.id === ctx.weights[0]?.id);
+            if (!topConcept) continue;
+            const affinityUnits = topConcept.unitAffinity?.length
+              ? topConcept.unitAffinity
+              : geoUnits.map(u => u.code);
+            // Pick the unit that has highest expected probability at this depth
+            // (favour units whose affinity matches the concept, weighted by vertical position)
+            const midUnit = affinityUnits[Math.floor(zi / 3 * affinityUnits.length)] ?? affinityUnits[0];
+            if (!midUnit) continue;
+            // Weight = concept influence × (1 - certainty), capped low to stay soft constraint
+            refineSamples.push({ x: wx, y: wy, z: wz, unitCode: midUnit, weight: 0.12 });
+          }
+        }
+
+        if (refineSamples.length > 0) {
+          log(`Concept refinement: fine-tuning on ${refineSamples.length} virtual samples in ${topTargets.length} concept-driven uncertain zone(s)…`, 'info');
+          if (onProgress) onProgress(0.74);
+          await finetuneGeoImplicit(trainedModel, geoUnits, refineSamples, {
+            epochs: 80,
+            lr: 0.002,
+            onProgress: (frac) => { if (onProgress) onProgress(0.74 + frac * 0.04); },
+          });
+          // Re-infer after refinement
+          const inferred2 = inferGeoImplicit(trainedModel, gridMeta, geoUnits, conceptStore, { nMCPasses });
+          unitIds.set(inferred2.unitIds);
+          certainty.set(inferred2.certainty);
+          blendUnitIds.set(inferred2.blendUnitIds);
+          blendRatios.set(inferred2.blendRatios);
+          // Update inferred reference for downstream certainty calibration
+          Object.assign(inferred, inferred2);
+          log(`Concept refinement complete — re-inferred ${nx * ny * nz} voxels`, 'info');
+        }
+      }
 
       // Oracle refinement: find uncertain clusters and pass to injected oracle fn
       const oracleFn = options.oracleRefineFn;

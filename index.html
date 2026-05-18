@@ -264,6 +264,10 @@
             <label for="ni-epochs">Training Epochs</label>
             <input type="number" id="ni-epochs" class="input-sm" min="50" max="2000" step="50" value="600">
           </div>
+          <label class="checkbox-row" style="margin-top:6px;gap:8px;align-items:center;cursor:pointer" title="After initial inference, fine-tune the network on virtual samples in concept-driven uncertain zones. Improves geometry in areas with semantic constraints but no boreholes.">
+            <input type="checkbox" id="ni-concept-refinement" checked>
+            <span style="font-size:11px">Concept refinement pass<br><span style="color:var(--text-muted);font-size:10px">80-epoch fine-tune on uncertain concept-driven regions</span></span>
+          </label>
           <label class="checkbox-row" style="margin-top:6px;gap:8px;align-items:center;cursor:pointer">
             <input type="checkbox" id="ni-oracle-toggle">
             <span style="font-size:11px">Enable LLM Oracle (requires API key)<br><span style="color:var(--text-muted);font-size:10px">Claude reasons about uncertain voxel clusters after training</span></span>

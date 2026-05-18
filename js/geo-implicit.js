@@ -1001,6 +1001,67 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
   return { net, fourierEnc, conceptStore, warpedBounds, bounds, nUnits, unitCodes, CONCEPT_DIM, fourierDim: fourierEnc.outDim };
 }
 
+// ── Concept-driven refinement fine-tune ──────────────────────────────────────
+// Takes an already-trained model and a list of refinement samples, then runs
+// a short additional training pass (epochs << main training) using those samples
+// at reduced learning rate. Modifies `trained.net` in-place.
+//
+// refinementSamples: [{ x, y, z, unitCode, weight }]  — world-space virtual obs.
+// options.epochs (default 100), options.lr (default 0.002)
+export async function finetuneGeoImplicit(trained, geoUnits, refinementSamples, options = {}) {
+  if (!trained || !refinementSamples?.length) return trained;
+  const { epochs = 100, lr = 0.002, l2 = 0.0005, onProgress = null } = options;
+
+  const { net, fourierEnc, warpedBounds, unitCodes, CONCEPT_DIM, fourierDim } = trained;
+  const localConceptStore = trained.conceptStore;
+  const zeroCtx = new Float32Array(CONCEPT_DIM);
+  const unitIdx = {};
+  geoUnits.forEach((u, i) => { unitIdx[u.code] = i; });
+
+  const gTensor = localConceptStore?.globalTensor() ?? { Ax: 1, Ay: 1, Az: 1, theta: 0, cosT: 1, sinT: 0 };
+
+  // Build training samples from refinement hints
+  const samples = [];
+  for (const { x, y, z, unitCode, weight = 0.15 } of refinementSamples) {
+    const ti = unitIdx[unitCode];
+    if (ti === undefined) continue;
+    const ctx    = localConceptStore ? localConceptStore.computeAt(x, y, z, unitCode) : null;
+    const ctxVec = ctx?.vec ?? zeroCtx;
+    const tensor = ctx?.tensor ?? gTensor;
+    const warped = warpPoint(x, y, z, tensor);
+    const pos    = fourierEnc.encode(warped.x, warped.y, warped.z, warpedBounds);
+    const inp    = new Float32Array(fourierDim + CONCEPT_DIM);
+    inp.set(pos);
+    inp.set(ctxVec, fourierDim);
+    samples.push({ inp, target: ti, weight });
+  }
+  if (!samples.length) return trained;
+
+  const opt = new AdamOpt(net.getParams(), lr);
+
+  for (let ep = 0; ep < epochs; ep++) {
+    // Cosine decay from lr to lr*0.1
+    const lrMin = lr * 0.1;
+    opt.setLr(lrMin + 0.5 * (lr - lrMin) * (1 + Math.cos(Math.PI * ep / epochs)));
+
+    // Shuffle
+    for (let i = samples.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [samples[i], samples[j]] = [samples[j], samples[i]];
+    }
+    for (const s of samples) {
+      const act = net.forward(s.inp, 0);
+      opt.step(net.backward(s.inp, act, s.target, l2, s.weight));
+    }
+    if (onProgress && ep % 25 === 0) {
+      onProgress(ep / epochs);
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
+  if (onProgress) onProgress(1);
+  return trained;
+}
+
 // ── Infer voxel grid from trained model ─────────────────────────────────────
 // grid must have { nx, ny, nz, cellSize, cellHeight, origin: {x,y,z} }
 // options.sectionPlanes: [{fence, localKwVec}] for spatially-local section context

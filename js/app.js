@@ -939,6 +939,9 @@ function initBuildModel() {
         faultPlanes: AppState.faultPlanes,
         conceptStore: AppState.conceptStore ?? null,
         nMCPasses:   AppState.nMCPasses ?? 8,
+        // Concept-driven iterative refinement: enabled by default when concepts are active.
+        // After first inference, fine-tune on virtual samples in uncertain concept-driven zones.
+        conceptRefinement: document.getElementById('ni-concept-refinement')?.checked ?? true,
         onProgress: (p, loss, meta) => setBuildProgress(p, loss, meta),
       };
 
