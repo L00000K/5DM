@@ -539,9 +539,10 @@
 
         <!-- Export / Import concept store -->
         <div class="btn-row" style="margin-top:4px;gap:4px">
-          <button class="btn btn-ghost" style="font-size:11px;flex:1" onclick="_exportConceptStore()" title="Download concepts as JSON">⬇ Export JSON</button>
+          <button class="btn btn-ghost" style="font-size:11px;flex:1" onclick="_exportConceptStore()" title="Download concepts as JSON">⬇ JSON</button>
+          <button class="btn btn-ghost" style="font-size:11px;flex:1" onclick="_exportConceptGeoJSON()" title="Export concept domains as GeoJSON for QGIS / ArcGIS">⬇ GeoJSON</button>
           <label class="btn btn-ghost" style="font-size:11px;flex:1;cursor:pointer;text-align:center" title="Import concepts from JSON file">
-            ⬆ Import JSON
+            ⬆ Import
             <input type="file" accept=".json" style="display:none" onchange="_importConceptStore(this)">
           </label>
         </div>

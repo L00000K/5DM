@@ -6254,6 +6254,75 @@ window._exportConceptStore = function() {
   log(`Exported ${AppState.conceptStore.concepts.length} concepts`, 'ok');
 };
 
+window._exportConceptGeoJSON = function() {
+  if (!AppState.conceptStore || AppState.conceptStore.isEmpty) {
+    log('No concepts to export', 'warn'); return;
+  }
+  const concepts = AppState.conceptStore.concepts;
+
+  // Determine site bounding box for global concepts (use borehole extents or 100×100m fallback)
+  const bhs = AppState.classifiedBH ?? [];
+  const xs  = bhs.map(b => b.x), ys = bhs.map(b => b.y);
+  const siteMinX = xs.length ? Math.min(...xs) - 20 : 0;
+  const siteMaxX = xs.length ? Math.max(...xs) + 20 : 100;
+  const siteMinY = ys.length ? Math.min(...ys) - 20 : 0;
+  const siteMaxY = ys.length ? Math.max(...ys) + 20 : 100;
+
+  const features = concepts.map(c => {
+    // Build geometry: polygon for bbox domain, point for global/radius
+    let geometry;
+    if (c.domain?.type === 'bbox') {
+      const { minX = siteMinX, maxX = siteMaxX, minY = siteMinY, maxY = siteMaxY } = c.domain;
+      geometry = {
+        type: 'Polygon',
+        coordinates: [[[minX, minY], [maxX, minY], [maxX, maxY], [minX, maxY], [minX, minY]]],
+      };
+    } else if (c.domain?.type === 'radius') {
+      const { centreX = (siteMinX + siteMaxX) / 2, centreY = (siteMinY + siteMaxY) / 2, radius = 50 } = c.domain;
+      // Approximate circle as 24-point polygon
+      const pts = Array.from({ length: 24 }, (_, i) => {
+        const a = (i / 24) * 2 * Math.PI;
+        return [centreX + Math.cos(a) * radius, centreY + Math.sin(a) * radius];
+      });
+      pts.push(pts[0]);
+      geometry = { type: 'Polygon', coordinates: [pts] };
+    } else {
+      // Global concept: use site bbox
+      geometry = {
+        type: 'Polygon',
+        coordinates: [[[siteMinX, siteMinY], [siteMaxX, siteMinY], [siteMaxX, siteMaxY], [siteMinX, siteMaxY], [siteMinX, siteMinY]]],
+      };
+    }
+
+    // Build properties: all 32 axes + meta
+    const axisProps = {};
+    CONCEPT_AXES.forEach((name, i) => { axisProps[`ax_${i}_${name}`] = +c.embedding[i].toFixed(3); });
+    return {
+      type: 'Feature',
+      geometry,
+      properties: {
+        id: c.id,
+        description: c.description,
+        confidence: c.confidence,
+        domain_type: c.domain?.type ?? 'global',
+        temporal_order: c.temporalOrder ?? null,
+        unit_affinity: (c.unitAffinity ?? []).join(', '),
+        depth_min_m: c.domain?.minZ ?? null,
+        depth_max_m: c.domain?.maxZ ?? null,
+        ...axisProps,
+      },
+    };
+  });
+
+  const geojson = { type: 'FeatureCollection', features, _source: 'GeoModel AI Concepts' };
+  const blob = new Blob([JSON.stringify(geojson, null, 2)], { type: 'application/geo+json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'geomodel-concepts.geojson'; a.click();
+  URL.revokeObjectURL(url);
+  log(`Exported ${concepts.length} concept(s) as GeoJSON`, 'ok');
+};
+
 window._importConceptStore = function(inputEl) {
   const file = inputEl?.files?.[0];
   if (!file) return;
