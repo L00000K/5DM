@@ -6485,6 +6485,20 @@ function initConceptPanel() {
       const unitAffinity = unitAffinitySel
         ? Array.from(unitAffinitySel.selectedOptions).map(o => o.value)
         : [];
+      // Depth range: optionally restrict concept to a vertical band (minZ..maxZ in AOD)
+      const minZEl = document.getElementById('concept-minz');
+      const maxZEl = document.getElementById('concept-maxz');
+      const sigZEl = document.getElementById('concept-sigmaz');
+      const minZVal = minZEl?.value !== '' ? parseFloat(minZEl.value) : undefined;
+      const maxZVal = maxZEl?.value !== '' ? parseFloat(maxZEl.value) : undefined;
+      const sigZVal = sigZEl?.value !== '' ? parseFloat(sigZEl.value) : 10;
+      if (minZVal !== undefined || maxZVal !== undefined) {
+        // Merge depth constraints into domain object
+        if (minZVal !== undefined) domain.minZ = minZVal;
+        if (maxZVal !== undefined) domain.maxZ = maxZVal;
+        domain.sigmaZ = sigZVal;
+      }
+
       AppState.conceptStore.add({ description: text, embedding: emb, confidence: conf, domain, unitAffinity });
       _renderConceptList();
       _saveConceptStore();
@@ -6494,7 +6508,12 @@ function initConceptPanel() {
       // Reset drawn bbox after encoding so it's not accidentally reused
       _drawnBboxDomain = null;
       if (bboxPreview) bboxPreview.textContent = '';
-      log(`Concept encoded: "${text.slice(0, 60)}" — ${AppState.conceptStore.concepts.length} total`, 'ok');
+      // Clear depth range inputs
+      if (minZEl) minZEl.value = '';
+      if (maxZEl) maxZEl.value = '';
+      const depthStr = (minZVal !== undefined || maxZVal !== undefined)
+        ? ` Z=[${minZVal ?? '∞'}..${maxZVal ?? '∞'}]±${sigZVal}m` : '';
+      log(`Concept encoded: "${text.slice(0, 60)}"${depthStr} — ${AppState.conceptStore.concepts.length} total`, 'ok');
     } catch (err) {
       log(`Concept encode error: ${err.message}`, 'error');
     } finally {
@@ -7057,6 +7076,9 @@ export function _renderConceptList() {
     }).join('');
     const dom     = c.domain?.type === 'bbox' ? '⬛ bbox' : '🌐 global';
     const affText = c.unitAffinity?.length ? ` · ${c.unitAffinity.join(',')}` : '';
+    const depthText = (c.domain?.minZ !== undefined || c.domain?.maxZ !== undefined)
+      ? ` · Z [${c.domain.minZ ?? '?'}..${c.domain.maxZ ?? '?'}]m`
+      : '';
     const confPct = (c.confidence * 100).toFixed(0);
     return `<div class="concept-entry" data-id="${c.id}">
       <div class="concept-header">
@@ -7067,7 +7089,7 @@ export function _renderConceptList() {
         </div>
       </div>
       <div class="concept-meta">
-        <span class="concept-dom-tag">${dom}${affText}</span>
+        <span class="concept-dom-tag">${dom}${affText}${depthText}</span>
         <label class="concept-conf-row">
           conf <input type="range" class="concept-conf-slider" min="0" max="100" value="${confPct}"
             oninput="this.nextElementSibling.textContent=this.value+'%'; _updateConceptConf('${c.id}', this.value/100)"

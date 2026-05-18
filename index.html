@@ -475,6 +475,18 @@
             <button id="btn-draw-bbox" class="btn btn-ghost" style="font-size:10px;flex:1">⬛ Draw on Plan View</button>
             <span id="concept-bbox-preview" style="font-size:9px;color:var(--text-dim);font-family:var(--font-mono)"></span>
           </div>
+          <!-- Vertical depth range (optional): restrict concept to a depth band in AOD -->
+          <div class="concept-ctrl-row" id="concept-depth-row" title="Optional: restrict concept to a vertical depth band (metres AOD). Leave blank for full depth.">
+            <label>Depth (AOD)</label>
+            <div style="display:flex;align-items:center;gap:4px;flex:1">
+              <input type="number" id="concept-minz" placeholder="Min Z" step="0.5"
+                style="width:64px;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px">
+              <span style="font-size:10px;color:var(--text-dim)">to</span>
+              <input type="number" id="concept-maxz" placeholder="Max Z" step="0.5"
+                style="width:64px;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px">
+              <span style="font-size:9px;color:var(--text-dim)" title="Gaussian decay half-width in metres beyond the specified range">±σ<input type="number" id="concept-sigmaz" value="10" min="1" max="100" step="1" style="width:36px;font-size:9px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:2px;padding:1px 3px">m</span>
+            </div>
+          </div>
           <div class="concept-ctrl-row" id="concept-unit-affinity-row" title="Leave blank to apply to all units">
             <label>Units (optional)</label>
             <select id="concept-unit-affinity" multiple style="height:52px;font-size:10px;flex:1">

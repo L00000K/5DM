@@ -167,8 +167,21 @@ export class ConceptStore {
 
   // ── Spatial relevance ───────────────────────────────────────────────────────
 
-  _relevance(c, wx, wy) {
-    const base = c.confidence;
+  _relevance(c, wx, wy, wz = null) {
+    let base = c.confidence;
+
+    // Vertical domain filter: if domain specifies minZ/maxZ (AOD), apply Gaussian decay
+    // outside that depth range. sigmaZ defaults to 20% of the specified depth range.
+    if (wz !== null && c.domain) {
+      const { minZ, maxZ, sigmaZ } = c.domain;
+      if (minZ !== undefined && maxZ !== undefined) {
+        const sz = sigmaZ ?? Math.max(1, (maxZ - minZ) * 0.2);
+        const dz = Math.max(0, wz < minZ ? minZ - wz : wz > maxZ ? wz - maxZ : 0);
+        base *= Math.exp(-(dz * dz) / (2 * sz * sz));
+        if (base < 0.005) return 0;
+      }
+    }
+
     if (c.domain.type === 'global') return base;
     if (c.domain.type === 'bbox') {
       const { minX = 0, maxX = 0, minY = 0, maxY = 0, sigma = 50 } = c.domain;
@@ -206,7 +219,7 @@ export class ConceptStore {
     for (const c of this._concepts) {
       // Unit affinity filter: skip concept if it doesn't apply to this unit
       if (unitCode && c.unitAffinity?.length > 0 && !c.unitAffinity.includes(unitCode)) continue;
-      const w = this._relevance(c, wx, wy);
+      const w = this._relevance(c, wx, wy, wz);
       if (w < 0.005) continue;
       weights.push({ id: c.id, description: c.description, weight: w });
       totalW += w;
