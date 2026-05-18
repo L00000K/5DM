@@ -4667,13 +4667,35 @@ function initRiskAssessment() {
       }
     }
 
-    // Score = entropy × (1 − proximity_to_existing_BH)
+    // Per-column mean concept influence (0 = data-driven, 1 = concept-driven)
+    const colConceptInf = new Float32Array(nx * ny);
+    const hasConceptInf = !!(grid.conceptInfluence);
+    if (hasConceptInf) {
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          let sumInf = 0, cnt = 0;
+          for (let iz = 0; iz < nz; iz++) {
+            const flat = ix + iy * nx + iz * nx * ny;
+            if (!unitIds[flat]) continue;
+            sumInf += grid.conceptInfluence[flat];
+            cnt++;
+          }
+          colConceptInf[ix + iy * nx] = cnt > 0 ? sumInf / cnt : 0;
+        }
+      }
+    }
+
+    // Score = entropy × (1 − proximity) × (1 + concept_influence × 0.5)
+    // The concept-influence boost prioritises locations where the model is relying on
+    // semantic knowledge rather than borehole data — drilling there replaces inference
+    // with real observations (maximum information gain for this level of uncertainty).
     const scores = [];
     for (let iy = 0; iy < ny; iy++) {
       for (let ix = 0; ix < nx; ix++) {
         const col = ix + iy * nx;
-        const score = colEntropy[col] * (1 - distPenalty[col]);
-        if (score > 0) scores.push({ ix, iy, score, entropy: colEntropy[col] });
+        const conceptBoostFactor = hasConceptInf ? (1 + colConceptInf[col] * 0.5) : 1;
+        const score = colEntropy[col] * (1 - distPenalty[col]) * conceptBoostFactor;
+        if (score > 0) scores.push({ ix, iy, score, entropy: colEntropy[col], conceptInf: colConceptInf[col] });
       }
     }
     scores.sort((a, b) => b.score - a.score);
@@ -4699,27 +4721,40 @@ function initRiskAssessment() {
     }
 
     const maxEnt = Math.log2(nUnits);
+    const showConceptCol = hasConceptInf && selected.some(s => s.conceptInf > 0.1);
     out.innerHTML = `<table style="width:100%;font-size:10px;border-collapse:collapse">
       <thead><tr style="color:var(--text-muted)">
         <th style="text-align:left;padding:2px 4px">Location</th>
         <th style="padding:2px 4px">E (m)</th>
         <th style="padding:2px 4px">N (m)</th>
         <th style="padding:2px 4px">Uncertainty</th>
+        ${showConceptCol ? '<th style="padding:2px 4px" title="Fraction of prediction driven by conceptual model rather than borehole data — high = concept-reliant = highest priority for drilling">Concept</th>' : ''}
+        <th style="padding:2px 4px;font-size:9px">Reason</th>
       </tr></thead>
       <tbody>
         ${selected.map((s, i) => {
           const pct = (s.entropy / maxEnt * 100).toFixed(0);
           const bar = '▓'.repeat(Math.round(pct / 10)) + '░'.repeat(10 - Math.round(pct / 10));
+          const infPct = showConceptCol ? (s.conceptInf * 100).toFixed(0) : '0';
+          const reasons = [];
+          if (s.entropy / maxEnt > 0.5) reasons.push('high uncertainty');
+          if (s.conceptInf > 0.4) reasons.push('concept-reliant');
+          else if (s.conceptInf > 0.2) reasons.push('concept-influenced');
+          if (distPenalty[s.ix + s.iy * nx] < 0.15) reasons.push('data-sparse');
+          const reason = reasons.join(' + ') || 'uncertain';
+          const infColor = s.conceptInf > 0.5 ? 'color:#e8a020' : s.conceptInf > 0.25 ? 'color:#d4c020' : 'color:var(--text-dim)';
           return `<tr style="border-top:1px solid var(--border)">
             <td style="padding:2px 4px;color:var(--accent);font-weight:600">BH-${i+1}</td>
             <td style="padding:2px 4px;font-family:var(--font-mono)">${s.wx.toFixed(0)}</td>
             <td style="padding:2px 4px;font-family:var(--font-mono)">${s.wy.toFixed(0)}</td>
             <td style="padding:2px 4px;font-family:var(--font-mono);font-size:9px" title="${pct}% of max entropy">${bar} ${pct}%</td>
+            ${showConceptCol ? `<td style="padding:2px 4px;font-family:var(--font-mono);font-size:9px;${infColor}">${infPct}%</td>` : ''}
+            <td style="padding:2px 4px;font-size:9px;color:var(--text-dim)">${reason}</td>
           </tr>`;
         }).join('')}
       </tbody>
     </table>
-    <p class="hint" style="font-size:9px;margin-top:4px">Ranked by classification entropy weighted by distance from existing BHs. Drilling in these locations will provide maximum information gain.</p>`;
+    <p class="hint" style="font-size:9px;margin-top:4px">Ranked by classification entropy × (1 − BH proximity)${hasConceptInf ? ' × concept-reliance factor' : ''}. ${hasConceptInf ? 'Amber = concept-driven areas where drilling replaces semantic inference with real data.' : 'Build with neural-implicit to see concept-reliance column.'}</p>`;
 
     log(`Investigation planning: ${selected.length} suggested locations. Top location: E${selected[0].wx.toFixed(0)} N${selected[0].wy.toFixed(0)} (${(selected[0].entropy / maxEnt * 100).toFixed(0)}% max entropy)`, 'ok');
   });
