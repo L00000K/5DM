@@ -1686,6 +1686,92 @@ export function voxelIndex(ix, iy, iz, grid) {
   return ix + iy * grid.nx + iz * grid.nx * grid.ny;
 }
 
+// Generate a 2D cross-section through the voxel grid along a specified azimuth.
+// Returns a pixel array (nCols × nRows) with unit/certainty per pixel,
+// plus concept context samples along the section and intersecting BH data.
+export function generateCrossSection(params, grid, geoUnits, conceptStore = null, realBoreholes = null) {
+  if (!grid || !geoUnits.length) return null;
+
+  const {
+    azimuthDeg = 90,   // section bearing (clockwise from north); 90 = W→E, 0 = S→N
+    midX, midY,        // section midpoint world coords
+    length = 200,      // section total length (m)
+    nCols  = 80,       // horizontal pixels across section
+    nRows  = null,     // vertical pixels (auto = nz)
+  } = params;
+
+  const az  = ((azimuthDeg % 360) + 360) % 360;
+  const azR = (az - 90) * Math.PI / 180; // rotate: 0°N → X-axis = East
+  const dx  = Math.cos(azR);  // unit vector along section (world X)
+  const dy  = Math.sin(azR);  // unit vector along section (world Y)
+
+  const { nx, ny, nz, cellSize, cellHeight, origin, unitIds, certainty } = grid;
+  const rows = nRows ?? nz;
+
+  const unitById = Object.fromEntries(geoUnits.map(u => [u.id, u]));
+
+  // Pixel array: nCols × rows, top-down
+  const pixels = new Array(nCols * rows);
+
+  for (let col = 0; col < nCols; col++) {
+    const t   = (col / (nCols - 1) - 0.5) * length;  // metres from midpoint
+    const wx  = midX + t * dx;
+    const wy  = midY + t * dy;
+
+    const ix  = Math.floor((wx - origin[0]) / cellSize);
+    const iy  = Math.floor((wy - origin[1]) / cellSize);
+
+    for (let row = 0; row < rows; row++) {
+      const iz   = rows - 1 - row;  // row 0 = top
+      const pidx = col + row * nCols;
+
+      if (ix < 0 || ix >= nx || iy < 0 || iy >= ny || iz < 0 || iz >= nz) {
+        pixels[pidx] = null;
+        continue;
+      }
+      const flat = ix + iy * nx + iz * nx * ny;
+      pixels[pidx] = {
+        unitId:    unitIds[flat],
+        unit:      unitById[unitIds[flat]] ?? null,
+        certainty: certainty?.[flat] ?? 0.5,
+      };
+    }
+  }
+
+  // Concept context sampled at 7 positions along the section midline
+  const conceptSamples = [];
+  if (conceptStore && !conceptStore.isEmpty) {
+    const midZ = origin[2] + (nz * cellHeight) / 2;
+    for (let i = 0; i < 7; i++) {
+      const t   = (i / 6 - 0.5) * length;
+      const wx  = midX + t * dx;
+      const wy  = midY + t * dy;
+      const ctx = conceptStore.computeAt(wx, wy, midZ);
+      conceptSamples.push({ t: +t.toFixed(1), wx: +wx.toFixed(1), wy: +wy.toFixed(1), vec: ctx?.vec ?? null });
+    }
+  }
+
+  // BH intersections: real boreholes within (cellSize * 2) of the section line
+  const bhIntersections = [];
+  if (realBoreholes?.length) {
+    for (const bh of realBoreholes) {
+      // Project BH to section line, compute perpendicular distance
+      const bxRel = bh.x - midX;
+      const byRel = bh.y - midY;
+      const tProj = bxRel * dx + byRel * dy;  // along-section distance
+      const perpD = Math.abs(-bxRel * dy + byRel * dx); // perpendicular dist
+      if (perpD <= cellSize * 2 && Math.abs(tProj) <= length / 2) {
+        bhIntersections.push({ ...bh, tProj: +tProj.toFixed(1), perpD: +perpD.toFixed(1) });
+      }
+    }
+  }
+
+  const topZ = origin[2] + nz * cellHeight;
+  const botZ = origin[2];
+
+  return { pixels, nCols, nRows: rows, topZ, botZ, length, azimuthDeg, midX, midY, dx, dy, conceptSamples, bhIntersections };
+}
+
 export function voxelWorldPos(ix, iy, iz, grid) {
   return {
     x: grid.origin.x + ix * grid.cellSize   + grid.cellSize   * 0.5,

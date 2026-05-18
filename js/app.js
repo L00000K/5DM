@@ -4,7 +4,7 @@ import { initTextInput } from './text-input.js';
 import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel, oracleRefinement, generateReportNarrative, parseGeologicalFeatures, suggestConceptsFromBoreholes, scoreConceptCoherence } from './claude-client.js';
 import { parseShapesFromClaude, generateShapeBoreholes } from './geo-shapes.js';
 import { exportConfig, importConfig } from './project-config.js';
-import { buildVoxelGrid, buildVoxelGridMonteCarlo, buildIndicatorKriging, detectAndCorrectInversions, buildParamVolumes, detectPinchouts, identifySequenceSurfaces, predictBoreholeLog } from './interpolator.js';
+import { buildVoxelGrid, buildVoxelGridMonteCarlo, buildIndicatorKriging, detectAndCorrectInversions, buildParamVolumes, detectPinchouts, identifySequenceSurfaces, predictBoreholeLog, generateCrossSection } from './interpolator.js';
 import { inferGeoImplicit } from './geo-implicit.js';
 import { initScene } from './scene.js';
 import { initLayerControls } from './layer-controls.js';
@@ -10951,4 +10951,206 @@ window._predictBoreholeLog = function() {
     </div>`;
 
   log(`Predictive BH log: ${runs.length} units at (${result.x}, ${result.y}) · ${range.toFixed(1)}m depth`, 'ok');
+};
+
+// Concept-Annotated Cross-Section Generator
+// Samples the voxel grid along a section plane (any azimuth) and renders:
+//   - Coloured unit pixel grid with certainty shading
+//   - Concept annotation overlays (orientation arrows, channel profile, fault symbols)
+//   - Intersecting real borehole sticks
+window._generateCrossSection = function() {
+  const canvas = document.getElementById('xs-canvas');
+  const el     = document.getElementById('xs-output');
+  const grid   = AppState.voxelGrid;
+  const store  = AppState.conceptStore;
+  if (!canvas || !el) return;
+
+  if (!grid) {
+    el.style.display = 'block';
+    el.innerHTML = '<div style="font-size:10px;color:#e06c75">Build the model first.</div>';
+    return;
+  }
+
+  const azimuth = parseFloat(document.getElementById('xs-azimuth')?.value ?? '90');
+  const length  = parseFloat(document.getElementById('xs-length')?.value  ?? '200');
+  const rawMidX = document.getElementById('xs-midx')?.value?.trim();
+  const rawMidY = document.getElementById('xs-midy')?.value?.trim();
+  const midX = rawMidX ? parseFloat(rawMidX) : (grid.origin[0] + grid.nx * grid.cellSize / 2);
+  const midY = rawMidY ? parseFloat(rawMidY) : (grid.origin[1] + grid.ny * grid.cellSize / 2);
+
+  const NCOLS = 120;
+  const result = generateCrossSection(
+    { azimuthDeg: azimuth, midX, midY, length, nCols: NCOLS },
+    grid, AppState.geoUnits, store, AppState.boreholes ?? []
+  );
+
+  if (!result) {
+    el.style.display = 'block';
+    el.innerHTML = '<div style="font-size:10px;color:#e06c75">Could not generate section — check coordinates.</div>';
+    return;
+  }
+
+  const { pixels, nCols, nRows, topZ, botZ, conceptSamples, bhIntersections } = result;
+  const PIXEL_W = 4;
+  const PIXEL_H = Math.max(3, Math.round(320 / nRows));
+  const canW    = nCols * PIXEL_W;
+  const canH    = nRows * PIXEL_H;
+
+  canvas.width  = canW;
+  canvas.height = canH;
+  canvas.style.width  = Math.min(canW, 360) + 'px';
+  canvas.style.height = (canH * Math.min(canW, 360) / canW) + 'px';
+  canvas.style.display = 'block';
+
+  const ctx2d = canvas.getContext('2d');
+  ctx2d.clearRect(0, 0, canW, canH);
+
+  // Draw unit pixels
+  for (let row = 0; row < nRows; row++) {
+    for (let col = 0; col < nCols; col++) {
+      const px = pixels[col + row * nCols];
+      if (!px?.unit) {
+        ctx2d.fillStyle = 'rgba(20,28,36,0.4)';
+      } else {
+        const alpha = 0.35 + px.certainty * 0.65;
+        ctx2d.fillStyle = px.unit.color
+          ? (px.unit.color + Math.round(alpha * 255).toString(16).padStart(2, '0'))
+          : `rgba(100,100,100,${alpha.toFixed(2)})`;
+      }
+      ctx2d.fillRect(col * PIXEL_W, row * PIXEL_H, PIXEL_W, PIXEL_H);
+    }
+  }
+
+  // Draw unit contact lines (scan columns for vertical changes)
+  ctx2d.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx2d.lineWidth   = 0.8;
+  for (let col = 0; col < nCols; col++) {
+    for (let row = 1; row < nRows; row++) {
+      const above = pixels[col + (row - 1) * nCols];
+      const here  = pixels[col +  row      * nCols];
+      if (above?.unitId !== here?.unitId) {
+        ctx2d.beginPath();
+        ctx2d.moveTo(col * PIXEL_W,              row * PIXEL_H);
+        ctx2d.lineTo((col + 1) * PIXEL_W,        row * PIXEL_H);
+        ctx2d.stroke();
+      }
+    }
+  }
+
+  // Draw intersecting boreholes as white lines with depth ticks
+  if (bhIntersections.length) {
+    for (const bh of bhIntersections) {
+      const colPx = Math.round((bh.tProj / length + 0.5) * nCols);
+      const cx    = colPx * PIXEL_W + PIXEL_W / 2;
+      ctx2d.strokeStyle = 'rgba(255,255,255,0.8)';
+      ctx2d.lineWidth   = 1.5;
+      ctx2d.beginPath();
+      ctx2d.moveTo(cx, 0);
+      ctx2d.lineTo(cx, canH);
+      ctx2d.stroke();
+      ctx2d.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx2d.font = '8px monospace';
+      ctx2d.textAlign = 'center';
+      ctx2d.fillText(bh.id ?? '?', cx, 9);
+    }
+  }
+
+  // ── Concept annotation overlay ──────────────────────────────────────────────
+  // Compute mean concept vector across section samples
+  const meanVec = new Float32Array(32);
+  let sCount = 0;
+  for (const s of conceptSamples) {
+    if (!s.vec) continue;
+    for (let i = 0; i < 32; i++) meanVec[i] += s.vec[i];
+    sCount++;
+  }
+  if (sCount > 0) for (let i = 0; i < 32; i++) meanVec[i] /= sCount;
+
+  const ew_elong  = meanVec[3]  ?? 0;
+  const ns_elong  = meanVec[4]  ?? 0;
+  const channel   = meanVec[5]  ?? 0;
+  const fault     = meanVec[7]  ?? 0;
+  const erosional = meanVec[8]  ?? 0;
+  const stepped   = meanVec[18] ?? 0;
+  const karst     = meanVec[24] ?? 0;
+  const complex   = meanVec[25] ?? 0;
+
+  // Draw section-plane alignment arrow if concept has strong elongation
+  // (elongation axis that is ALONG the section → shows as continuation; perpendicular → shows pinch)
+  const azR          = ((azimuth - 90) * Math.PI) / 180;
+  const sectionDotEW = Math.abs(Math.cos(azR));  // how much section cuts E-W
+  const sectionDotNS = Math.abs(Math.sin(azR));
+
+  // Orientation banner text
+  let annotLines = [];
+  if (Math.abs(ew_elong) > 0.4 || Math.abs(ns_elong) > 0.4) {
+    const align = ew_elong > ns_elong
+      ? (sectionDotEW > 0.7 ? '↔ E-W body cut along trend (long axis)' : '↑ E-W body cut across trend (short axis)')
+      : (sectionDotNS > 0.7 ? '↕ N-S body cut along trend (long axis)' : '↔ N-S body cut across trend (short axis)');
+    annotLines.push(align);
+  }
+  if (channel > 0.5)   annotLines.push('⌣ Channel morphology — concave-up expected');
+  if (stepped > 0.6)   annotLines.push('⇅ Stepped boundary — fault-controlled contacts');
+  if (fault > 0.5)     annotLines.push('⚡ Fault-controlled geometry');
+  if (karst > 0.5)     annotLines.push('⊙ Dissolution/karst features');
+  if (erosional > 0.6) annotLines.push('∿ Erosional basal contact');
+
+  // Draw channel profile arc if channel morphology is strong
+  if (channel > 0.5 && nRows > 4) {
+    const arcDepth  = Math.min(canH * 0.25, channel * 40);
+    const arcWidth  = canW * (0.5 + ew_elong * 0.3);
+    const arcCentreX = canW / 2;
+    // Find approximate base of topmost sand/gravel unit in section
+    let baseRow = Math.round(nRows * 0.5);
+    ctx2d.strokeStyle = `rgba(255,220,80,${(channel * 0.6).toFixed(2)})`;
+    ctx2d.lineWidth = 1.5;
+    ctx2d.setLineDash([3, 3]);
+    ctx2d.beginPath();
+    ctx2d.arc(arcCentreX, baseRow * PIXEL_H - arcDepth * 0.5, arcWidth / 2, 0, Math.PI);
+    ctx2d.stroke();
+    ctx2d.setLineDash([]);
+  }
+
+  // Draw stepped boundary lines if stepped_boundary is strong
+  if (stepped > 0.6) {
+    ctx2d.strokeStyle = `rgba(224,108,117,${(stepped * 0.7).toFixed(2)})`;
+    ctx2d.lineWidth = 1.5;
+    ctx2d.setLineDash([4, 2]);
+    const stepY1 = Math.round(canH * 0.35);
+    const stepY2 = Math.round(canH * 0.55);
+    const stepX  = Math.round(canW * 0.52);
+    ctx2d.beginPath();
+    ctx2d.moveTo(0,     stepY1); ctx2d.lineTo(stepX,  stepY1);
+    ctx2d.moveTo(stepX, stepY1); ctx2d.lineTo(stepX,  stepY2);
+    ctx2d.moveTo(stepX, stepY2); ctx2d.lineTo(canW,   stepY2);
+    ctx2d.stroke();
+    ctx2d.setLineDash([]);
+    // Downthrow tick
+    ctx2d.fillStyle = `rgba(224,108,117,0.9)`;
+    ctx2d.font = '9px sans-serif';
+    ctx2d.fillText('⇓', stepX - 4, stepY1 + 10);
+  }
+
+  // Render annotation text beneath canvas
+  el.style.display = 'block';
+  if (annotLines.length) {
+    el.innerHTML = annotLines.map(a =>
+      `<div style="font-size:9px;color:var(--accent);margin-bottom:2px">${escHtml(a)}</div>`
+    ).join('');
+  } else {
+    el.innerHTML = '<div style="font-size:9px;color:var(--text-dim)">No strong concept geometry detected along section.</div>';
+  }
+
+  // Legend row
+  const seen = new Set();
+  const units = [];
+  for (const px of pixels) { if (px?.unit && !seen.has(px.unit.id)) { seen.add(px.unit.id); units.push(px.unit); } }
+  el.innerHTML += '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">' +
+    units.map(u => `<span style="font-size:9px;display:inline-flex;align-items:center;gap:3px">
+      <span style="width:10px;height:10px;display:inline-block;background:${u.color ?? '#888'};border-radius:2px"></span>${escHtml(u.code)}</span>`
+    ).join('') + '</div>';
+  el.innerHTML += `<div style="font-size:8.5px;color:var(--text-dim);margin-top:3px">
+    Section: Az ${azimuth}° · L=${length}m · ${bhIntersections.length} BH(s) intersect · midpoint (${midX.toFixed(0)}, ${midY.toFixed(0)})</div>`;
+
+  log(`Cross-section: Az${azimuth}° · ${nCols}×${nRows}px · ${bhIntersections.length} BH(s) · ${annotLines.length} concept annotation(s)`, 'ok');
 };
