@@ -6,7 +6,7 @@
 // Training: Adam + cosine-annealed LR, cross-entropy + L2
 // Oracle:   BFS cluster detection → Claude reasons over uncertain regions
 
-import { warpPoint, computeWarpedBounds } from './concept-store.js';
+import { warpPoint, computeWarpedBounds, CONCEPT_AXES } from './concept-store.js';
 
 const L_FOURIER = 6; // Fourier frequency bands → 3 + 3×2×6 = 39 features
 
