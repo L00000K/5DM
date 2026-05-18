@@ -536,6 +536,84 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
 
   if (samples.length === 0) return null;
 
+  // ── Inter-borehole contact surface interpolation ─────────────────────────────
+  // For each unit, find all borehole contacts (top of that unit in each borehole).
+  // For nearby borehole PAIRS that both observe this unit's top, interpolate the
+  // contact elevation between them and place training samples along the interpolated
+  // surface at N intermediate XY positions. This teaches the network the SHAPE
+  // of the contact surface, not just its depth at observation points.
+  //
+  // This is analogous to how Leapfrog fits surfaces to drillhole contacts:
+  // the surface shape between boreholes is constrained by interpolation, not guessed.
+  {
+    const INTERP_STEPS  = 3;  // positions between BH pair
+    const INTERP_WEIGHT = 0.65; // lower than real observations
+    const MAX_PAIR_DIST = Math.hypot(
+      (bounds.maxX - bounds.minX), (bounds.maxY - bounds.minY)
+    ) * 0.6; // only pair BHs within 60% of site diagonal
+
+    // Build per-unit contact list: { bhX, bhY, contactZ, unitCode, aboveCode, belowCode }
+    const unitContacts = {}; // { unitCode → [{x, y, topZ}] }
+    for (const bh of boreholes) {
+      const gl = bh.groundLevel ?? 0;
+      for (const layer of (bh.layers ?? [])) {
+        const ti = unitIdx[layer.unitCode];
+        if (ti === undefined) continue;
+        const topZ = gl - layer.top;
+        if (!unitContacts[layer.unitCode]) unitContacts[layer.unitCode] = [];
+        unitContacts[layer.unitCode].push({ x: bh.x, y: bh.y, topZ, unitCode: layer.unitCode });
+      }
+    }
+
+    for (const [code, contacts] of Object.entries(unitContacts)) {
+      const ti = unitIdx[code];
+      if (ti === undefined || contacts.length < 2) continue;
+
+      for (let a = 0; a < contacts.length - 1; a++) {
+        for (let b = a + 1; b < contacts.length; b++) {
+          const ca = contacts[a], cb = contacts[b];
+          const pairDist = Math.hypot(ca.x - cb.x, ca.y - cb.y);
+          if (pairDist > MAX_PAIR_DIST || pairDist < 0.5) continue;
+
+          // Interpolate N positions along the straight line between BH pair
+          for (let step = 1; step <= INTERP_STEPS; step++) {
+            const t  = step / (INTERP_STEPS + 1); // 0..1 exclusive
+            const ix = ca.x + t * (cb.x - ca.x);
+            const iy = ca.y + t * (cb.y - ca.y);
+            // Linearly interpolated contact elevation at this XY
+            const iz = ca.topZ + t * (cb.topZ - ca.topZ);
+            if (iz < bounds.minZ || iz > bounds.maxZ) continue;
+
+            // topZ is the TOP elevation of the unit; points below it are inside the unit.
+            // Place 2 samples just below the interpolated contact (inside this unit).
+            const interpThick = Math.max(0.2,
+              Math.abs(ca.topZ - cb.topZ) / (INTERP_STEPS + 1) * 0.5 + 0.1);
+            for (const dz of [-interpThick, -interpThick * 2.5]) {
+              const wz = iz + dz; // negative dz = below contact = inside unit
+              if (wz < bounds.minZ || wz > bounds.maxZ) continue;
+              const ctx    = conceptStore ? conceptStore.computeAt(ix, iy, wz, code) : null;
+              const ctxVec = ctx?.vec ?? zeroCtx;
+              const tensor = ctx?.tensor ?? gTensor;
+              const warped = warpPoint(ix, iy, wz, tensor);
+              let warpedZ  = warped.z;
+              const trend  = ctx?.trend;
+              if (trend && (Math.abs(trend.dz_dxN) > 0.005 || Math.abs(trend.dz_dyN) > 0.005)) {
+                const xN = 2 * (warped.x - warpedBounds.minX) / Math.max(1e-6, warpedBounds.maxX - warpedBounds.minX) - 1;
+                const yN = 2 * (warped.y - warpedBounds.minY) / Math.max(1e-6, warpedBounds.maxY - warpedBounds.minY) - 1;
+                warpedZ += trend.dz_dxN * xN + trend.dz_dyN * yN;
+              }
+              const pos = fourierEnc.encode(warped.x, warped.y, warpedZ, warpedBounds);
+              const inp = new Float32Array(nIn);
+              inp.set(pos); inp.set(ctxVec, fourierEnc.outDim);
+              const conceptBoost = ctx ? Math.min(0.3, ctx.totalWeight * 0.2) : 0;
+              samples.push({ inp, target: ti, weight: INTERP_WEIGHT + conceptBoost });
+            }
+          }
+        }
+      }
+    }
+  }
+
   // ── Stratigraphic-order virtual samples ─────────────────────────────────────
   // If the user has defined a stratigraphic column, inject synthetic samples at
   // unit transitions. For each adjacent pair (unit_a above unit_b) in stratOrder,
