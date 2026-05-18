@@ -7036,6 +7036,155 @@ function initConceptPanel() {
   });
 
   _renderConceptList();
+
+  // Wire Live Axis Perturbation panel
+  _initAxisPerturbation();
+}
+
+// ── Live Axis Perturbation ─────────────────────────────────────────────────────
+// Renders 32 concept-axis sliders for a selected concept. On "Re-infer", clones
+// the concept store with the modified embedding, runs inferGeoImplicit with the
+// cached trained model (no retraining), and updates the 3D scene live.
+function _initAxisPerturbation() {
+  const toggle   = document.getElementById('axis-perturb-toggle');
+  const body     = document.getElementById('axis-perturb-body');
+  const selEl    = document.getElementById('axis-perturb-concept');
+  const sliderEl = document.getElementById('axis-perturb-sliders');
+  const statusEl = document.getElementById('axis-perturb-status');
+  if (!toggle || !body) return;
+
+  // Collapse toggle
+  toggle.addEventListener('click', () => {
+    body.hidden = !body.hidden;
+    const arrow = toggle.querySelector('.collapse-arrow');
+    if (arrow) arrow.textContent = body.hidden ? '›' : '⌄';
+    if (!body.hidden) _refreshPerturbList();
+  });
+
+  function _refreshPerturbList() {
+    if (!selEl || !AppState.conceptStore) return;
+    const prev = selEl.value;
+    selEl.innerHTML = '<option value="">— select concept —</option>';
+    for (const c of (AppState.conceptStore.concepts ?? [])) {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = c.description.slice(0, 48);
+      selEl.appendChild(opt);
+    }
+    if (prev && [...selEl.options].some(o => o.value === prev)) {
+      selEl.value = prev;
+    }
+  }
+
+  let _origEmb = null;
+
+  function _loadSliders(conceptId) {
+    if (!sliderEl || !AppState.conceptStore) { sliderEl.innerHTML = ''; return; }
+    const concept = AppState.conceptStore.concepts.find(c => c.id === conceptId);
+    if (!concept) { sliderEl.innerHTML = ''; _origEmb = null; return; }
+    _origEmb = new Float32Array(concept.embedding);
+
+    sliderEl.innerHTML = CONCEPT_AXES.map((name, i) => {
+      const v = +(concept.embedding[i] ?? 0);
+      const col = v > 0.2 ? '#4caf50' : v < -0.2 ? '#f44336' : '#888';
+      return `<div style="display:grid;grid-template-columns:1fr 72px 30px;gap:2px;align-items:center;margin-bottom:2px">
+        <label style="font-size:8.5px;color:${col};white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${name}">${name.replace(/_/g,' ')}</label>
+        <input type="range" id="axsl-${i}" data-idx="${i}" min="-1" max="1" step="0.05" value="${v.toFixed(2)}" style="height:12px;accent-color:${col}">
+        <span id="axv-${i}" style="font-size:8.5px;color:var(--text-dim);text-align:right">${v.toFixed(2)}</span>
+      </div>`;
+    }).join('');
+
+    sliderEl.querySelectorAll('input[type=range]').forEach(sl => {
+      sl.addEventListener('input', () => {
+        const idx = parseInt(sl.dataset.idx);
+        const v = parseFloat(sl.value);
+        const vEl = document.getElementById(`axv-${idx}`);
+        if (vEl) vEl.textContent = v.toFixed(2);
+        sl.style.accentColor = v > 0.2 ? '#4caf50' : v < -0.2 ? '#f44336' : '#888';
+      });
+    });
+  }
+
+  selEl?.addEventListener('change', () => _loadSliders(selEl.value));
+
+  async function _doReInfer(useOriginal = false) {
+    const conceptId = selEl?.value;
+    if (!conceptId) { if (statusEl) statusEl.textContent = 'Select a concept first.'; return; }
+    if (!AppState.trainedModel || !AppState.voxelGrid) {
+      if (statusEl) statusEl.textContent = 'Need neural-implicit model (not IDW/kriging).';
+      return;
+    }
+    const concept = AppState.conceptStore.concepts.find(c => c.id === conceptId);
+    if (!concept) return;
+
+    if (statusEl) { statusEl.textContent = 'Re-inferring…'; statusEl.style.color = 'var(--text-muted)'; }
+    setEnabled('btn-axis-perturb-apply', false);
+    setEnabled('btn-axis-perturb-reset', false);
+
+    try {
+      const modStore = AppState.conceptStore.cloneScaled(1.0);
+      const mc = modStore._concepts.find(c => c.id === conceptId);
+      if (mc) {
+        if (useOriginal && _origEmb) {
+          mc.embedding = new Float32Array(_origEmb);
+        } else {
+          const newEmb = new Float32Array(32);
+          for (let i = 0; i < 32; i++) {
+            const sl = document.getElementById(`axsl-${i}`);
+            newEmb[i] = sl ? parseFloat(sl.value) : concept.embedding[i];
+          }
+          mc.embedding = newEmb;
+        }
+      }
+
+      const grid = AppState.voxelGrid;
+      const gridMeta = {
+        nx: grid.nx, ny: grid.ny, nz: grid.nz,
+        cellSize: grid.cellSize, cellHeight: grid.cellHeight, origin: grid.origin,
+      };
+      const newResult = inferGeoImplicit(AppState.trainedModel, gridMeta, AppState.geoUnits, modStore);
+
+      let changed = 0;
+      const n = grid.unitIds.length;
+      for (let i = 0; i < n; i++) {
+        if (newResult.unitIds[i] !== grid.unitIds[i]) changed++;
+      }
+
+      grid.unitIds.set(newResult.unitIds);
+      grid.certainty.set(newResult.certainty);
+      AppState.scene.buildVoxels(grid, AppState.geoUnits, AppState.classifiedBH);
+
+      const pct = (changed / n * 100).toFixed(1);
+      if (statusEl) {
+        statusEl.textContent = useOriginal
+          ? 'Reset to original embedding.'
+          : `${changed.toLocaleString()} voxels changed (${pct}%)`;
+        statusEl.style.color = changed > 100 ? 'var(--ok)' : 'var(--text-muted)';
+      }
+    } catch (e) {
+      if (statusEl) { statusEl.textContent = `Error: ${e.message}`; statusEl.style.color = 'var(--error)'; }
+      console.error('Axis perturbation error:', e);
+    } finally {
+      setEnabled('btn-axis-perturb-apply', true);
+      setEnabled('btn-axis-perturb-reset', true);
+    }
+  }
+
+  document.getElementById('btn-axis-perturb-apply')?.addEventListener('click', () => _doReInfer(false));
+  document.getElementById('btn-axis-perturb-reset')?.addEventListener('click', async () => {
+    const conceptId = selEl?.value;
+    if (!conceptId || !_origEmb) return;
+    for (let i = 0; i < 32; i++) {
+      const sl = document.getElementById(`axsl-${i}`);
+      const vEl = document.getElementById(`axv-${i}`);
+      if (sl) sl.value = _origEmb[i].toFixed(2);
+      if (vEl) vEl.textContent = _origEmb[i].toFixed(2);
+      if (sl) sl.style.accentColor = _origEmb[i] > 0.2 ? '#4caf50' : _origEmb[i] < -0.2 ? '#f44336' : '#888';
+    }
+    await _doReInfer(true);
+  });
+
+  window.addEventListener('geomodel:model-built', _refreshPerturbList);
 }
 
 function _buildDomain(type) {
