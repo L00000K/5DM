@@ -351,7 +351,10 @@
           <label>Strike/Dip Measurements</label>
           <textarea id="orientation-text" class="constraints-text" rows="4"
             placeholder="One measurement per line:&#10;045 15&#10;azimuth(°) dip(°)&#10;&#10;Or: strike 060, dip 20 NW"></textarea>
-          <button id="btn-orientation-parse" class="btn-secondary btn-sm" style="margin-top:4px;width:100%">Parse &amp; Apply Strike</button>
+          <div style="display:flex;gap:4px;margin-top:4px">
+            <button id="btn-orientation-parse" class="btn-secondary btn-sm" style="flex:1">Parse &amp; Apply Strike</button>
+            <button id="btn-orientation-to-concept" class="btn btn-sm" style="flex:1" title="Encode the mean structural orientation as a concept embedding in the Concepts tab">✦ → Concept</button>
+          </div>
           <p id="orientation-result" class="hint" style="margin-top:3px"></p>
         </div>
 

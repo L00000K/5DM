@@ -4321,6 +4321,89 @@ function initOrientationImport() {
       `${azimuths.length} measurements → mean strike ${meanAz}°N applied.`;
     log(`Structural orientation: ${azimuths.length} measurements, mean strike ${meanAz}°N`, 'ok');
   });
+
+  // ── Orientation → Concept ─────────────────────────────────────────────────────
+  // Convert the parsed mean strike/dip into a 32-dim concept embedding and add it
+  // to the ConceptStore. This bridges structural geology observations (measured dip
+  // and azimuth) with the semantic embedding space that shapes neural field geometry.
+  document.getElementById('btn-orientation-to-concept')?.addEventListener('click', () => {
+    const text = document.getElementById('orientation-text')?.value ?? '';
+    if (!text.trim()) { log('Enter strike/dip measurements first.', 'warn'); return; }
+
+    // Parse measurements: same logic as the parse button but also extract dip
+    const lines   = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const strikes = [], dips = [];
+    for (const line of lines) {
+      const parts = line.replace(/[°,]/g, ' ').split(/\s+/);
+      // Try: "azimuth dip" plain pair
+      if (parts.length >= 2 && isFinite(parts[0]) && isFinite(parts[1])) {
+        strikes.push(parseFloat(parts[0]));
+        dips.push(parseFloat(parts[1]));
+        continue;
+      }
+      // Try: "strike NNN, dip DD [dir]"
+      const sm = line.match(/strike\s+(\d+)/i);
+      const dm = line.match(/dip\s+(\d+)/i);
+      if (sm) strikes.push(parseFloat(sm[1]));
+      if (dm) dips.push(parseFloat(dm[1]));
+    }
+    if (!strikes.length) { log('No valid measurements found.', 'warn'); return; }
+
+    // Circular mean strike azimuth
+    const sinS = strikes.reduce((s, a) => s + Math.sin(a * Math.PI / 180), 0);
+    const cosS = strikes.reduce((s, a) => s + Math.cos(a * Math.PI / 180), 0);
+    let meanStrike = Math.atan2(sinS, cosS) * 180 / Math.PI;
+    if (meanStrike < 0) meanStrike += 360;
+    const meanDip  = dips.length ? dips.reduce((a, b) => a + b, 0) / dips.length : AppState.anisoAzimuth ? 5 : 0;
+
+    // Build 32-dim embedding from strike/dip geometry
+    const emb = new Float32Array(32);
+
+    // Strike direction → elongation axes [3]=EW, [4]=NS
+    // Bodies are elongated ALONG strike (perpendicular to dip direction)
+    const strikeRad = meanStrike * Math.PI / 180;
+    const ewComponent = Math.abs(Math.sin(strikeRad)); // sin of strike = EW component
+    const nsComponent = Math.abs(Math.cos(strikeRad)); // cos of strike = NS component
+    emb[3] = Math.min(0.9, ewComponent * 1.0);          // east_west_elongation
+    emb[4] = Math.min(0.9, nsComponent * 1.0);          // north_south_elongation
+    emb[27] = 0.7;                                        // lateral_anisotropy
+
+    // Dip magnitude
+    const dipNorm = Math.min(1, meanDip / 90);
+    emb[1] = Math.min(0.9, dipNorm * 1.2);             // inclined_bedding
+    emb[2] = dipNorm;                                    // dip_magnitude
+
+    // Deepening direction: dip direction = strike + 90° (right-hand rule)
+    const dipDirRad = (meanStrike + 90) * Math.PI / 180;
+    const dipEast   = Math.sin(dipDirRad);
+    const dipNorth  = Math.cos(dipDirRad);
+    if (dipNorm > 0.05) {
+      if (dipEast  >  0.4) emb[14] = dipEast  * dipNorm;   // deepens_east
+      if (dipEast  < -0.4) emb[15] = -dipEast * dipNorm;   // deepens_west
+      if (dipNorth >  0.4) emb[16] = dipNorth * dipNorm;   // deepens_north
+      if (dipNorth < -0.4) emb[17] = -dipNorth * dipNorm;  // deepens_south
+    }
+
+    // Horizontal beds for very low dip
+    if (meanDip < 5) { emb[0] = 0.7; emb[9] = 0.6; }    // horizontal_layering, lateral_continuity
+
+    // Confidence based on number of measurements
+    const conf = Math.min(0.9, 0.5 + Math.min(strikes.length / 10, 0.35));
+
+    // Compose description
+    const ewStr = ewComponent > nsComponent ? 'E-W elongated' : 'N-S elongated';
+    const dipStr = meanDip > 5 ? `, dipping ${meanDip.toFixed(0)}° toward ${(meanStrike + 90) % 360 < 180 ? 'E' : 'W'}/${(meanStrike + 90) % 360 < 90 || (meanStrike + 90) % 360 > 270 ? 'N' : 'S'}` : ', sub-horizontal';
+    const desc = `Structural fabric: strike ${meanStrike.toFixed(0)}°${dipStr} — ${ewStr}`;
+
+    if (!AppState.conceptStore) AppState.conceptStore = new ConceptStore();
+    AppState.conceptStore.add({ description: desc, embedding: emb, confidence: conf, domain: { type: 'global' } });
+    _renderConceptList();
+    _saveConceptStore();
+    switchTab('concepts');
+    log(`Structural orientation encoded as concept: ${desc.slice(0, 80)}`, 'ok');
+    document.getElementById('orientation-result').textContent =
+      `✓ Encoded as concept: "${desc.slice(0, 60)}…"`;
+  });
 }
 
 // ── Foundation design grid export ────────────────────────────────────────────
