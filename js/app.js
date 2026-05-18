@@ -9096,6 +9096,153 @@ function _warnLowInfluenceConcepts() {
   confEl.innerHTML += newRows;
 }
 
+// ── Concept-driven Engineering Hazard Map ────────────────────────────────────
+// Derives a 2D engineering hazard probability surface directly from concept
+// embeddings — without requiring a 3D model build.
+//
+// Hazard categories derived from concept axes:
+//   Karst/Dissolution:  axis 24 (dissolution_features) + axis 19 (irregular_base)
+//   Fault/Structural:   axis  7 (fault_controlled)     + axis 25 (structural_complexity) + axis 18 (stepped_boundary)
+//   Ground Instability: axis  5 (channel_morphology)   + axis 29 (incision_depth_ratio)
+//   Settlement risk:    –axis 9 (lateral_continuity)  + –axis 0 (horizontal_layering)
+//   Data uncertainty:   –axis 26 (data_confidence)
+//
+// Renders a mini SVG heatmap in the concept panel.
+window._showConceptHazardMap = function() {
+  const el = document.getElementById('concept-hazard-output');
+  if (!el) return;
+  el.style.display = 'block';
+
+  const store = AppState.conceptStore;
+  if (!store || store.isEmpty) {
+    el.innerHTML = '<p class="hint" style="font-size:10px">No concepts encoded — add concepts to generate a hazard map.</p>';
+    return;
+  }
+
+  // Get site bounds from voxelGrid or borehole extents
+  let minX, maxX, minY, maxY;
+  const grid = AppState.voxelGrid;
+  if (grid) {
+    minX = grid.origin.x; maxX = grid.origin.x + grid.nx * grid.cellSize;
+    minY = grid.origin.z; maxY = grid.origin.z + grid.ny * grid.cellSize;
+  } else {
+    const bhs = (AppState.classifiedBH ?? []).filter(b => isFinite(b.x) && isFinite(b.y));
+    if (!bhs.length) {
+      el.innerHTML = '<p class="hint" style="font-size:10px">No boreholes or model — load data first to define site extent.</p>';
+      return;
+    }
+    minX = Math.min(...bhs.map(b => b.x)); maxX = Math.max(...bhs.map(b => b.x));
+    minY = Math.min(...bhs.map(b => b.y)); maxY = Math.max(...bhs.map(b => b.y));
+    const pad = Math.max(10, (maxX - minX) * 0.1, (maxY - minY) * 0.1);
+    minX -= pad; maxX += pad; minY -= pad; maxY += pad;
+  }
+
+  const COLS = 32, ROWS = 24;  // mini raster resolution
+  const dx = (maxX - minX) / COLS, dy = (maxY - minY) / ROWS;
+
+  const HAZARD_TYPES = [
+    { name: 'Karst/Dissolution', axes: [[24, 1.0], [19, 0.7]], color: '#b35c00' },
+    { name: 'Fault/Structure',   axes: [[7,  1.0], [25, 0.6], [18, 0.5]], color: '#e06c75' },
+    { name: 'Ground Instability',axes: [[5,  0.8], [29, 0.7]], color: '#d7a020' },
+    { name: 'Settlement Risk',   axes: [[-9, 0.7], [-0, 0.5]], color: '#a070d0' },
+    { name: 'Data Uncertainty',  axes: [[-26, 1.0]], color: '#507090' },
+  ];
+
+  const SVG_W = 200, SVG_H = Math.round(200 * ROWS / COLS);
+  const cellW = SVG_W / COLS, cellH = SVG_H / ROWS;
+
+  // For each hazard type, compute 2D grid of hazard scores
+  const hazardGrids = HAZARD_TYPES.map(() => new Float32Array(COLS * ROWS));
+
+  for (let row = 0; row < ROWS; row++) {
+    const wy = minY + (row + 0.5) * dy;
+    for (let col = 0; col < COLS; col++) {
+      const wx = minX + (col + 0.5) * dx;
+      const ctx = store.computeAt(wx, wy, 0);
+      if (!ctx || ctx.totalWeight < 0.05) continue;
+      const v = ctx.vec;
+
+      for (let h = 0; h < HAZARD_TYPES.length; h++) {
+        let score = 0;
+        for (const [axIdx, weight] of HAZARD_TYPES[h].axes) {
+          const neg = axIdx < 0;
+          const i   = Math.abs(axIdx);
+          const val = v[i] ?? 0;
+          score += (neg ? -val : val) * weight;
+        }
+        hazardGrids[h][col + row * COLS] = Math.max(0, Math.min(1, score));
+      }
+    }
+  }
+
+  // Build composite (max hazard per cell) and per-type SVG layers
+  const compositeMax = new Float32Array(COLS * ROWS);
+  const dominantType = new Uint8Array(COLS * ROWS);
+  for (let i = 0; i < COLS * ROWS; i++) {
+    let mx = 0, mIdx = 0;
+    for (let h = 0; h < HAZARD_TYPES.length; h++) {
+      if (hazardGrids[h][i] > mx) { mx = hazardGrids[h][i]; mIdx = h; }
+    }
+    compositeMax[i] = mx;
+    dominantType[i] = mIdx;
+  }
+
+  // Helper to convert hex color with opacity
+  const hexToRgba = (hex, alpha) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha.toFixed(2)})`;
+  };
+
+  const cells = [];
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const i = col + row * COLS;
+      const score = compositeMax[i];
+      if (score < 0.1) continue;
+      const hType = HAZARD_TYPES[dominantType[i]];
+      const alpha = Math.min(0.9, score * 0.85 + 0.1);
+      const wx    = minX + (col + 0.5) * dx;
+      const wy    = minY + (row + 0.5) * dy;
+      cells.push(`<rect x="${(col * cellW).toFixed(1)}" y="${(row * cellH).toFixed(1)}" width="${cellW.toFixed(1)}" height="${cellH.toFixed(1)}" fill="${hexToRgba(hType.color, alpha)}" title="${hType.name} at E${wx.toFixed(0)} N${wy.toFixed(0)}: ${(score * 100).toFixed(0)}%"/>`);
+    }
+  }
+
+  // BH dots
+  const bhDots = (AppState.classifiedBH ?? []).filter(b => !b.synthetic && isFinite(b.x) && isFinite(b.y)).map(bh => {
+    const cx = ((bh.x - minX) / (maxX - minX) * SVG_W).toFixed(1);
+    const cy = ((bh.y - minY) / (maxY - minY) * SVG_H).toFixed(1);
+    return `<circle cx="${cx}" cy="${cy}" r="2.5" fill="white" stroke="#222" stroke-width="0.8" opacity="0.9" title="${bh.id}"/>`;
+  });
+
+  // Legend
+  const legendRows = HAZARD_TYPES.map((h, i) => `
+    <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+      <div style="width:10px;height:10px;border-radius:2px;background:${h.color};flex-shrink:0;opacity:0.85"></div>
+      <span style="font-size:9px;color:var(--text-mid)">${h.name}</span>
+    </div>`).join('');
+
+  // Find high-hazard zones summary
+  const highHazardCells = Array.from(compositeMax).filter(v => v > 0.5).length;
+  const totalCells = COLS * ROWS;
+  const pctHigh = (highHazardCells / totalCells * 100).toFixed(0);
+
+  el.innerHTML = `
+    <div style="font-size:9.5px;font-weight:600;color:var(--text-mid);margin-bottom:4px">
+      Concept-predicted hazard zones <span style="font-weight:400">(no model build required)</span>
+    </div>
+    <svg width="${SVG_W}" height="${SVG_H}" style="display:block;border-radius:4px;background:var(--bg-deep);border:1px solid var(--border);margin-bottom:4px">
+      ${cells.join('')}
+      ${bhDots.join('')}
+    </svg>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:4px">${legendRows}</div>
+    <div style="font-size:9px;color:var(--text-dim)">
+      ${pctHigh}% of site has moderate–high hazard scores from active concepts.
+      BH locations shown as white circles.
+    </div>`;
+};
+
 // ── Concept ensemble uncertainty analysis ────────────────────────────────────
 // Runs 3 inference passes with concept scales [0, 1, 1.5] using the cached
 // trained neural model. Colors voxels by prediction stability across scales.
