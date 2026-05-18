@@ -6288,6 +6288,8 @@ function initConceptPanel() {
   document.addEventListener('geomodel:model-built', () => {
     setEnabled('btn-show-concept-influence', !!(AppState.voxelGrid?.conceptInfluence));
     setEnabled('btn-show-dominant-concept', !!(AppState.voxelGrid?.conceptInfluence));
+    // Auto-run sensitivity and warn about low-influence concepts
+    _warnLowInfluenceConcepts();
   });
 
   // Render concept library chips and scenario list
@@ -6437,9 +6439,42 @@ function initConceptPanel() {
 
     encodeBtn.disabled   = true;
     encodeBtn.textContent = '⟳ Encoding…';
+    const warnEl = document.getElementById('concept-encode-warnings');
+    if (warnEl) { warnEl.style.display = 'none'; warnEl.innerHTML = ''; }
     try {
       const emb  = await encodeGeologicalConcept(text, AppState.apiKey, AppState.demoMode);
       const conf = parseFloat(confidence?.value ?? 0.7);
+
+      // ── Pre-add checks ───────────────────────────────────────────────────────
+      const encodeWarnings = [];
+
+      // 1. Intra-concept axis contradictions on the new embedding
+      const intraIssues = ConceptStore.detectIntraConflicts(emb);
+      for (const msg of intraIssues) encodeWarnings.push({ sev: 'warning', text: msg });
+
+      // 2. Similarity to existing concepts
+      const similar = AppState.conceptStore.findSimilar(emb, 0.80);
+      for (const { concept: sc, similarity: sim } of similar) {
+        encodeWarnings.push({
+          sev: sim >= 0.93 ? 'error' : 'warning',
+          text: `Very similar to existing concept "${sc.description.slice(0, 40)}" (cosine ${(sim * 100).toFixed(0)}%) — consider increasing that concept's confidence instead of adding a duplicate`,
+        });
+      }
+
+      if (warnEl && encodeWarnings.length) {
+        warnEl.style.display = 'block';
+        warnEl.innerHTML = encodeWarnings.map(w => {
+          const col = w.sev === 'error' ? 'var(--red)' : '#e0a020';
+          const icon = w.sev === 'error' ? '⚠' : '△';
+          return `<div style="border-left:2px solid ${col};padding:3px 6px;margin-bottom:3px;font-size:9.5px;color:var(--text-mid)">
+            <span style="color:${col};margin-right:4px">${icon}</span>${escHtml(w.text)}
+          </div>`;
+        }).join('');
+        if (encodeWarnings.some(w => w.sev === 'error')) {
+          log(`Concept has issues: ${encodeWarnings.map(w => w.text).join('; ')}`, 'warn');
+        }
+      }
+
       // Use drawn bbox if user completed a plan-view draw, else fallback to selector
       const domainType = domainSel?.value ?? 'global';
       const domain = domainType === 'draw'
@@ -7321,6 +7356,66 @@ window._showConceptSensitivity = function() {
   }).join('');
   el.style.display = 'block';
 };
+
+// ── Low-influence concept warning ─────────────────────────────────────────────
+// After model build: auto-run sensitivity, warn about concepts with <5% influence.
+// The warning appears in the concept-conflicts panel (reuses same styling).
+function _warnLowInfluenceConcepts() {
+  const store = AppState.conceptStore;
+  if (!store || store.isEmpty) return;
+
+  // Only available when conceptInfluence grid exists (neural-implicit with concepts)
+  const hasSensitivity = !!(AppState.voxelGrid?.conceptInfluence);
+  const confEl = document.getElementById('concept-conflicts');
+  if (!confEl) return;
+
+  // Run sensitivity if grid is available; otherwise check cosine similarity between concepts
+  const sensitivityWarnings = [];
+
+  if (hasSensitivity) {
+    const results = computeConceptSensitivity();
+    for (const r of results) {
+      if (r.pctOfTotal < 3 && r.meanRelevance < 0.05) {
+        sensitivityWarnings.push({
+          severity: 'warning',
+          description: `"${r.description.slice(0, 45)}" influenced only ${r.pctOfTotal.toFixed(1)}% of voxels — check domain, confidence, or opposing concepts`,
+        });
+      }
+    }
+  }
+
+  // Pairwise cosine similarity warnings between stored concepts (always available)
+  const concepts = store.concepts;
+  const simWarnings = [];
+  for (let i = 0; i < concepts.length; i++) {
+    for (let j = i + 1; j < concepts.length; j++) {
+      const sim = ConceptStore.cosineSimilarity(concepts[i].embedding, concepts[j].embedding);
+      if (sim >= 0.90) {
+        simWarnings.push({
+          severity: 'warning',
+          description: `"${concepts[i].description.slice(0, 28)}" and "${concepts[j].description.slice(0, 28)}" are ${(sim * 100).toFixed(0)}% similar — consider merging or using different domains`,
+        });
+      }
+    }
+  }
+
+  // Always run base conflict detection first (populates the panel)
+  _renderConceptConflicts();
+
+  // Then append sensitivity + similarity warnings
+  const allWarnings = [...sensitivityWarnings, ...simWarnings];
+  if (!allWarnings.length) return;
+
+  const newRows = allWarnings.map(w => {
+    const col  = w.severity === 'error' ? 'var(--red)' : '#e0a020';
+    const icon = w.severity === 'error' ? '⚠' : '△';
+    return `<div class="conflict-row" style="border-left:2px solid ${col};padding:3px 6px;margin-bottom:4px;font-size:9.5px;color:var(--text-mid)">
+      <span style="color:${col};margin-right:4px">${icon}</span>${escHtml(w.description)}
+    </div>`;
+  }).join('');
+  confEl.style.display = 'block';
+  confEl.innerHTML += newRows;
+}
 
 // Internal alias for traceability (same as exported getVoxelAttribution)
 function _computeAttribution(worldX, worldY, worldZ) {

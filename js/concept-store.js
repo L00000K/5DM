@@ -276,6 +276,65 @@ export class ConceptStore {
     return this._embeddingToTensor(avg);
   }
 
+  // ── Similarity & conflict utilities ─────────────────────────────────────────
+
+  /**
+   * Cosine similarity between two Float32Array embeddings.
+   * Returns value in [−1, +1]; 1 = identical direction, 0 = orthogonal, −1 = opposite.
+   */
+  static cosineSimilarity(a, b) {
+    let dot = 0, magA = 0, magB = 0;
+    const n = Math.min(a.length, b.length);
+    for (let i = 0; i < n; i++) {
+      dot  += a[i] * b[i];
+      magA += a[i] * a[i];
+      magB += b[i] * b[i];
+    }
+    const denom = Math.sqrt(magA) * Math.sqrt(magB);
+    return denom > 1e-9 ? dot / denom : 0;
+  }
+
+  /**
+   * Find existing concepts whose embedding is similar to the given one.
+   * @param {Float32Array} embedding
+   * @param {number} threshold  cosine similarity cutoff (default 0.80)
+   * @returns {Array<{concept, similarity}>} sorted descending
+   */
+  findSimilar(embedding, threshold = 0.80) {
+    return this._concepts
+      .map(c => ({ concept: c, similarity: ConceptStore.cosineSimilarity(embedding, c.embedding) }))
+      .filter(r => r.similarity >= threshold)
+      .sort((a, b) => b.similarity - a.similarity);
+  }
+
+  /**
+   * Check a single embedding for internal axis contradictions, BEFORE adding it
+   * to the store. Returns an array of warning strings (empty = no issues).
+   *
+   * Mirrors the INTRA_PAIRS logic in detectConceptConflicts() but works on a
+   * raw embedding rather than stored concepts, so the UI can warn at encode time.
+   */
+  static detectIntraConflicts(embedding) {
+    const INTRA_PAIRS = [
+      { a: 0,  b: 5,  msg: 'horizontal_layering (0) and channel_morphology (5) are geometrically incompatible — one should be negative' },
+      { a: 6,  b: 0,  msg: 'dome_anticline (6) and horizontal_layering (0) conflict — domed bodies are not flat-bedded' },
+      { a: 7,  b: 5,  msg: 'fault_controlled (7) and channel_morphology (5) operate at different scales and styles' },
+      { a: 14, b: 15, msg: 'deepens_east (14) and deepens_west (15) are mutually exclusive dip directions' },
+      { a: 16, b: 17, msg: 'deepens_north (16) and deepens_south (17) are mutually exclusive dip directions' },
+      { a: 10, b: 11, msg: 'lateral_thinning_east (10) and lateral_thinning_west (11) are mutually exclusive' },
+      { a: 12, b: 13, msg: 'lateral_thinning_north (12) and lateral_thinning_south (13) are mutually exclusive' },
+      { a: 21, b: 22, msg: 'coarsening_upward (21) and fining_upward (22) cannot both be true simultaneously' },
+    ];
+    const warnings = [];
+    for (const { a, b, msg } of INTRA_PAIRS) {
+      if ((embedding[a] ?? 0) > 0.45 && (embedding[b] ?? 0) > 0.45) warnings.push(msg);
+    }
+    if ((embedding[3] ?? 0) > 0.5 && (embedding[4] ?? 0) > 0.5) {
+      warnings.push('E-W elongation (3) and N-S elongation (4) are both high — body will be isotropic; choose the dominant direction');
+    }
+    return warnings;
+  }
+
   // ── Serialisation ───────────────────────────────────────────────────────────
 
   serialize() {
