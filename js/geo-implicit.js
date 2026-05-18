@@ -614,6 +614,68 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
     }
   }
 
+  // ── Concept-driven lateral propagation ───────────────────────────────────────
+  // Geological rule embedding: the concept embedding at each BH observation controls
+  // HOW FAR that observation propagates spatially. High lateral_continuity → strong
+  // lateral spread; high fault_controlled or structural_complexity → no propagation.
+  // The anisotropy tensor shapes which directions carry more weight, so an E-W
+  // palaeochannel concept makes BH observations propagate E-W but not N-S.
+  //
+  // This is not post-processing — it injects synthetic training samples that teach
+  // the network "unit X continues in THIS direction because of THESE concepts."
+  if (conceptStore && !conceptStore.isEmpty) {
+    const PROP_WEIGHT  = 0.30;   // lower than real BH observations
+    const BASE_SPREAD  = Math.max(1, (bounds.maxX - bounds.minX) * 0.05); // 5% of site width
+    // Concept axis indices (mirror CONCEPT_AXES in this file)
+    const AX_LATERAL_CONT  = 9;
+    const AX_FAULT_CTRL    = 7;
+    const AX_EW_ELONG      = 3;
+    const AX_NS_ELONG      = 4;
+    const AX_STRUCT_CMPLX  = 25;
+
+    for (const bh of boreholes) {
+      for (const layer of (bh.layers ?? [])) {
+        const ti = unitIdx[layer.unitCode];
+        if (ti === undefined) continue;
+        const zMid  = bh.groundLevel - (layer.top + layer.base) / 2;
+        const ctx   = conceptStore.computeAt(bh.x, bh.y, zMid, layer.unitCode);
+        if (!ctx || ctx.totalWeight < 0.05) continue;
+        const emb = ctx.vec;
+
+        // Suppress propagation if fault-controlled or highly complex geology
+        if (emb[AX_FAULT_CTRL] > 0.55 || emb[AX_STRUCT_CMPLX] > 0.65) continue;
+
+        // Lateral continuity controls base scale; below -0.3 → skip
+        const latCont = emb[AX_LATERAL_CONT];
+        if (latCont < -0.3) continue;
+        const contScale = Math.max(0.1, latCont + 0.5); // 0.2 at latCont=−0.3, 1.3 at +0.8
+
+        // Directional spread: concept elongation axes scale each direction
+        const spreadEW = BASE_SPREAD * Math.exp(emb[AX_EW_ELONG] * 0.8) * contScale;
+        const spreadNS = BASE_SPREAD * Math.exp(emb[AX_NS_ELONG] * 0.8) * contScale;
+        if (spreadEW < 0.5 && spreadNS < 0.5) continue;
+
+        const offsets = [
+          [spreadEW, 0], [-spreadEW, 0],
+          [0, spreadNS], [0, -spreadNS],
+          [spreadEW * 0.6, spreadNS * 0.6],
+        ];
+        for (const [dx, dy] of offsets) {
+          const px = bh.x + dx, py = bh.y + dy;
+          if (px < bounds.minX || px > bounds.maxX || py < bounds.minY || py > bounds.maxY) continue;
+          const pCtx    = conceptStore.computeAt(px, py, zMid, layer.unitCode);
+          const pCtxVec = pCtx?.vec ?? zeroCtx;
+          const pTensor = pCtx?.tensor ?? gTensor;
+          const warped  = warpPoint(px, py, zMid, pTensor);
+          const pos     = fourierEnc.encode(warped.x, warped.y, warped.z, warpedBounds);
+          const inp     = new Float32Array(nIn);
+          inp.set(pos); inp.set(pCtxVec, fourierEnc.outDim);
+          samples.push({ inp, target: ti, weight: PROP_WEIGHT * contScale });
+        }
+      }
+    }
+  }
+
   // ── Stratigraphic-order virtual samples ─────────────────────────────────────
   // If the user has defined a stratigraphic column, inject synthetic samples at
   // unit transitions. For each adjacent pair (unit_a above unit_b) in stratOrder,

@@ -1,7 +1,7 @@
 import { initApiKeyModal } from './api-key.js';
 import { initUploader } from './data-parser.js';
 import { initTextInput } from './text-input.js';
-import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel, oracleRefinement, generateReportNarrative, parseGeologicalFeatures, suggestConceptsFromBoreholes } from './claude-client.js';
+import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel, oracleRefinement, generateReportNarrative, parseGeologicalFeatures, suggestConceptsFromBoreholes, scoreConceptCoherence } from './claude-client.js';
 import { parseShapesFromClaude, generateShapeBoreholes } from './geo-shapes.js';
 import { exportConfig, importConfig } from './project-config.js';
 import { buildVoxelGrid, buildVoxelGridMonteCarlo, buildIndicatorKriging, detectAndCorrectInversions, buildParamVolumes, detectPinchouts } from './interpolator.js';
@@ -1057,9 +1057,9 @@ function initBuildModel() {
       updateStratColumn();
 
       // Auto-apply pre-set constraints
-      const constraintText = document.getElementById('constraints-text').value.trim();
-      if (constraintText && AppState.geoUnits.length) {
-        AppState.parsedConstraints = parseConstraints(constraintText, AppState.geoUnits);
+      const postBuildConstraintText = document.getElementById('constraints-text')?.value?.trim() ?? '';
+      if (postBuildConstraintText && AppState.geoUnits.length) {
+        AppState.parsedConstraints = parseConstraints(postBuildConstraintText, AppState.geoUnits);
         const actionable = AppState.parsedConstraints.filter(r => r.type !== 'note');
         if (actionable.length) {
           const count = applyConstraints(AppState.voxelGrid, AppState.parsedConstraints, AppState.geoUnits);
@@ -7408,6 +7408,69 @@ window._compareConceptScenarios = function() {
     Shared: ${shared.length}
   </div>`;
 
+  // Inference accuracy comparison (only when trainedModel is available)
+  if (AppState.trainedModel && AppState.voxelGrid) {
+    html += `<div style="font-size:9px;color:var(--text-dim);margin-top:8px;margin-bottom:3px">Running inference accuracy comparison…</div>`;
+    out.style.display = 'block';
+    out.innerHTML = html;
+
+    const grid = AppState.voxelGrid;
+    const gridMeta = {
+      nx: grid.nx, ny: grid.ny, nz: grid.nz,
+      cellSize: grid.cellSize, cellHeight: grid.cellHeight,
+      origin: grid.origin,
+    };
+
+    const results = [];
+    for (const { name, store } of stores) {
+      try {
+        const r = inferGeoImplicit(AppState.trainedModel, gridMeta, AppState.geoUnits, store);
+        const acc = _bhAccuracy(r.unitIds);
+        // Count voxels per dominant unit to measure distribution
+        const unitCount = new Map();
+        for (const id of r.unitIds) {
+          unitCount.set(id, (unitCount.get(id) ?? 0) + 1);
+        }
+        results.push({ name, acc, unitIds: r.unitIds, unitCount });
+      } catch (e) {
+        results.push({ name, acc: null, error: e.message });
+      }
+    }
+
+    // Voxel divergence between scenario 0 and 1
+    let divergedVoxels = 0;
+    if (results[0]?.unitIds && results[1]?.unitIds) {
+      const len = Math.min(results[0].unitIds.length, results[1].unitIds.length);
+      for (let i = 0; i < len; i++) {
+        if (results[0].unitIds[i] !== results[1].unitIds[i]) divergedVoxels++;
+      }
+    }
+    const totalV = grid.nx * grid.ny * grid.nz;
+    const divergePct = totalV > 0 ? (divergedVoxels / totalV * 100).toFixed(1) : '—';
+
+    html += `<div style="font-size:9px;color:var(--text-dim);margin-top:6px;margin-bottom:3px">Inference accuracy vs boreholes:</div>`;
+    const best = results.reduce((b, r) => (r.acc != null && (b == null || r.acc > b.acc)) ? r : b, null);
+    for (const r of results) {
+      const isBest = r === best;
+      const accStr = r.acc != null ? `${(r.acc * 100).toFixed(1)}%` : `error: ${r.error}`;
+      html += `<div style="display:flex;gap:6px;align-items:center;margin-bottom:3px;font-size:9px">
+        <span style="flex:1;font-weight:${isBest ? 600 : 400};color:${isBest ? '#7fcfb0' : 'var(--text-primary)'}">${escHtml(r.name)}</span>
+        <span style="font-family:var(--font-mono);color:${r.acc != null ? '#f5a623' : '#e05'}">BH acc: ${accStr}</span>
+        ${isBest && results.length > 1 ? '<span style="color:#7fcfb0;font-size:8px">best</span>' : ''}
+      </div>`;
+    }
+    if (results[0]?.unitIds && results[1]?.unitIds) {
+      html += `<div style="font-size:9px;color:var(--text-dim);margin-top:4px">Voxel divergence: <span style="color:var(--text-primary);font-family:var(--font-mono)">${divergePct}%</span> of model differs between scenarios</div>`;
+    }
+    if (best) {
+      html += `<div style="font-size:9px;color:#7fcfb0;margin-top:6px;padding:4px 6px;background:rgba(127,207,176,0.08);border-radius:3px">
+        Recommendation: <b>${escHtml(best.name)}</b> best fits borehole observations (${best.acc != null ? (best.acc*100).toFixed(1) : '?'}% accuracy).
+      </div>`;
+    }
+  } else if (!AppState.trainedModel) {
+    html += `<div style="font-size:9px;color:var(--text-dim);margin-top:6px;font-style:italic">Build neural model first to enable inference accuracy comparison.</div>`;
+  }
+
   out.style.display = 'block';
   out.innerHTML = html;
   log(`Compared scenarios: "${stores[0].name}" vs "${stores[1].name}"`, 'info');
@@ -8070,6 +8133,7 @@ export function _renderConceptList() {
         <div style="display:flex;gap:2px">
           <button class="concept-radar-btn" title="Show radar chart" onclick="_toggleConceptRadar('${c.id}', this)">◎</button>
           <button class="concept-hl-btn" title="Highlight this concept's influence in 3D" onclick="_highlightConcept3D('${c.id}', this)" style="font-size:10px;padding:1px 4px;background:none;border:1px solid var(--border);border-radius:3px;color:var(--text-dim);cursor:pointer">🔦</button>
+          <button class="concept-hl-btn" title="Score this concept's coherence with BH data" onclick="_checkConceptCoherence('${c.id}')" style="font-size:10px;padding:1px 4px;background:none;border:1px solid var(--border);border-radius:3px;color:var(--text-dim);cursor:pointer" title="Check how well this concept is supported by borehole data">≈</button>
           <button class="concept-remove" title="Remove concept" onclick="_removeConcept('${c.id}')">×</button>
         </div>
       </div>
@@ -8093,6 +8157,7 @@ export function _renderConceptList() {
       </div>
       <div class="concept-axes">${bars}</div>
       <canvas class="concept-radar-canvas" id="radar-${c.id}" width="200" height="200" style="display:none;margin:4px auto 0;border-radius:4px;background:#f3f5f8"></canvas>
+      <div id="coherence-${c.id}" class="concept-coherence" style="display:none"></div>
     </div>`;
   }).join('');
   _updateConceptInfluenceBar();
@@ -8116,6 +8181,43 @@ export function _renderConceptList() {
     _drawConceptManifold();
   }
 }
+
+window._checkConceptCoherence = function(id) {
+  const concept = AppState.conceptStore?.concepts.find(c => c.id === id);
+  const el = document.getElementById(`coherence-${id}`);
+  if (!concept || !el) return;
+
+  const bhs = AppState.classifiedBH?.filter(b => !b.synthetic && b.layers?.length >= 1) ?? [];
+  if (!bhs.length) {
+    el.style.display = 'block';
+    el.innerHTML = '<div style="font-size:9px;color:var(--text-dim);font-style:italic">No borehole data to check against.</div>';
+    return;
+  }
+
+  const result = scoreConceptCoherence(concept, bhs, AppState.geoUnits);
+  if (!result) {
+    el.style.display = 'block';
+    el.innerHTML = '<div style="font-size:9px;color:var(--text-dim)">Coherence check unavailable.</div>';
+    return;
+  }
+
+  const gradeCol = result.grade === 'strong' ? '#7fcfb0' : result.grade === 'moderate' ? '#f5a623' : '#e06c75';
+  const scoreBar = `<div style="display:inline-block;width:${(result.score*60).toFixed(0)}px;height:5px;background:${gradeCol};border-radius:2px;vertical-align:middle;margin:0 4px"></div>`;
+
+  let html = `<div style="font-size:9px;margin-top:4px;padding:4px 6px;background:rgba(255,255,255,0.04);border-radius:3px;border-left:2px solid ${gradeCol}">
+    <div style="font-weight:600;color:${gradeCol};margin-bottom:3px">BH coherence: ${result.grade} ${scoreBar} ${(result.score*100).toFixed(0)}%</div>`;
+
+  for (const d of result.details) {
+    html += `<div style="color:var(--text-mid);margin-bottom:2px">• ${escHtml(d)}</div>`;
+  }
+  for (const s of result.suggestions) {
+    html += `<div style="color:#f5a623;margin-bottom:2px;font-style:italic">⚠ ${escHtml(s)}</div>`;
+  }
+  html += '</div>';
+
+  el.style.display = 'block';
+  el.innerHTML = html;
+};
 
 function _renderConceptConflicts() {
   const el = document.getElementById('concept-conflicts');
@@ -9540,6 +9642,34 @@ function initProbVolPanel() {
 // Ablation study: removes each concept one at a time, re-infers without it,
 // and measures (1) % of voxels changed vs. baseline and (2) accuracy change at
 // borehole observations. Identifies which concepts genuinely improve the model.
+// Module-level BH accuracy helper — shared by scenario comparison and contribution report.
+// Returns fraction of BH layer observations predicted correctly by unitIds.
+function _bhAccuracyVsGrid(unitIds, grid) {
+  if (!unitIds?.length || !grid) return null;
+  const realBHs = (AppState.classifiedBH ?? []).filter(b => !b.synthetic && b.layers?.length >= 1);
+  if (!realBHs.length) return null;
+  let correct = 0, count = 0;
+  const unitById = {};
+  (AppState.geoUnits ?? []).forEach(u => { unitById[u.id] = u; });
+  for (const bh of realBHs) {
+    if (!isFinite(bh.x) || !isFinite(bh.y)) continue;
+    const ix = Math.max(0, Math.min(grid.nx - 1, Math.round((bh.x - grid.origin.x) / grid.cellSize - 0.5)));
+    const iy = Math.max(0, Math.min(grid.ny - 1, Math.round((bh.y - grid.origin.z) / grid.cellSize - 0.5)));
+    for (const layer of bh.layers) {
+      if (!layer.unitCode) continue;
+      const elev = (bh.groundLevel ?? 0) - ((layer.top ?? 0) + (layer.base ?? 0)) / 2;
+      const iz = Math.max(0, Math.min(grid.nz - 1, Math.round((elev - grid.origin.y) / grid.cellHeight - 0.5)));
+      const flat = ix + iy * grid.nx + iz * grid.nx * grid.ny;
+      if (flat >= 0 && flat < unitIds.length) {
+        const pred = unitById[unitIds[flat]];
+        count++;
+        if (pred?.code === layer.unitCode) correct++;
+      }
+    }
+  }
+  return count > 0 ? correct / count : null;
+}
+
 window._runConceptContributionReport = async function() {
   const el    = document.getElementById('concept-contrib-output');
   const grid  = AppState.voxelGrid;
@@ -9568,31 +9698,10 @@ window._runConceptContributionReport = async function() {
   const total = grid.unitIds.length;
   const realBHs = AppState.classifiedBH.filter(b => !b.synthetic && b.layers?.length >= 1);
 
-  // Helper: count how many BH layer observations the given unitIds array predicts correctly
   function _bhAccuracy(unitIds) {
-    if (!unitIds?.length) return null;
-    let correct = 0, count = 0;
-    const unitById = {};
-    AppState.geoUnits.forEach(u => { unitById[u.id] = u; });
-    for (const bh of realBHs) {
-      if (!isFinite(bh.x) || !isFinite(bh.y)) continue;
-      const ix = Math.max(0, Math.min(grid.nx - 1, Math.round((bh.x - grid.origin.x) / grid.cellSize - 0.5)));
-      const iy = Math.max(0, Math.min(grid.ny - 1, Math.round((bh.y - grid.origin.z) / grid.cellSize - 0.5)));
-      for (const layer of bh.layers) {
-        if (!layer.unitCode) continue;
-        const elev = (bh.groundLevel ?? 0) - ((layer.top ?? 0) + (layer.base ?? 0)) / 2;
-        const iz   = Math.max(0, Math.min(grid.nz - 1, Math.round((elev - grid.origin.y) / grid.cellHeight - 0.5)));
-        const flat = ix + iy * grid.nx + iz * grid.nx * grid.ny;
-        if (flat >= 0 && flat < unitIds.length) {
-          const pred = unitById[unitIds[flat]];
-          count++;
-          if (pred?.code === layer.unitCode) correct++;
-        }
-      }
-    }
-    return count > 0 ? correct / count : null;
+    return _bhAccuracyVsGrid(unitIds, grid);
   }
-
+  // Suppress unused-variable lint — realBHs still used by _bhAccuracyVsGrid via AppState
   // Baseline: full concept store
   const baselineResult = inferGeoImplicit(AppState.trainedModel, gridMeta, AppState.geoUnits, store);
   const baselineAcc    = _bhAccuracy(baselineResult.unitIds);

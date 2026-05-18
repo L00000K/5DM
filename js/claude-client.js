@@ -1924,3 +1924,152 @@ Return ONLY a JSON array (no markdown, no prose):
     return _heuristicUnitSimilarity(geoUnits);
   }
 }
+
+// ── Concept–BH Coherence Scoring ─────────────────────────────────────────────
+// Scores how well each active concept's embedding is supported by the borehole
+// evidence. Purely heuristic — no API call needed. Returns per-concept
+// { score: 0–1, details: string, suggestions: string[] }.
+//
+// Axes checked:
+//   east_west_elongation (3)     → BH units should vary more N-S than E-W
+//   north_south_elongation (4)   → BH units should vary more E-W than N-S
+//   channel_morphology (5)       → mid-site BHs show deeper unit top than edge BHs
+//   horizontal_layering (0)      → unit elevations are consistent across BHs
+//   incision_depth_ratio (29)    → unit base shows concave profile
+//   fault_controlled (7)         → unit occurrence shows abrupt lateral change
+//   lateral_continuity (9)       → same unit appears in ≥ 60% of BHs
+export function scoreConceptCoherence(concept, classifiedBH, geoUnits) {
+  const emb  = concept.embedding;
+  const bhOk = classifiedBH?.filter(b => !b.synthetic && b.layers?.length >= 1 && isFinite(b.x) && isFinite(b.y));
+  if (!bhOk?.length || !emb) return null;
+
+  // Build per-unit occurrence stats across BHs
+  const unitTopZ  = {}; // unitCode → [topZ, ...]
+  const unitBHPos = {}; // unitCode → [{x, y, topZ}]
+  for (const bh of bhOk) {
+    const gl = bh.groundLevel ?? 0;
+    for (const layer of bh.layers) {
+      if (!layer.unitCode) continue;
+      const topZ = gl - (layer.top ?? 0);
+      if (!unitTopZ[layer.unitCode])  unitTopZ[layer.unitCode]  = [];
+      if (!unitBHPos[layer.unitCode]) unitBHPos[layer.unitCode] = [];
+      unitTopZ[layer.unitCode].push(topZ);
+      unitBHPos[layer.unitCode].push({ x: bh.x, y: bh.y, topZ });
+    }
+  }
+
+  const scores = [];
+  const details = [];
+  const suggestions = [];
+
+  // ── E-W vs N-S elongation check ──────────────────────────────────────────
+  const ewElong = emb[3], nsElong = emb[4];
+  if (Math.abs(ewElong) > 0.3 || Math.abs(nsElong) > 0.3) {
+    // Compute mean E-W and N-S unit-top variance across BHs
+    let ewVar = 0, nsVar = 0, nPairs = 0;
+    for (const [, pts] of Object.entries(unitBHPos)) {
+      for (let a = 0; a < pts.length; a++) {
+        for (let b = a + 1; b < pts.length; b++) {
+          const dx = Math.abs(pts[a].x - pts[b].x), dy = Math.abs(pts[a].y - pts[b].y);
+          const dz = Math.abs(pts[a].topZ - pts[b].topZ);
+          if (dx < 1 && dy < 1) continue;
+          if (dx > dy * 2) { ewVar += dz / (dx + 1); nPairs++; }
+          else if (dy > dx * 2) { nsVar += dz / (dy + 1); nPairs++; }
+        }
+      }
+    }
+    if (nPairs > 0) {
+      ewVar /= nPairs; nsVar /= nPairs;
+      // E-W elongation concept: expect ewVar < nsVar (flat E-W, steep N-S)
+      if (ewElong > 0.3) {
+        const ratio = nsVar > 0.001 ? ewVar / nsVar : 1;
+        const coherence = Math.max(0, 1 - ratio); // 0 = inconsistent, 1 = consistent
+        scores.push(coherence * ewElong);
+        if (coherence > 0.5) details.push(`BH data shows E-W unit continuity (score: ${(coherence*100).toFixed(0)}%)`);
+        else {
+          details.push(`BH data shows weak E-W elongation support (E-W/N-S variance ratio: ${ratio.toFixed(2)})`);
+          suggestions.push('Consider reducing east_west_elongation or adding more E-W boreholes');
+        }
+      }
+      if (nsElong > 0.3) {
+        const ratio = ewVar > 0.001 ? nsVar / ewVar : 1;
+        const coherence = Math.max(0, 1 - ratio);
+        scores.push(coherence * nsElong);
+        if (coherence < 0.4) suggestions.push('Consider reducing north_south_elongation — BH data does not strongly support N-S continuity');
+      }
+    }
+  }
+
+  // ── Lateral continuity check ──────────────────────────────────────────────
+  const latCont = emb[9];
+  if (latCont > 0.2) {
+    const unitCodes = Object.keys(unitBHPos);
+    const totalBH   = bhOk.length;
+    const bestCoverage = unitCodes.reduce((best, code) => {
+      return Math.max(best, unitBHPos[code].length / totalBH);
+    }, 0);
+    const latScore = Math.min(1, bestCoverage / Math.max(0.3, latCont));
+    scores.push(latScore);
+    if (latScore > 0.7) details.push(`Dominant unit appears in ${(bestCoverage*100).toFixed(0)}% of BHs — supports lateral continuity`);
+    else if (latCont > 0.6) suggestions.push(`Lateral continuity is high (${latCont.toFixed(2)}) but dominant unit only in ${(bestCoverage*100).toFixed(0)}% of BHs — consider reducing confidence`);
+  }
+
+  // ── Channel morphology check ──────────────────────────────────────────────
+  const chanMorph = emb[5];
+  if (chanMorph > 0.4) {
+    // Channel: depth to unit base should be deeper at site centre vs edges
+    const bhsSorted = [...bhOk].sort((a, b) => a.x - b.x);
+    if (bhsSorted.length >= 3) {
+      const midX = (bhsSorted[0].x + bhsSorted[bhsSorted.length - 1].x) / 2;
+      let edgeDepth = 0, midDepth = 0, ne = 0, nm = 0;
+      for (const bh of bhsSorted) {
+        const baseZ = (bh.layers[0] ? (bh.groundLevel - bh.layers[bh.layers.length - 1].base) : null);
+        if (baseZ == null) continue;
+        if (Math.abs(bh.x - midX) > (bhsSorted[bhsSorted.length-1].x - bhsSorted[0].x) * 0.3) {
+          edgeDepth += baseZ; ne++;
+        } else { midDepth += baseZ; nm++; }
+      }
+      if (ne > 0 && nm > 0) {
+        edgeDepth /= ne; midDepth /= nm;
+        const channelScore = edgeDepth > midDepth ? Math.min(1, (edgeDepth - midDepth) / 2) : 0;
+        scores.push(channelScore);
+        if (channelScore < 0.2 && chanMorph > 0.6) {
+          suggestions.push('Channel morphology concept applied but BH data shows no clear depth deepening at edges — verify channel orientation');
+        } else if (channelScore > 0.3) {
+          details.push(`BH base depths support channel geometry (edge avg ${edgeDepth.toFixed(1)}m, centre ${midDepth.toFixed(1)}m)`);
+        }
+      }
+    }
+  }
+
+  // ── Horizontal layering check ─────────────────────────────────────────────
+  const hLayer = emb[0];
+  if (hLayer > 0.4) {
+    // Units should appear at similar elevations in all BHs
+    let zStdSum = 0, nUnits = 0;
+    for (const [, zArr] of Object.entries(unitTopZ)) {
+      if (zArr.length < 2) continue;
+      const mean = zArr.reduce((s, z) => s + z, 0) / zArr.length;
+      const std  = Math.sqrt(zArr.reduce((s, z) => s + (z - mean) ** 2, 0) / zArr.length);
+      const range = Math.max(1, ...zArr) - Math.min(1, ...zArr);
+      zStdSum += range > 0 ? std / range : 0;
+      nUnits++;
+    }
+    if (nUnits > 0) {
+      const meanCV = zStdSum / nUnits;
+      const layerScore = Math.max(0, 1 - meanCV * 2);
+      scores.push(layerScore * hLayer);
+      if (layerScore < 0.4 && hLayer > 0.5) {
+        suggestions.push('Horizontal layering concept applied but unit elevations vary significantly between BHs — consider reducing horizontal_layering or adding tilt/dip concept');
+      }
+    }
+  }
+
+  const overallScore = scores.length > 0 ? scores.reduce((s, v) => s + v, 0) / scores.length : 0.5;
+  return {
+    score: overallScore,
+    grade: overallScore > 0.7 ? 'strong' : overallScore > 0.45 ? 'moderate' : 'weak',
+    details: details.length ? details : ['Insufficient BH data for detailed coherence analysis'],
+    suggestions,
+  };
+}
