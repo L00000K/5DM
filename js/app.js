@@ -1060,10 +1060,14 @@ function initBuildModel() {
         // Geometry verification: measure E-W vs N-S elongation ratios per unit
         // and compare against concept predictions. Shows user that the concept shaped the geometry.
         const geoCheck = measureConceptGeometry(AppState.voxelGrid, AppState.geoUnits, AppState.conceptStore);
+        AppState._lastGeoCheck = geoCheck;
         if (geoCheck.length) {
           _showConceptGeometryReport(geoCheck);
         }
       }
+
+      // Model QC dashboard — auto-runs after every build
+      _renderModelQC();
 
       // Auto-save session after successful model build
       saveSession(AppState);
@@ -8016,6 +8020,98 @@ function _renderAttribution(attr, unitCode) {
       ${trend && (Math.abs(trend.dz_dxN) > 0.01 || Math.abs(trend.dz_dyN) > 0.01) ? `<div class="trace-warp" style="margin-top:2px;color:var(--text-mid)">Depth trend: E ${trend.dz_dxN >= 0 ? '↘' : '↗'} ${Math.abs(trend.dz_dxN).toFixed(3)} · N ${trend.dz_dyN >= 0 ? '↘' : '↗'} ${Math.abs(trend.dz_dyN).toFixed(3)}</div>` : ''}
       ${sharpnessT != null && sharpnessT < 0.95 ? `<div class="trace-warp" style="margin-top:2px;color:#e8a020">Contact sharpness T=${sharpnessT.toFixed(2)}${sharpnessT < 0.5 ? ' (sharp/stepped boundary)' : ' (slightly sharpened)'}</div>` : ''}
     </div>`;
+}
+
+// ── Model QC Dashboard ───────────────────────────────────────────────────────
+// Summarises model quality metrics in the right panel after every build.
+// Shows: mean certainty per unit, concept vs data influence breakdown,
+// coverage hole percentage, and geometry match score.
+function _renderModelQC() {
+  const panel   = document.getElementById('model-qc-panel');
+  const content = document.getElementById('model-qc-content');
+  if (!panel || !content) return;
+  const grid  = AppState.voxelGrid;
+  if (!grid) return;
+
+  const { nx, ny, nz, unitIds, certainty, conceptInfluence, coverageDensity } = grid;
+  const total = nx * ny * nz;
+
+  // Per-unit certainty stats
+  const unitStats = {};
+  for (const u of AppState.geoUnits) unitStats[u.id] = { sum: 0, cnt: 0, code: u.code, color: u.color };
+  let sumCert = 0, certCnt = 0;
+  let conceptVoxels = 0, dataVoxels = 0;
+  let coverHoles = 0;
+
+  for (let idx = 0; idx < total; idx++) {
+    const uid = unitIds[idx];
+    if (!uid) continue;
+    const cert = certainty[idx];
+    sumCert += cert; certCnt++;
+    if (unitStats[uid]) { unitStats[uid].sum += cert; unitStats[uid].cnt++; }
+    if (conceptInfluence) {
+      if (conceptInfluence[idx] > 0.5) conceptVoxels++;
+      else dataVoxels++;
+    }
+    if (coverageDensity && coverageDensity[idx] < 0.2) coverHoles++;
+  }
+
+  const meanCert     = certCnt > 0 ? (sumCert / certCnt * 100).toFixed(0) : '—';
+  const certColor    = sumCert / certCnt > 0.65 ? 'var(--accent)' : sumCert / certCnt > 0.45 ? '#d4a843' : 'var(--red)';
+  const conceptPct   = certCnt > 0 && conceptInfluence ? (conceptVoxels / certCnt * 100).toFixed(0) : '—';
+  const dataPct      = certCnt > 0 && conceptInfluence ? (dataVoxels   / certCnt * 100).toFixed(0) : '—';
+  const holePct      = certCnt > 0 && coverageDensity  ? (coverHoles   / certCnt * 100).toFixed(0) : '—';
+
+  // Geometry match score from last concept check
+  const geoCheck = AppState._lastGeoCheck ?? [];
+  const matchScore = geoCheck.length
+    ? (geoCheck.reduce((s, r) => s + r.conceptMatch, 0) / geoCheck.length * 100).toFixed(0)
+    : null;
+
+  // Unit rows
+  const unitRows = AppState.geoUnits
+    .map(u => {
+      const s = unitStats[u.id];
+      if (!s || s.cnt === 0) return '';
+      const pct = (s.sum / s.cnt * 100).toFixed(0);
+      const col = s.sum / s.cnt > 0.65 ? 'var(--accent)' : s.sum / s.cnt > 0.45 ? '#d4a843' : 'var(--red)';
+      return `<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
+        <span style="width:8px;height:8px;border-radius:2px;background:${u.color};flex-shrink:0"></span>
+        <span style="flex:1;font-size:9.5px;color:var(--text-mid)">${u.code}</span>
+        <div style="width:60px;height:5px;background:var(--bg-deep);border-radius:2px;overflow:hidden">
+          <div style="width:${pct}%;height:100%;background:${col}"></div>
+        </div>
+        <span style="font-size:9px;color:${col};font-family:var(--font-mono);min-width:22px;text-align:right">${pct}%</span>
+      </div>`;
+    }).join('');
+
+  let html = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+      <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:4px;padding:5px;text-align:center">
+        <div style="font-size:18px;font-weight:700;color:${certColor}">${meanCert}%</div>
+        <div style="font-size:9px;color:var(--text-dim)">Mean Certainty</div>
+      </div>
+      ${conceptPct !== '—' ? `
+      <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:4px;padding:5px;text-align:center">
+        <div style="font-size:18px;font-weight:700;color:var(--accent)">${conceptPct}%</div>
+        <div style="font-size:9px;color:var(--text-dim)">Concept-driven</div>
+      </div>` : ''}
+      ${holePct !== '—' ? `
+      <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:4px;padding:5px;text-align:center">
+        <div style="font-size:18px;font-weight:700;color:${parseFloat(holePct) > 30 ? 'var(--red)' : '#d4a843'}">${holePct}%</div>
+        <div style="font-size:9px;color:var(--text-dim)">Coverage holes</div>
+      </div>` : ''}
+      ${matchScore !== null ? `
+      <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:4px;padding:5px;text-align:center">
+        <div style="font-size:18px;font-weight:700;color:${parseFloat(matchScore) >= 70 ? 'var(--accent)' : parseFloat(matchScore) >= 50 ? '#d4a843' : 'var(--red)'}">${matchScore}%</div>
+        <div style="font-size:9px;color:var(--text-dim)">Concept match</div>
+      </div>` : ''}
+    </div>
+    <div style="font-size:9.5px;color:var(--text-dim);margin-bottom:4px;font-weight:600">Certainty by unit</div>
+    ${unitRows}`;
+
+  content.innerHTML = html;
+  panel.hidden = false;
 }
 
 // ── Concept geometry verification report ─────────────────────────────────────
