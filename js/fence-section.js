@@ -178,8 +178,9 @@ export class FenceSection {
     const showCov      = document.getElementById('fence-show-coverage')?.checked ?? false;
     const showPatterns = document.getElementById('fence-show-patterns')?.checked ?? false;
     const showRibbons  = document.getElementById('fence-show-ribbons')?.checked ?? false;
+    const showConcepts = document.getElementById('fence-show-concepts')?.checked ?? true;
 
-    const { grid, geoUnits, normal, centerD, thickness, boreholes } = args;
+    const { grid, geoUnits, normal, centerD, thickness, boreholes, conceptStore } = args;
     const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty, blendRatios } = grid;
 
     const unitById = {};
@@ -582,34 +583,138 @@ export class FenceSection {
       ctx.fillText(u.code, lx + (lgW - 3) * 0.5, lgY + 22);
     });
 
-    // ── Concept influence overlay on section ──────────────────────────────────
-    // Translucent blue ribbon per column proportional to active concept weight at
-    // that horizontal position. Drawn before legend so it stays behind text.
-    if (conceptStore && !conceptStore.isEmpty) {
-      const midElev = O.y + (nz * ch) * 0.5;
-      let maxW = 0;
-      const wts = new Float32Array(N_COLS);
+    // ── Concept influence ribbon + anisotropy indicators ─────────────────────
+    // Shows dominant concept as a color ribbon at the top of the section,
+    // plus anisotropy direction arrows every ~60px showing the tensor warp.
+    if (showConcepts && conceptStore && !conceptStore.isEmpty) {
+      const concepts   = conceptStore.concepts;
+      const nC         = concepts.length;
+      // Golden-angle hue (same as plan-view concept territory)
+      const hues       = concepts.map((_, i) => (i * 137.508) % 360);
+      const midElev    = O.y + (nz * ch) * 0.5;
+      const RIBBON_H   = 7;
+      const RIBBON_Y   = PAD_T - RIBBON_H - 2;
+
+      // Per-column: dominant concept + total weight
+      const domColIdx  = new Int16Array(N_COLS).fill(-1);
+      const domColW    = new Float32Array(N_COLS);
+      const totalColW  = new Float32Array(N_COLS);
+      // Also capture anisotropy tensor direction per column (for arrows)
+      const tensorAngle = new Float32Array(N_COLS); // angle of major axis in section coords
+      const tensorRatio = new Float32Array(N_COLS); // Amaj / Amin
+
       for (let ci = 0; ci < N_COLS; ci++) {
         const t    = (ci / Math.max(N_COLS - 1, 1)) - 0.5;
         const dist = t * worldW;
         const wx   = sx0 + along.x * dist;
         const wz   = sz0 + along.z * dist;
-        const ctxC = conceptStore.computeAt(wx, midElev, wz);
-        wts[ci] = ctxC.totalWeight;
-        if (ctxC.totalWeight > maxW) maxW = ctxC.totalWeight;
-      }
-      if (maxW > 0.01) {
-        for (let ci = 0; ci < N_COLS; ci++) {
-          const tt = wts[ci] / maxW;
-          const px = PAD_L + ci * colPx;
-          ctx.fillStyle = `rgba(64,180,255,${(tt * 0.22).toFixed(3)})`;
-          ctx.fillRect(px, PAD_T, Math.ceil(colPx + 0.5), drawH);
+        const result = conceptStore.computeAt(wx, midElev, wz);
+        totalColW[ci] = result.totalWeight;
+
+        // Find dominant concept at this column
+        if (result.totalWeight > 0.01 && result.weights.length > 0) {
+          const topW  = result.weights[0];
+          const domCi = concepts.findIndex(c => c.id === topW.id);
+          if (domCi >= 0) { domColIdx[ci] = domCi; domColW[ci] = topW.weight; }
         }
-        // Label at top-right of section
-        ctx.fillStyle = 'rgba(64,180,255,0.75)';
+
+        // Tensor anisotropy angle: use ew_elongation (ax3) vs ns_elongation (ax4)
+        // Project major axis direction onto section along-vector
+        if (result.totalWeight > 0.01) {
+          const ew = result.vec[3] ?? 0;   // east-west elongation
+          const ns = result.vec[4] ?? 0;   // north-south elongation
+          // Anisotropy direction angle in world XZ: ew → along +x, ns → along +z
+          // Project world elongation direction onto section direction
+          const awx = ew, awz = ns;  // elongation direction vector in world XZ
+          const projAlong = awx * along.x + awz * along.z; // component along section
+          const projNorm  = awx * normal.x + awz * normal.z; // component across section
+          tensorAngle[ci] = Math.atan2(projNorm, projAlong); // angle in section frame
+          const Amaj = result.tensor.Amaj ?? Math.max(result.tensor.Ax ?? 1, result.tensor.Ay ?? 1);
+          const Amin = result.tensor.Amin ?? Math.min(result.tensor.Ax ?? 1, result.tensor.Ay ?? 1);
+          tensorRatio[ci] = Amin > 0.01 ? Amaj / Amin : 1;
+        }
+      }
+
+      const hasAny = totalColW.some(w => w > 0.01);
+      if (hasAny) {
+        // Draw color ribbon at top of section
+        let prevDom = -2;
+        for (let ci = 0; ci < N_COLS; ci++) {
+          const dom = domColIdx[ci];
+          if (dom < 0 || totalColW[ci] < 0.01) continue;
+          const px = PAD_L + ci * colPx;
+          // Saturation/lightness by dominance ratio
+          const s = Math.min(80, 40 + domColW[ci] * 40);
+          const l = Math.max(30, 55 - domColW[ci] * 15);
+          ctx.fillStyle = `hsl(${hues[dom]},${s}%,${l}%)`;
+          ctx.globalAlpha = Math.min(0.85, 0.4 + domColW[ci] * 0.6);
+          ctx.fillRect(px, RIBBON_Y, Math.ceil(colPx + 0.5), RIBBON_H);
+
+          // Vertical divider when dominant concept changes
+          if (dom !== prevDom && prevDom >= 0) {
+            ctx.globalAlpha = 0.6;
+            ctx.strokeStyle = '#2a3848';
+            ctx.lineWidth = 0.8;
+            ctx.setLineDash([2, 2]);
+            ctx.beginPath(); ctx.moveTo(px, RIBBON_Y); ctx.lineTo(px, PAD_T + drawH); ctx.stroke();
+            ctx.setLineDash([]);
+          }
+          prevDom = dom;
+        }
+        ctx.globalAlpha = 1;
+
+        // Draw anisotropy arrows every ~ARROW_STEP columns
+        const ARROW_STEP = Math.max(12, Math.floor(N_COLS / 10));
+        for (let ci = Math.floor(ARROW_STEP * 0.5); ci < N_COLS; ci += ARROW_STEP) {
+          if (totalColW[ci] < 0.05 || tensorRatio[ci] < 1.15) continue;
+          const px  = PAD_L + ci * colPx;
+          const py  = PAD_T + drawH * 0.5;
+          const ang = tensorAngle[ci];
+          const ratio = Math.min(tensorRatio[ci], 4);
+          const LEN = Math.min(14, (ratio - 1) * 8 + 4);
+          const ax  = Math.cos(ang) * LEN;
+          const ay  = Math.sin(ang) * LEN * 0.5; // vertical compressed (Z vs horizontal)
+          const dom = domColIdx[ci];
+          ctx.strokeStyle = dom >= 0 ? `hsl(${hues[dom]},60%,45%)` : '#8898a8';
+          ctx.lineWidth = 1.5;
+          ctx.globalAlpha = 0.7;
+          // Bidirectional arrow (elongation, not direction)
+          ctx.beginPath();
+          ctx.moveTo(px - ax, py - ay); ctx.lineTo(px + ax, py + ay);
+          // Arrowhead both ends
+          const headLen = 4, headAng = Math.PI / 5;
+          for (const sign of [-1, 1]) {
+            const tipX = px + sign * ax, tipY = py + sign * ay;
+            const backX = px - sign * ax, backY = py - sign * ay;
+            const baseAng = Math.atan2(tipY - backY, tipX - backX);
+            ctx.moveTo(tipX, tipY);
+            ctx.lineTo(tipX - headLen * Math.cos(baseAng - headAng),
+                       tipY - headLen * Math.sin(baseAng - headAng));
+            ctx.moveTo(tipX, tipY);
+            ctx.lineTo(tipX - headLen * Math.cos(baseAng + headAng),
+                       tipY - headLen * Math.sin(baseAng + headAng));
+          }
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+
+        // Ribbon label and legend (below the ribbon)
+        ctx.fillStyle = '#8898a8';
         ctx.font      = '8px Inter, sans-serif';
-        ctx.textAlign = 'right';
-        ctx.fillText('concept influence', PAD_L + drawW - 2, PAD_T + 9);
+        ctx.textAlign = 'left';
+        ctx.fillText('Concepts:', PAD_L, RIBBON_Y - 2);
+
+        // Show concept name chips
+        let chipX = PAD_L + 52;
+        for (let ci = 0; ci < nC && chipX < PAD_L + drawW - 10; ci++) {
+          ctx.fillStyle = `hsl(${hues[ci]},60%,40%)`;
+          ctx.fillRect(chipX, RIBBON_Y - 7, 7, 7);
+          ctx.fillStyle = '#8898a8';
+          ctx.textAlign = 'left';
+          const label = concepts[ci].description.slice(0, 16);
+          ctx.fillText(label, chipX + 10, RIBBON_Y - 1);
+          chipX += 10 + ctx.measureText(label).width + 8;
+        }
       }
     }
 

@@ -3291,7 +3291,7 @@ function initFenceSection() {
   });
 
   // Redraw when overlay toggles change
-  ['fence-show-uncertainty', 'fence-show-coverage', 'fence-show-patterns', 'fence-show-ribbons'].forEach(id => {
+  ['fence-show-uncertainty', 'fence-show-coverage', 'fence-show-patterns', 'fence-show-ribbons', 'fence-show-concepts'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', () => {
       if (AppState.fenceSection?.visible) AppState.fenceSection._redraw();
     });
