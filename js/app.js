@@ -10807,7 +10807,7 @@ window._predictBoreholeLog = function() {
   el.style.display = 'block';
   el.innerHTML = '<div style="font-size:10px;color:var(--text-mid)">Extracting log…</div>';
 
-  const realBHs = AppState.boreholes ?? [];
+  const realBHs = AppState.classifiedBH ?? [];
   const result  = predictBoreholeLog(xIn, yIn, grid, AppState.geoUnits, store, realBHs);
 
   if (!result || !result.runs.length) {
@@ -10975,13 +10975,13 @@ window._generateCrossSection = function() {
   const length  = parseFloat(document.getElementById('xs-length')?.value  ?? '200');
   const rawMidX = document.getElementById('xs-midx')?.value?.trim();
   const rawMidY = document.getElementById('xs-midy')?.value?.trim();
-  const midX = rawMidX ? parseFloat(rawMidX) : (grid.origin[0] + grid.nx * grid.cellSize / 2);
-  const midY = rawMidY ? parseFloat(rawMidY) : (grid.origin[1] + grid.ny * grid.cellSize / 2);
+  const midX = rawMidX ? parseFloat(rawMidX) : (grid.origin.x + grid.nx * grid.cellSize / 2);
+  const midY = rawMidY ? parseFloat(rawMidY) : (grid.origin.z + grid.ny * grid.cellSize / 2);  // origin.z = min Northing
 
   const NCOLS = 120;
   const result = generateCrossSection(
     { azimuthDeg: azimuth, midX, midY, length, nCols: NCOLS },
-    grid, AppState.geoUnits, store, AppState.boreholes ?? []
+    grid, AppState.geoUnits, store, AppState.classifiedBH ?? []
   );
 
   if (!result) {
@@ -11209,9 +11209,9 @@ window._analyseUnitConceptSignatures = async function() {
     const rem = flat % (nx * ny);
     const iy  = Math.floor(rem / nx);
     const ix  = rem % nx;
-    const wx  = origin[0] + (ix + 0.5) * cellSize;
-    const wy  = origin[1] + (iy + 0.5) * cellSize;
-    const wz  = origin[2] + (iz + 0.5) * cellHeight;
+    const wx  = origin.x + (ix + 0.5) * cellSize;
+    const wy  = origin.z + (iy + 0.5) * cellSize;   // origin.z = min Northing
+    const wz  = origin.y + (iz + 0.5) * cellHeight; // origin.y = bot elevation
 
     const ctx = store.computeAt(wx, wy, wz);
     if (!ctx?.vec) continue;

@@ -1718,8 +1718,8 @@ export function generateCrossSection(params, grid, geoUnits, conceptStore = null
     const wx  = midX + t * dx;
     const wy  = midY + t * dy;
 
-    const ix  = Math.floor((wx - origin[0]) / cellSize);
-    const iy  = Math.floor((wy - origin[1]) / cellSize);
+    const ix  = Math.floor((wx - origin.x) / cellSize);
+    const iy  = Math.floor((wy - origin.z) / cellSize);  // origin.z = min Northing
 
     for (let row = 0; row < rows; row++) {
       const iz   = rows - 1 - row;  // row 0 = top
@@ -1741,7 +1741,7 @@ export function generateCrossSection(params, grid, geoUnits, conceptStore = null
   // Concept context sampled at 7 positions along the section midline
   const conceptSamples = [];
   if (conceptStore && !conceptStore.isEmpty) {
-    const midZ = origin[2] + (nz * cellHeight) / 2;
+    const midZ = origin.y + (nz * cellHeight) / 2;  // origin.y = bot elevation
     for (let i = 0; i < 7; i++) {
       const t   = (i / 6 - 0.5) * length;
       const wx  = midX + t * dx;
@@ -1766,8 +1766,8 @@ export function generateCrossSection(params, grid, geoUnits, conceptStore = null
     }
   }
 
-  const topZ = origin[2] + nz * cellHeight;
-  const botZ = origin[2];
+  const topZ = origin.y + nz * cellHeight;
+  const botZ = origin.y;
 
   return { pixels, nCols, nRows: rows, topZ, botZ, length, azimuthDeg, midX, midY, dx, dy, conceptSamples, bhIntersections };
 }
@@ -1892,8 +1892,8 @@ export function identifySequenceSurfaces(grid, geoUnits, conceptStore) {
 export function predictBoreholeLog(x, y, grid, geoUnits, conceptStore = null, realBoreholes = null) {
   if (!grid || !geoUnits.length) return null;
 
-  const ix = Math.round((x - grid.origin[0]) / grid.cellSize - 0.5);
-  const iy = Math.round((y - grid.origin[1]) / grid.cellSize - 0.5);
+  const ix = Math.round((x - grid.origin.x) / grid.cellSize - 0.5);
+  const iy = Math.round((y - grid.origin.z) / grid.cellSize - 0.5);  // origin.z = min Northing
   if (ix < 0 || ix >= grid.nx || iy < 0 || iy >= grid.ny) return null;
 
   const unitById = Object.fromEntries(geoUnits.map(u => [u.id, u]));
@@ -1907,8 +1907,8 @@ export function predictBoreholeLog(x, y, grid, geoUnits, conceptStore = null, re
     const flat = ix + iy * nx + iz * nx * ny;
     const uid  = unitIds[flat];
     const cert = certainty?.[flat] ?? 0.5;
-    const topZ = origin[2] + (iz + 1) * cellHeight;
-    const botZ = origin[2] + iz * cellHeight;
+    const topZ = origin.y + (iz + 1) * cellHeight;  // origin.y = bot elevation
+    const botZ = origin.y + iz * cellHeight;
     const unit = unitById[uid];
     if (!unit) continue;
 
