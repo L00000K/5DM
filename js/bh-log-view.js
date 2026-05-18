@@ -2,6 +2,8 @@
 // Renders vertical graphical log strips (one per borehole) in an SVG panel.
 // Displays: geological unit layers (colour-filled), SPT N-value bar chart,
 // certainty annotations, ground level datum line.
+// When voxelGrid is supplied, a narrow "Model" prediction column is added
+// next to each borehole with match/mismatch dots per layer.
 
 export class BHLogView {
   constructor() {
@@ -19,16 +21,16 @@ export class BHLogView {
     });
   }
 
-  draw(boreholes, geoUnits) {
+  draw(boreholes, geoUnits, voxelGrid = null) {
     if (!boreholes?.length) return;
-    this._lastArgs = [boreholes, geoUnits];
+    this._lastArgs = [boreholes, geoUnits, voxelGrid];
     if (this._hint) this._hint.hidden = true;
     if (this._exportBtn) this._exportBtn.disabled = false;
-    this._render(boreholes, geoUnits);
+    this._render(boreholes, geoUnits, voxelGrid);
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
-  _render(boreholes, geoUnits) {
+  _render(boreholes, geoUnits, voxelGrid = null) {
     const svg = this._svg;
     if (!svg) return;
 
@@ -36,12 +38,17 @@ export class BHLogView {
     const pxPerM  = parseFloat(this._scaleIn?.value ?? 20) || 20;
     const colW    = 90;   // unit colour column width px
     const sptW    = 60;   // SPT chart width px
+    const predW   = voxelGrid ? 30 : 0;  // model prediction column
     const lhsW    = 60;   // left-hand side axis width
     const colGap  = 28;
     const padTop  = 50;
 
     const unitByCode = {};
-    geoUnits.forEach(u => { unitByCode[u.code] = u; });
+    const unitById   = {};
+    geoUnits.forEach(u => {
+      unitByCode[u.code] = u;
+      if (u.id != null) unitById[u.id] = u;
+    });
 
     // Maximum depth across all boreholes
     const maxDepth = Math.max(...boreholes.map(bh =>
@@ -49,7 +56,7 @@ export class BHLogView {
     ));
 
     const svgH = padTop + maxDepth * pxPerM + 40;
-    const svgW = lhsW + boreholes.length * (colW + sptW + colGap) + 20;
+    const svgW = lhsW + boreholes.length * (colW + sptW + predW + colGap) + 20;
 
     // ── SVG namespace helper ──────────────────────────────────────────────
     const NS = 'http://www.w3.org/2000/svg';
@@ -95,9 +102,24 @@ export class BHLogView {
       (bh.layers ?? []).map(l => l.sptN ?? 0)
     ));
 
+    // ── Grid lookup helper ────────────────────────────────────────────────
+    const getPrediction = voxelGrid ? (() => {
+      const { nx, ny, nz,
+              cellSize: cs, cellHeight: ch,
+              origin, unitIds, certainty: certArr } = voxelGrid;
+      return (bhX, bhY, elevation) => {
+        const ix = Math.floor((bhX - origin.x) / cs);
+        const iy = Math.floor((bhY - origin.z) / cs);
+        const iz = Math.floor((elevation - origin.y) / ch);
+        if (ix < 0 || ix >= nx || iy < 0 || iy >= ny || iz < 0 || iz >= nz) return null;
+        const flat = iz * nx * ny + iy * nx + ix;
+        return { unitId: unitIds[flat], certainty: certArr ? certArr[flat] : 0.7 };
+      };
+    })() : null;
+
     // ── Per-borehole columns ──────────────────────────────────────────────
     boreholes.forEach((bh, bi) => {
-      const cx = lhsW + bi * (colW + sptW + colGap);
+      const cx = lhsW + bi * (colW + sptW + predW + colGap);
 
       // BH header
       svg.appendChild(txt(cx + colW * 0.5, padTop - 28, bh.id ?? `BH-${bi + 1}`, {
@@ -166,8 +188,7 @@ export class BHLogView {
 
       layers.forEach(l => {
         if (l.sptN == null) return;
-        const top = l.top ?? 0;
-        const mid = ((l.top ?? 0) + (l.base ?? l.top + 1)) / 2;
+        const mid = ((l.top ?? 0) + (l.base ?? (l.top ?? 0) + 1)) / 2;
         const y   = padTop + mid * pxPerM;
         const bw  = Math.min(sptW - 4, (l.sptN / maxN) * (sptW - 4));
         svg.appendChild(mk('rect', {
@@ -178,6 +199,117 @@ export class BHLogView {
           fill: '#5ab8e0', 'font-size': 7.5, 'font-family': 'monospace',
         }));
       });
+
+      // ── Model prediction column ───────────────────────────────────────
+      if (getPrediction && predW > 0) {
+        const predX = sptX + sptW + 2;
+        const gl    = bh.groundLevel ?? 0;
+        const stepM = voxelGrid.cellHeight ?? 1;
+
+        // Header labels
+        svg.appendChild(txt(predX + predW * 0.5, padTop - 28, 'Model', {
+          fill: '#a0b8d0', 'font-size': 8, 'text-anchor': 'middle',
+          'font-family': 'sans-serif',
+        }));
+        svg.appendChild(txt(predX + predW * 0.5, padTop - 18, '▲AI', {
+          fill: '#6a90b8', 'font-size': 7, 'text-anchor': 'middle',
+          'font-family': 'sans-serif',
+        }));
+
+        // Render predicted unit segments by scanning column
+        let segUnitId   = undefined;
+        let segStart    = 0;
+        let segCertSum  = 0;
+        let segCertCt   = 0;
+
+        const flushSeg = (dEnd) => {
+          if (segUnitId == null) return;
+          const unit = unitById[segUnitId];
+          if (!unit) return;
+          const y1 = padTop + segStart * pxPerM;
+          const y2 = padTop + Math.min(dEnd, bhDepth) * pxPerM;
+          const h  = Math.max(1, y2 - y1);
+          const avgCert = segCertCt > 0 ? segCertSum / segCertCt : 0.5;
+          svg.appendChild(mk('rect', {
+            x: predX, y: y1, width: predW, height: h,
+            fill: unit.color ?? '#888',
+            opacity: 0.3 + avgCert * 0.55,
+            stroke: '#283040', 'stroke-width': 0.3,
+          }));
+          if (h >= 14) {
+            svg.appendChild(txt(
+              predX + predW * 0.5,
+              y1 + Math.min(h * 0.5, 9) + 3,
+              unit.code ?? '?', {
+                fill: '#ddeeff', 'font-size': 7.5, 'font-weight': 'bold',
+                'text-anchor': 'middle', 'font-family': 'monospace',
+                'pointer-events': 'none',
+              }));
+          }
+        };
+
+        for (let d = 0; d <= bhDepth + stepM * 0.5; d += stepM) {
+          const elevation = gl - d;
+          const pred      = getPrediction(bh.x, bh.y, elevation);
+          const uid       = pred?.unitId ?? null;
+
+          if (uid !== segUnitId) {
+            flushSeg(d);
+            segUnitId  = uid;
+            segStart   = d;
+            segCertSum = pred?.certainty ?? 0;
+            segCertCt  = pred ? 1 : 0;
+          } else {
+            segCertSum += pred?.certainty ?? 0;
+            segCertCt++;
+          }
+        }
+        flushSeg(bhDepth);
+
+        // Column outline
+        svg.appendChild(mk('rect', {
+          x: predX, y: padTop, width: predW, height: bhDepth * pxPerM,
+          fill: 'none', stroke: '#2e4060', 'stroke-width': 0.8,
+        }));
+
+        // ── Match/mismatch dots per observed layer ────────────────────
+        let matchCount = 0, mismatchCount = 0;
+        layers.forEach(l => {
+          if (!l.unitCode) return;
+          const mid       = ((l.top ?? 0) + (l.base ?? (l.top ?? 0) + 1)) / 2;
+          const elevation = gl - mid;
+          const pred      = getPrediction(bh.x, bh.y, elevation);
+          if (!pred || pred.unitId == null) return;
+
+          const predUnit  = unitById[pred.unitId];
+          const match     = predUnit?.code === l.unitCode;
+          const y         = padTop + mid * pxPerM;
+          if (match) matchCount++; else mismatchCount++;
+
+          // small circle right-edge of prediction column
+          svg.appendChild(mk('circle', {
+            cx: predX + predW - 4, cy: y, r: 2.5,
+            fill: match ? '#4fba6f' : '#e05050',
+            opacity: 0.9,
+          }));
+        });
+
+        // Match rate badge below column
+        const total = matchCount + mismatchCount;
+        if (total > 0) {
+          const pct  = Math.round(100 * matchCount / total);
+          const badgeY = padTop + bhDepth * pxPerM + 12;
+          svg.appendChild(mk('rect', {
+            x: predX, y: badgeY - 8, width: predW, height: 11,
+            fill: pct >= 70 ? '#1e5c33' : pct >= 40 ? '#5c4a10' : '#5c1e1e',
+            rx: 2,
+          }));
+          svg.appendChild(txt(predX + predW * 0.5, badgeY + 1, `${pct}%`, {
+            fill: pct >= 70 ? '#4fba6f' : pct >= 40 ? '#d4a820' : '#e05050',
+            'font-size': 8, 'text-anchor': 'middle', 'font-family': 'monospace',
+          }));
+        }
+      }
     });
 
     // ── Unit legend strip at bottom ───────────────────────────────────────
@@ -193,6 +325,15 @@ export class BHLogView {
       }));
       lx += 14 + (u.code?.length ?? 2) * 6 + 8;
     });
+
+    // Legend for match dots
+    if (voxelGrid) {
+      svg.appendChild(mk('circle', { cx: lx + 5, cy: legY - 3, r: 3, fill: '#4fba6f' }));
+      svg.appendChild(txt(lx + 11, legY, 'match', { fill: '#8a9bb0', 'font-size': 8, 'font-family': 'sans-serif' }));
+      lx += 46;
+      svg.appendChild(mk('circle', { cx: lx + 5, cy: legY - 3, r: 3, fill: '#e05050' }));
+      svg.appendChild(txt(lx + 11, legY, 'mismatch', { fill: '#8a9bb0', 'font-size': 8, 'font-family': 'sans-serif' }));
+    }
   }
 
   // ── Export SVG ────────────────────────────────────────────────────────────

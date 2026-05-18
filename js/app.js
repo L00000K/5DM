@@ -830,7 +830,7 @@ function initRunAI() {
       updateBHTable();
       updateBHChart();
       updateBHUnitStats();
-      AppState.bhLogView?.draw(classified.filter(b => !b.synthetic), units);
+      AppState.bhLogView?.draw(classified.filter(b => !b.synthetic), units, AppState.voxelGrid);
       if (!document.getElementById('log-sub-spt')?.hidden) drawSPTProfile();
       log(`Analysis complete — ${units.length} units classified.`, 'ok');
       // Auto-fit variogram so kriging has sensible initial params
@@ -993,6 +993,13 @@ function initBuildModel() {
       window.dispatchEvent(new CustomEvent('geomodel:model-built'));
       _initCertaintyHistUnit();
       if (!document.getElementById('tab-analysis')?.hidden) drawCertaintyHistogram();
+      // Refresh BH log view predictions now that model is available
+      {
+        const bhs = AppState.classifiedBH.filter(b => !b.synthetic);
+        if (bhs.length && AppState.geoUnits.length) {
+          AppState.bhLogView?.draw(bhs, AppState.geoUnits, AppState.voxelGrid);
+        }
+      }
       // Refresh fence section with new grid data if it's currently visible
       if (AppState.fenceSection?.visible && AppState.fenceSection._lastArgs) {
         const fa = AppState.fenceSection._lastArgs;
@@ -1214,7 +1221,7 @@ function initProjectConfig() {
       updateStratColumn();
       updateBHUnitStats();
       renderPropertiesTable(AppState.geoUnits, () => updateLegend());
-      AppState.bhLogView?.draw(AppState.classifiedBH.filter(b => !b.synthetic), AppState.geoUnits);
+      AppState.bhLogView?.draw(AppState.classifiedBH.filter(b => !b.synthetic), AppState.geoUnits, AppState.voxelGrid);
       setEnabled('btn-run-ai', true);
       setEnabled('btn-build-model', AppState.classifiedBH.length > 0);
       setEnabled('btn-export-bh-csv', AppState.classifiedBH.length > 0); setEnabled('btn-export-las', AppState.classifiedBH.length > 0);
@@ -2163,7 +2170,7 @@ function initBHLogView() {
     btn.addEventListener('click', () => {
       const bhs = AppState.classifiedBH.filter(b => !b.synthetic);
       if (bhs.length && AppState.geoUnits.length) {
-        AppState.bhLogView.draw(bhs, AppState.geoUnits);
+        AppState.bhLogView.draw(bhs, AppState.geoUnits, AppState.voxelGrid);
       }
     });
   });
