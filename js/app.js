@@ -7686,7 +7686,7 @@ document.getElementById('btn-bh-concept-validation')?.addEventListener('click', 
         if (grid) {
           const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds } = grid;
           const ix = Math.round((bh.x - O.x) / cs - 0.5);
-          const iy = Math.round(((bh.y ?? bh.z ?? bh.x) - O.z) / cs - 0.5);
+          const iy = Math.round((bh.y - O.z) / cs - 0.5);
           const iz = Math.round((wz - O.y) / ch - 0.5);
           if (ix >= 0 && ix < nx && iy >= 0 && iy < ny && iz >= 0 && iz < nz) {
             const uid = unitIds[ix + iy * nx + iz * nx * ny];
@@ -7699,7 +7699,7 @@ document.getElementById('btn-bh-concept-validation')?.addEventListener('click', 
           if (modelPredCode === layer.unitCode) matched++;
         } else {
           // Fallback: concept-only prediction — check if dominant concept's unitAffinity matches
-          const ctx = store.computeAt(bh.x, bh.y ?? bh.z ?? 0, wz, layer.unitCode);
+          const ctx = store.computeAt(bh.x, bh.y, wz, layer.unitCode);
           if (ctx.totalWeight < 0.05) { matched++; continue; } // no active concepts = neutral
           const topConcept = store.concepts.find(c => c.id === ctx.weights[0]?.id);
           if (!topConcept?.unitAffinity?.length || topConcept.unitAffinity.includes(layer.unitCode)) {
@@ -7708,7 +7708,7 @@ document.getElementById('btn-bh-concept-validation')?.addEventListener('click', 
         }
       }
     }
-    if (total > 0) results.push({ id: bh.id, score: matched / total, total, matched, x: bh.x, y: bh.y ?? bh.z ?? 0 });
+    if (total > 0) results.push({ id: bh.id, score: matched / total, total, matched, x: bh.x, y: bh.y });
   }
 
   if (!results.length) { log('No data to validate.', 'warn'); return; }

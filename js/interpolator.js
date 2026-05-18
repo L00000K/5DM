@@ -197,25 +197,40 @@ function idwVote(neighbours, power, unitIndex, unknownId, typicalSpacing) {
   return makeResult(bc, sc, bw / totalW, totalW, sw, Math.min(1, cert * semAdj), unitIndex, unknownId);
 }
 
+// ── Anisotropic distance transform for Kriging ────────────────────────────────
+// When aniso is provided ({sinAz, cosAz, ratio}), the major axis (azimuth Az) uses
+// full range; the minor axis uses range/ratio. This gives an ellipsoidal variogram
+// that matches the concept's predicted directional elongation.
+function _anisoD(dx, dy, aniso) {
+  if (!aniso) return Math.hypot(dx, dy);
+  const { sinAz, cosAz, ratio } = aniso;
+  const major = dx * sinAz + dy * cosAz;  // projection onto major axis
+  const minor = dx * cosAz - dy * sinAz;  // projection onto minor axis
+  return Math.sqrt(major * major + (minor * ratio) * (minor * ratio));
+}
+
 // ── Ordinary Kriging (spherical variogram, indicator approach) ────────────────
 //   Augments the covariance system with a Lagrange multiplier to enforce
 //   the unbiasedness constraint (weights sum to 1), giving optimal linear
 //   unbiased prediction at the query location.
-function krigingVote(neighbours, qx, qy, unitIndex, unknownId, range, sill, nugget = null) {
+//   aniso: optional {sinAz, cosAz, ratio} for anisotropic variogram (from concept store)
+function krigingVote(neighbours, qx, qy, unitIndex, unknownId, range, sill, nugget = null, aniso = null) {
   const n = neighbours.length;
   if (nugget === null) nugget = sill * 0.05;
   const sz = n + 1;
   const K = Array.from({ length: sz }, () => new Array(sz).fill(0));
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {
-      const d = Math.hypot(neighbours[i].x - neighbours[j].x, neighbours[i].y - neighbours[j].y);
+      const dx = neighbours[i].x - neighbours[j].x, dy = neighbours[i].y - neighbours[j].y;
+      const d = _anisoD(dx, dy, aniso);
       K[i][j] = i === j ? sill + nugget : sill - gammaSpherical(d, range, sill);
     }
     K[i][n] = K[n][i] = 1;
   }
   const k = new Array(sz).fill(1);
   for (let i = 0; i < n; i++) {
-    const d = Math.hypot(neighbours[i].x - qx, neighbours[i].y - qy);
+    const dx = neighbours[i].x - qx, dy = neighbours[i].y - qy;
+    const d = _anisoD(dx, dy, aniso);
     k[i] = sill - gammaSpherical(d, range, sill);
   }
   k[n] = 1; // Lagrange RHS
@@ -953,7 +968,9 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
             }
 
             if (method === 'kriging') {
-              result = krigingVote(nb, x, y, unitIndex, unknownId, effRange, sill, options.varNugget ?? null)
+              const kAniso = (effSinAz || effCosAz || effRatio !== 1)
+                ? { sinAz: effSinAz, cosAz: effCosAz, ratio: effRatio } : null;
+              result = krigingVote(nb, x, y, unitIndex, unknownId, effRange, sill, options.varNugget ?? null, kAniso)
                     ?? idwVote(nb, idwPower, unitIndex, unknownId, typicalSpacing);
             } else if (method === 'uk') {
               result = ukVote(nb, x, y, unitIndex, unknownId, effRange, sill, trendOrder)
