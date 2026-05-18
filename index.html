@@ -605,6 +605,22 @@
           <div id="concept-suggestions" style="display:none;margin-top:4px"></div>
         </div>
 
+        <!-- Geological Laws Compiler — natural language → concept embeddings -->
+        <div class="collapsible-hdr" id="geo-rules-toggle" style="margin-top:10px">
+          <span>Geological Laws <span class="badge-opt">rules → concepts</span></span>
+          <span class="collapse-arrow">›</span>
+        </div>
+        <div id="geo-rules-body" class="collapsible-body" hidden>
+          <p class="hint" style="font-size:9.5px;margin-bottom:5px">Write geological rules in plain language — one per line. Claude compiles each into a concept embedding with the correct spatial domain.</p>
+          <textarea id="geo-rules-input" rows="5"
+            placeholder="Examples:&#10;Sand/gravel channels trend E-W and are 5-20m wide&#10;Chalk always underlies quaternary deposits&#10;Made ground covers the western half of the site&#10;Dissolution features occur below 10m AOD&#10;River terrace gravel is laterally continuous"
+            style="width:100%;box-sizing:border-box;font-size:10px;background:var(--bg-deep);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:5px;resize:vertical;line-height:1.4"></textarea>
+          <button id="btn-compile-geo-rules" class="btn btn-secondary btn-sm" style="width:100%;margin-top:4px;font-size:10px">
+            ⚡ Compile Geological Rules → Concepts
+          </button>
+          <div id="geo-rules-output" style="display:none;margin-top:5px"></div>
+        </div>
+
         <!-- Concept Library — quick pre-defined templates -->
         <div class="collapsible-hdr" id="concept-lib-toggle" style="margin-top:10px">
           <span>Concept Library <span class="badge-opt">quick templates</span></span>
@@ -1690,6 +1706,17 @@
         <p class="hint" style="font-size:10px;margin-bottom:6px">Detects where formations wedge out laterally — columns where a unit is present adjacent to columns where it is absent.</p>
         <button id="btn-detect-pinchouts" class="btn-secondary btn-sm" style="width:100%;margin-bottom:6px" title="Detect formation pinch-out edges in the current voxel model">⊙ Detect Formation Pinch-outs</button>
         <div id="pinchout-results" style="display:none;font-size:10px"></div>
+      </div>
+
+      <div class="panel-section">
+        <h3>Optimal Drilling Recommendation</h3>
+        <p class="hint" style="font-size:10px;margin-bottom:6px">Identifies the most informative borehole locations by combining model uncertainty with concept-geometry predictions and existing BH coverage.</p>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+          <label style="font-size:10px;color:var(--text-mid)">Locations</label>
+          <input type="number" id="drill-rec-n" value="5" min="1" max="12" step="1" style="width:42px;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px">
+        </div>
+        <button id="btn-recommend-drilling" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:4px" title="Recommend optimal drilling locations using uncertainty + concept geometry">⊕ Recommend Drilling Locations</button>
+        <div id="drill-rec-results" style="display:none;font-size:10px"></div>
       </div>
 
       <div class="panel-section">

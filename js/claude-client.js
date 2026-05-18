@@ -2073,3 +2073,328 @@ export function scoreConceptCoherence(concept, classifiedBH, geoUnits) {
     suggestions,
   };
 }
+
+// ── Geological Laws Compiler ────────────────────────────────────────────────────
+// Parses geological rule statements into structured concept+domain definitions.
+// Each rule becomes one or more concept embeddings ready for ConceptStore.add().
+//
+// Rule types recognised:
+//   superposition: "A always overlies B" → temporal ordering constraint
+//   morphological:  "channels trend E-W, 5-20m wide" → embedding + optional bbox
+//   facies:         "sand only below 5m AOD" → depth-domain concept
+//   contact:        "chalk contact is irregular/dissolution" → unit-affinity concept
+//   regional:       "till covers western half" → bbox-domain concept
+//
+// Returns [{description, embedding: Float32Array(32), domain, unitAffinity,
+//           confidence, temporalOrder, ruleText, ruleType}]
+export async function compileGeologicalRules(rulesText, geoUnits, bounds, apiKey, demoMode) {
+  if (!rulesText?.trim()) return [];
+  if (demoMode || !apiKey) return _demoCompileRules(rulesText, geoUnits, bounds);
+
+  const unitList  = geoUnits.map(u => `${u.code} (${u.name})`).join(', ');
+  const siteW     = bounds ? Math.round(bounds.maxX - bounds.minX) : 200;
+  const siteH     = bounds ? Math.round(bounds.maxY - bounds.minY) : 200;
+  const axisNames = CONCEPT_AXES.join(', ');
+
+  const prompt = `You are a geological modelling expert compiling geological rule statements into semantic concept embeddings for a neural implicit geological model.
+
+SITE UNITS: ${unitList || 'not specified'}
+SITE SIZE: approximately ${siteW}m E-W × ${siteH}m N-S
+AVAILABLE EMBEDDING AXES (index 0–31): [${axisNames}]
+
+GEOLOGICAL RULES TO COMPILE:
+"""
+${rulesText}
+"""
+
+For each distinct geological rule, output one JSON object. If a rule implies multiple geometric aspects, split into separate concept objects. Output a JSON array:
+[{
+  "ruleText": "the original rule sentence",
+  "ruleType": "superposition" | "morphological" | "facies" | "contact" | "regional",
+  "description": "concise geological concept description (max 80 chars)",
+  "embedding": [32 floats, −1 to +1, index matching the axes list above],
+  "domain": one of:
+    {"type":"global"} — applies everywhere
+    {"type":"global","minZ":N,"maxZ":N,"sigmaZ":N} — depth-constrained (metres AOD)
+    {"type":"bbox","minX":N,"maxX":N,"minY":N,"maxY":N,"sigma":N} — spatial sub-domain
+  "unitAffinity": [] or [unit codes from site units that this rule specifically governs],
+  "confidence": 0.5–0.95,
+  "temporalOrder": null or integer (0=oldest; higher=younger; use only if the rule explicitly states age/time relationships)
+}]
+Rules with no clear spatial constraint → type global.
+Superposition rules: set temporalOrder (older unit gets lower number).
+Facies/depth rules: use minZ/maxZ domain.
+Regional rules: estimate bbox fractions from direction words (e.g. "western half" → minX=site_minX, maxX=site_minX+siteW/2).
+Respond with ONLY the JSON array. No prose, no markdown fences.`;
+
+  try {
+    const resp = await _claudeRequest([{ role: 'user', content: prompt }], apiKey, MODEL, 1600);
+    const text = resp.content?.[0]?.text ?? '';
+    const raw  = text.match(/\[[\s\S]*\]/)?.[0] ?? '[]';
+    const arr  = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.map(r => _normaliseCompiledRule(r));
+  } catch (e) {
+    console.warn('compileGeologicalRules error:', e.message);
+    return _demoCompileRules(rulesText, geoUnits, bounds);
+  }
+}
+
+function _normaliseCompiledRule(r) {
+  const emb = new Float32Array(32);
+  if (Array.isArray(r.embedding)) {
+    for (let i = 0; i < 32; i++) emb[i] = Math.max(-1, Math.min(1, +r.embedding[i] || 0));
+  }
+  emb[26] = emb[26] || 0.7; // ensure data_confidence has a value
+  return {
+    ruleText:      r.ruleText      ?? '',
+    ruleType:      r.ruleType      ?? 'morphological',
+    description:   (r.description ?? '').slice(0, 120),
+    embedding:     emb,
+    domain:        r.domain        ?? { type: 'global' },
+    unitAffinity:  Array.isArray(r.unitAffinity) ? r.unitAffinity : [],
+    confidence:    Math.max(0.3, Math.min(1, +(r.confidence ?? 0.75))),
+    temporalOrder: r.temporalOrder !== null && r.temporalOrder !== undefined
+                     ? Number(r.temporalOrder) : null,
+  };
+}
+
+function _demoCompileRules(rulesText, geoUnits, bounds) {
+  // Pattern-based rule compilation when no API key available
+  const lines  = rulesText.split(/\n+/).map(l => l.trim()).filter(Boolean);
+  const rules  = [];
+  const unitsByCode = {};
+  geoUnits.forEach(u => { unitsByCode[u.code.toLowerCase()] = u.code; });
+  const unitCodes = Object.values(unitsByCode);
+
+  const siteW = bounds ? bounds.maxX - bounds.minX : 200;
+  const siteH = bounds ? bounds.maxY - bounds.minY : 200;
+  const ox    = bounds?.minX ?? 0;
+  const oy    = bounds?.minY ?? 0;
+
+  for (const line of lines) {
+    const d = line.toLowerCase();
+    const emb = new Float32Array(32);
+    emb[26] = 0.7;
+    let domain        = { type: 'global' };
+    let unitAffinity  = [];
+    let temporalOrder = null;
+    let ruleType      = 'morphological';
+    let description   = line.slice(0, 80);
+
+    // Superposition / temporal rules
+    const overMatch = d.match(/(\w+)\s+(always|typically)\s+overlies?\s+(\w+)/);
+    const underMatch = d.match(/(\w+)\s+(always|typically)\s+underlies?\s+(\w+)/);
+    if (overMatch || underMatch) {
+      ruleType = 'superposition';
+      const [, young, , old] = overMatch ?? [, underMatch[3], , underMatch[1]];
+      temporalOrder = overMatch ? 1 : 0; // relative
+      const matchedY = unitCodes.find(c => d.includes(c.toLowerCase()));
+      if (matchedY) { unitAffinity = [matchedY]; temporalOrder = 1; }
+      emb[0] = 0.5; emb[9] = 0.5; // horizontal continuity
+      description = line.slice(0, 80);
+    }
+
+    // Channel/morphological rules
+    if (/channel|palaeochannel/.test(d)) {
+      ruleType = 'morphological';
+      emb[5] = 1.0; emb[8] = 0.9; emb[29] = 0.7; emb[27] = 0.9; emb[0] = -0.7;
+      if (/e.?w|east.?west/.test(d)) { emb[3] = 0.9; emb[4] = -0.5; }
+      if (/n.?s|north.?south/.test(d)) { emb[4] = 0.9; emb[3] = -0.5; }
+      if (/ne.?sw|northeast/.test(d)) { emb[3] = 0.65; emb[4] = 0.65; }
+    }
+
+    // Dissolution / karst
+    if (/dissolution|karst|irregular/.test(d) && /chalk|limestone|rockhead/.test(d)) {
+      ruleType = 'contact';
+      emb[19] = 0.8; emb[24] = 0.9; emb[8] = 0.7; emb[25] = 0.5;
+    }
+
+    // Fault / stepped
+    if (/fault|step|offset/.test(d)) {
+      ruleType = 'contact';
+      emb[7] = 1.0; emb[18] = 0.9; emb[25] = 0.7;
+    }
+
+    // Horizontal / bedded / continuous
+    if (/horizontal|bedded|continuous|laterally\s+continuous/.test(d)) {
+      emb[0] = 0.9; emb[9] = 0.9; emb[28] = 0.6;
+    }
+
+    // Depth rules
+    const depthMatch = d.match(/(?:below|above|between|from)\s+([-\d.]+)\s*(?:m|metre)\s*(?:aod|od)?/);
+    if (depthMatch) {
+      ruleType = 'facies';
+      const z = parseFloat(depthMatch[1]);
+      if (/below/.test(d))  domain = { type: 'global', maxZ: z, sigmaZ: 2 };
+      if (/above/.test(d))  domain = { type: 'global', minZ: z, sigmaZ: 2 };
+    }
+
+    // Regional rules
+    if (/western|west\s+half|west\s+side/.test(d)) {
+      ruleType = 'regional';
+      domain = { type: 'bbox', minX: ox, maxX: ox + siteW * 0.5, minY: oy, maxY: oy + siteH, sigma: siteW * 0.15 };
+    } else if (/eastern|east\s+half|east\s+side/.test(d)) {
+      ruleType = 'regional';
+      domain = { type: 'bbox', minX: ox + siteW * 0.5, maxX: ox + siteW, minY: oy, maxY: oy + siteH, sigma: siteW * 0.15 };
+    } else if (/northern|north\s+half/.test(d)) {
+      ruleType = 'regional';
+      domain = { type: 'bbox', minX: ox, maxX: ox + siteW, minY: oy + siteH * 0.5, maxY: oy + siteH, sigma: siteH * 0.15 };
+    } else if (/southern|south\s+half/.test(d)) {
+      ruleType = 'regional';
+      domain = { type: 'bbox', minX: ox, maxX: ox + siteW, minY: oy, maxY: oy + siteH * 0.5, sigma: siteH * 0.15 };
+    }
+
+    // Unit affinity detection from code mentions
+    for (const code of unitCodes) {
+      if (d.includes(code.toLowerCase()) && !unitAffinity.includes(code)) {
+        unitAffinity.push(code);
+      }
+    }
+
+    // Clamp
+    for (let i = 0; i < 32; i++) emb[i] = Math.max(-1, Math.min(1, emb[i]));
+
+    rules.push({ ruleText: line, ruleType, description, embedding: emb, domain, unitAffinity, confidence: 0.75, temporalOrder });
+  }
+  return rules;
+}
+
+// ── Optimal Drilling Recommendation ────────────────────────────────────────────
+// Identifies the most informative borehole locations given the current model
+// uncertainty map, active concept geometry predictions, and existing BH coverage.
+//
+// Algorithm:
+//   1. Build a 2D uncertainty surface (max certainty across depth column, inverted)
+//   2. Apply concept-geometry weighting: prefer high-uncertainty zones that concepts
+//      predict are geometrically significant (channels, fault zones, pinch-outs)
+//   3. Apply BH coverage penalty: avoid zones already well-sampled
+//   4. Pick the N highest-scoring grid cells, enforce minimum spacing
+//
+// Returns [{x, y, score, reason, conceptContext}]
+export function recommendDrillingLocations(grid, geoUnits, conceptStore, nLocations = 5) {
+  if (!grid || !grid.certainty || !grid.nx) return [];
+  const { nx, ny, nz, cellSize, cellHeight, origin, certainty, unitIds } = grid;
+
+  // 2D uncertainty: per (ix, iy) — minimum certainty in the column
+  const colUncert  = new Float32Array(nx * ny);
+  const colUnitDiv = new Float32Array(nx * ny); // unit diversity (# distinct units in column)
+
+  for (let ix = 0; ix < nx; ix++) {
+    for (let iy = 0; iy < ny; iy++) {
+      let minC = 1, prevUnit = -1, divCount = 0;
+      for (let iz = 0; iz < nz; iz++) {
+        const idx = ix + iy * nx + iz * nx * ny;
+        minC = Math.min(minC, certainty[idx]);
+        if (unitIds[idx] !== prevUnit) { divCount++; prevUnit = unitIds[idx]; }
+      }
+      const flat2 = ix + iy * nx;
+      colUncert[flat2]  = 1 - minC;
+      colUnitDiv[flat2] = Math.min(1, divCount / Math.max(1, nz * 0.3));
+    }
+  }
+
+  // BH coverage penalty: voxels within one cell radius of a real BH get suppressed
+  const bhPenalty = new Float32Array(nx * ny).fill(1.0);
+  if (grid._boreholes?.length) {
+    for (const bh of grid._boreholes) {
+      if (bh.synthetic) continue;
+      const bix = Math.round((bh.x - origin.x) / cellSize - 0.5);
+      const biy = Math.round((bh.y - origin.z) / cellSize - 0.5);
+      for (let dx = -2; dx <= 2; dx++) {
+        for (let dy = -2; dy <= 2; dy++) {
+          const px = bix + dx, py = biy + dy;
+          if (px < 0 || px >= nx || py < 0 || py >= ny) continue;
+          const dist = Math.hypot(dx, dy);
+          bhPenalty[px + py * nx] *= Math.min(1, dist * 0.3);
+        }
+      }
+    }
+  }
+
+  // Concept geometry score: favour regions where concepts predict geometric interest
+  const conceptScore = new Float32Array(nx * ny).fill(0.5);
+  if (conceptStore && !conceptStore.isEmpty) {
+    for (let ix = 0; ix < nx; ix++) {
+      for (let iy = 0; iy < ny; iy++) {
+        const wx = origin.x + ix * cellSize + cellSize * 0.5;
+        const wy = origin.z + iy * cellSize + cellSize * 0.5;
+        const ctx = conceptStore.computeAt(wx, wy, 0);
+        if (!ctx || ctx.totalWeight < 0.05) { conceptScore[ix + iy * nx] = 0.4; continue; }
+        const v = ctx.vec;
+        // High score for zones with channels, faults, karst, contact uncertainty
+        const chanScore  = Math.max(0, v[5] ?? 0);     // channel_morphology
+        const faultScore = Math.max(0, v[7] ?? 0);     // fault_controlled
+        const karsScore  = Math.max(0, v[24] ?? 0);    // dissolution_features
+        const compScore  = Math.max(0, v[25] ?? 0);    // structural_complexity
+        const irregScore = Math.max(0, v[19] ?? 0);    // irregular_base
+        conceptScore[ix + iy * nx] = 0.3 + 0.7 * Math.min(1, chanScore + faultScore * 0.8 + karsScore * 0.9 + compScore * 0.5 + irregScore * 0.4);
+      }
+    }
+  }
+
+  // Combined score: uncertainty × diversity × concept × coverage
+  const scores = new Float32Array(nx * ny);
+  for (let i = 0; i < nx * ny; i++) {
+    scores[i] = colUncert[i] * 0.5 + colUnitDiv[i] * 0.2 + conceptScore[i] * 0.3;
+    scores[i] *= bhPenalty[i];
+  }
+
+  // Pick top N with minimum spacing (4 cells = 4 × cellSize apart)
+  const MIN_SPACING = 4;
+  const picked = [];
+  const used   = new Uint8Array(nx * ny);
+
+  for (let iter = 0; iter < 200 && picked.length < nLocations; iter++) {
+    let best = -1, bestScore = -1;
+    for (let i = 0; i < nx * ny; i++) {
+      if (!used[i] && scores[i] > bestScore) { bestScore = scores[i]; best = i; }
+    }
+    if (best < 0) break;
+
+    const bix = best % nx, biy = Math.floor(best / nx);
+    picked.push(best);
+    // Suppress neighbours within MIN_SPACING
+    for (let dx = -MIN_SPACING; dx <= MIN_SPACING; dx++) {
+      for (let dy = -MIN_SPACING; dy <= MIN_SPACING; dy++) {
+        const px = bix + dx, py = biy + dy;
+        if (px >= 0 && px < nx && py >= 0 && py < ny) used[px + py * nx] = 1;
+      }
+    }
+  }
+
+  return picked.map(flat => {
+    const ix = flat % nx, iy = Math.floor(flat / nx);
+    const wx = origin.x + ix * cellSize + cellSize * 0.5;
+    const wy = origin.z + iy * cellSize + cellSize * 0.5;
+    const unc  = colUncert[flat];
+    const div  = colUnitDiv[flat];
+    const cs   = conceptScore[flat];
+
+    // Gather concept context for reason text
+    let reasonParts = [];
+    if (unc > 0.5) reasonParts.push(`high model uncertainty (${(unc * 100).toFixed(0)}%)`);
+    if (div > 0.4) reasonParts.push('multiple unit transitions in column');
+    if (cs > 0.65) {
+      if (conceptStore && !conceptStore.isEmpty) {
+        const ctx = conceptStore.computeAt(wx, wy, 0);
+        if (ctx?.vec) {
+          const v = ctx.vec;
+          if ((v[5] ?? 0) > 0.5) reasonParts.push('concept predicts channel zone');
+          if ((v[7] ?? 0) > 0.5) reasonParts.push('concept predicts fault proximity');
+          if ((v[24] ?? 0) > 0.5) reasonParts.push('concept predicts dissolution features');
+          if ((v[25] ?? 0) > 0.5) reasonParts.push('complex structural context');
+        }
+      }
+    }
+    const reason = reasonParts.length ? reasonParts.join('; ') : 'uncertain zone with sparse BH coverage';
+
+    return {
+      x:     +wx.toFixed(1),
+      y:     +wy.toFixed(1),
+      score: +scores[flat].toFixed(3),
+      uncert: +unc.toFixed(2),
+      reason,
+    };
+  });
+}

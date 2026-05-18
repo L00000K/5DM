@@ -37,7 +37,7 @@ import { parseSectionFromText, sectionToVirtualBoreholes,
 import { SectionSketch } from './section-sketch.js';
 import { FourierEncoder, measureConceptGeometry, analyzeBoreholeGeometry } from './geo-implicit.js';
 import { ConceptStore, CONCEPT_AXES } from './concept-store.js';
-import { encodeGeologicalConcept, refineConceptsWithClaude, extractConceptsFromText, analyseBoreholeGaps, setupConceptsFromSiteDescription, analyseUnitSimilarity } from './claude-client.js';
+import { encodeGeologicalConcept, refineConceptsWithClaude, extractConceptsFromText, analyseBoreholeGaps, setupConceptsFromSiteDescription, analyseUnitSimilarity, compileGeologicalRules, recommendDrillingLocations } from './claude-client.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -654,6 +654,7 @@ function initReset() {
     setEnabled('btn-compare-methods', false);
     setEnabled('btn-assess-risk', false);
     setEnabled('btn-drill-plan', false);
+    setEnabled('btn-recommend-drilling', false);
     setEnabled('btn-strat-corr', false);
     setEnabled('btn-plan-view', false);
     setEnabled('btn-export-contacts', false);
@@ -990,6 +991,8 @@ function initBuildModel() {
       }
       // Cache trained neural model for fast concept-ensemble re-inference
       AppState.trainedModel = AppState.voxelGrid?.trainedModel ?? null;
+      // Store borehole refs on grid for drilling recommendation BH coverage penalty
+      if (AppState.voxelGrid) AppState.voxelGrid._boreholes = bhForModel;
 
       // Build 3D parameter volumes (SPT, cu, phi, gamma) from borehole test data
       if (AppState.voxelGrid) {
@@ -1040,6 +1043,7 @@ function initBuildModel() {
       setEnabled('btn-compare-methods', true);
       setEnabled('btn-assess-risk', true);
       setEnabled('btn-drill-plan', true);
+      setEnabled('btn-recommend-drilling', true);
       setEnabled('btn-strat-corr', AppState.classifiedBH.filter(b => !b.synthetic).length >= 2);
       setEnabled('btn-plan-view', true);
       setEnabled('btn-export-contacts', true);
@@ -4747,6 +4751,47 @@ function initRiskAssessment() {
     log(`Pinch-out detection: ${pinchMap.size} units with lateral terminations`, 'info');
   });
 
+  document.getElementById('btn-recommend-drilling')?.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('Build the 3D model first.', 'warn'); return; }
+    const resEl = document.getElementById('drill-rec-results');
+    const n = parseInt(document.getElementById('drill-rec-n')?.value ?? '5') || 5;
+
+    try {
+      const recs = recommendDrillingLocations(grid, AppState.geoUnits, AppState.conceptStore, n);
+      if (!recs.length) {
+        if (resEl) { resEl.style.display = 'block'; resEl.innerHTML = '<p class="hint" style="font-size:10px">No recommendations — model uncertainty is uniformly low.</p>'; }
+        return;
+      }
+
+      const unitById = {};
+      AppState.geoUnits.forEach(u => { unitById[u.id] = u; });
+
+      const rows = recs.map((r, i) => {
+        const uncPct = Math.round(r.uncert * 100);
+        const bar = `<div style="display:inline-block;width:${uncPct}px;max-width:80px;height:5px;background:var(--red);border-radius:2px;vertical-align:middle"></div>`;
+        return `<div style="padding:5px;border:1px solid var(--border);border-radius:4px;margin-bottom:4px">
+          <div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">
+            <span style="font-size:11px;font-weight:600;color:var(--accent)">${i + 1}</span>
+            <span style="font-family:var(--font-mono);font-size:9.5px;color:var(--text-primary)">E ${r.x.toFixed(0)}m &nbsp; N ${r.y.toFixed(0)}m</span>
+            <span style="margin-left:auto;font-size:9px;color:var(--text-dim)">${bar} ${uncPct}% uncert</span>
+          </div>
+          <div style="font-size:9px;color:var(--text-mid);line-height:1.4">${escHtml(r.reason)}</div>
+        </div>`;
+      });
+
+      if (resEl) {
+        resEl.style.display = 'block';
+        resEl.innerHTML = `<div style="font-size:10px;font-weight:600;color:var(--text-mid);margin-bottom:5px">
+          ${recs.length} recommended location(s) <span style="font-size:9px;font-weight:400">(uncertainty + concept geometry + BH coverage)</span>
+        </div>${rows.join('')}`;
+      }
+      log(`Drilling recommendation: ${recs.length} optimal location(s) identified`, 'ok');
+    } catch (e) {
+      log(`Drilling recommendation failed: ${e.message}`, 'error');
+    }
+  });
+
   document.getElementById('btn-assess-risk')?.addEventListener('click', () => {
     if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
     const gwt = parseFloat(document.getElementById('gwt-elevation')?.value ?? '') || null;
@@ -7115,6 +7160,52 @@ function initConceptPanel() {
       } finally {
         extBtn.disabled = false;
         extBtn.textContent = '✦ Extract concepts from text';
+      }
+    });
+  })();
+
+  // ── Geological Laws Compiler ─────────────────────────────────────────────────
+  (() => {
+    const toggle    = document.getElementById('geo-rules-toggle');
+    const body      = document.getElementById('geo-rules-body');
+    const compileBtn = document.getElementById('btn-compile-geo-rules');
+    const rulesArea  = document.getElementById('geo-rules-input');
+    const rulesOut   = document.getElementById('geo-rules-output');
+
+    toggle?.addEventListener('click', () => {
+      const hidden = body?.hasAttribute('hidden');
+      if (hidden) body?.removeAttribute('hidden'); else body?.setAttribute('hidden', '');
+      const arrow = toggle.querySelector('.collapse-arrow');
+      if (arrow) arrow.textContent = hidden ? '⌄' : '›';
+    });
+
+    compileBtn?.addEventListener('click', async () => {
+      const text = rulesArea?.value?.trim();
+      if (!text) { log('Enter geological rules first.', 'warn'); return; }
+      compileBtn.disabled = true;
+      compileBtn.textContent = '⟳ Compiling rules…';
+      if (rulesOut) { rulesOut.style.display = 'none'; rulesOut.innerHTML = ''; }
+
+      try {
+        const grid = AppState.voxelGrid;
+        const bounds = grid ? {
+          minX: grid.origin.x, maxX: grid.origin.x + grid.nx * grid.cellSize,
+          minY: grid.origin.z, maxY: grid.origin.z + grid.ny * grid.cellSize,
+        } : null;
+        const compiled = await compileGeologicalRules(
+          text, AppState.geoUnits, bounds, AppState.apiKey, AppState.demoMode
+        );
+        if (!compiled.length) {
+          if (rulesOut) { rulesOut.style.display = 'block'; rulesOut.innerHTML = '<p class="hint" style="font-size:10px">No rules could be parsed from the input.</p>'; }
+          return;
+        }
+        _renderCompiledRules(compiled, rulesOut);
+        log(`${compiled.length} geological rule(s) compiled`, 'ok');
+      } catch (err) {
+        log(`Rule compilation failed: ${err.message}`, 'error');
+      } finally {
+        compileBtn.disabled = false;
+        compileBtn.textContent = '⚡ Compile Geological Rules → Concepts';
       }
     });
   })();
@@ -9744,6 +9835,71 @@ function _showConceptGeometryReport(geoCheck) {
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = '✦ Ask AI to suggest concept refinements'; }
     }
+  });
+}
+
+function _renderCompiledRules(rules, container) {
+  if (!container) return;
+  const ruleTypeIcon = { superposition: '⇅', morphological: '⬡', facies: '⊟', contact: '⚡', regional: '▣' };
+  const ruleTypeLabel = { superposition: 'Superposition', morphological: 'Morphological', facies: 'Facies/Depth', contact: 'Contact', regional: 'Regional' };
+
+  let html = `<div style="font-size:10px;font-weight:600;color:var(--text-mid);margin-bottom:5px">${rules.length} compiled rule(s)</div>`;
+  rules.forEach((r, i) => {
+    const icon  = ruleTypeIcon[r.ruleType] ?? '⬡';
+    const label = ruleTypeLabel[r.ruleType] ?? r.ruleType;
+    const domainStr = r.domain?.type === 'global'
+      ? (r.domain.minZ !== undefined || r.domain.maxZ !== undefined
+          ? `Depth ${r.domain.minZ ?? '?'}–${r.domain.maxZ ?? '?'} m AOD` : 'Global')
+      : `Spatial bbox`;
+    const affinityStr = r.unitAffinity?.length ? ` · Units: ${r.unitAffinity.join(', ')}` : '';
+    const tempStr = r.temporalOrder !== null && r.temporalOrder !== undefined
+      ? ` · Temporal rank ${r.temporalOrder}` : '';
+
+    // Embedding sparkline
+    const bars = Array.from(r.embedding).map((v, ai) => {
+      const pct = Math.round(Math.abs(v) * 100);
+      const col = v >= 0 ? 'var(--accent)' : 'var(--red)';
+      return `<div style="width:3px;height:${pct}%;background:${col};flex-shrink:0" title="${CONCEPT_AXES[ai]}: ${v.toFixed(2)}"></div>`;
+    }).join('');
+
+    html += `<div style="padding:5px;border:1px solid var(--border);border-radius:4px;margin-bottom:4px;font-size:10px">
+      <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+        <span style="font-size:11px">${icon}</span>
+        <span style="font-weight:600;color:var(--accent)">${escHtml(label)}</span>
+        <span style="font-size:9px;color:var(--text-dim);margin-left:auto">${escHtml(domainStr)}${affinityStr}${tempStr}</span>
+      </div>
+      <div style="font-style:italic;color:var(--text-mid);font-size:9.5px;margin-bottom:3px">"${escHtml(r.ruleText)}"</div>
+      <div style="font-size:9.5px;color:var(--text-primary);margin-bottom:3px">→ ${escHtml(r.description)}</div>
+      <div style="display:flex;align-items:flex-end;gap:1px;height:20px;margin-bottom:4px;background:var(--bg-deep);border-radius:2px;padding:2px">
+        ${bars}
+      </div>
+      <button class="btn-ghost btn-sm" style="font-size:9px;width:100%" data-rule-i="${i}">+ Add concept to model</button>
+    </div>`;
+  });
+
+  container.style.display = 'block';
+  container.innerHTML = html;
+
+  container.querySelectorAll('[data-rule-i]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const r = rules[parseInt(btn.dataset.ruleI)];
+      if (!r || !AppState.conceptStore) return;
+      btn.disabled = true;
+      const opts = {
+        description:   r.description,
+        embedding:     r.embedding,
+        confidence:    r.confidence,
+        domain:        r.domain,
+        unitAffinity:  r.unitAffinity,
+        temporalOrder: r.temporalOrder,
+      };
+      AppState.conceptStore.add(opts);
+      _renderConceptList();
+      _updateConceptInfluenceBar();
+      _saveConceptStore();
+      log(`Rule compiled → concept added: "${r.description.slice(0, 60)}"`, 'ok');
+      btn.textContent = '✓ Added';
+    });
   });
 }
 
