@@ -6706,6 +6706,74 @@ function initConceptPanel() {
     }
   });
 
+  document.getElementById('btn-concept-interp-summary')?.addEventListener('click', () => {
+    const outEl = document.getElementById('concept-interp-summary-output');
+    if (!outEl) return;
+    const store = AppState.conceptStore;
+    if (!store || store.isEmpty) {
+      outEl.style.display = 'block';
+      outEl.innerHTML = '<em style="color:var(--text-dim)">No active concepts. Add concepts first.</em>';
+      return;
+    }
+    const concepts = store.concepts;
+
+    // Aggregate embedding weighted by confidence
+    const aggEmb = new Float32Array(32);
+    let totalW = 0;
+    for (const c of concepts) {
+      for (let i = 0; i < 32; i++) aggEmb[i] += c.embedding[i] * c.confidence;
+      totalW += c.confidence;
+    }
+    if (totalW > 0) for (let i = 0; i < 32; i++) aggEmb[i] /= totalW;
+
+    // Translate top axes to geological statements
+    const statements = [];
+    if (aggEmb[3] > 0.4) statements.push(`E-W elongated bodies (×${Math.exp(aggEmb[3] * 1.4).toFixed(1)} stretch)`);
+    if (aggEmb[4] > 0.4) statements.push(`N-S elongated bodies (×${Math.exp(aggEmb[4] * 1.4).toFixed(1)} stretch)`);
+    if (aggEmb[5] > 0.4) statements.push(`Channel morphology: concave-up contacts, narrow bodies`);
+    if (aggEmb[0] > 0.4) statements.push(`Horizontally layered formations with good lateral continuity`);
+    if (aggEmb[8] > 0.4) statements.push(`Erosional contacts expected at unit bases`);
+    if (aggEmb[18] > 0.4) statements.push(`Stepped or fault-controlled boundaries — sharp contacts`);
+    if (aggEmb[7] > 0.4) statements.push(`Fault-controlled geometry — lateral discontinuities`);
+    if (aggEmb[23] > 0.4) statements.push(`Basal gravel lag expected below key contacts`);
+    if (aggEmb[22] > 0.3) statements.push(`Fining-upward grading within units`);
+    if (aggEmb[29] > 0.4) statements.push(`Deep incision — significant relief on formation base`);
+    if (aggEmb[9] > 0.5) statements.push(`High lateral continuity — units likely continuous across site`);
+    if (aggEmb[25] > 0.5) statements.push(`High structural complexity — irregular or variable contacts`);
+    if (aggEmb[19] > 0.4) statements.push(`Irregular formation base — variable rockhead or contact`);
+    if (aggEmb[6] > 0.4) statements.push(`Doming or anticlinal structure`);
+    if (aggEmb[24] > 0.3) statements.push(`Possible dissolution / karst features`);
+
+    // Depth trend
+    const deepE = aggEmb[14] - aggEmb[15], deepN = aggEmb[16] - aggEmb[17];
+    if (Math.abs(deepE) > 0.3) statements.push(`Formation deepens ${deepE > 0 ? 'to the east' : 'to the west'}`);
+    if (Math.abs(deepN) > 0.3) statements.push(`Formation deepens ${deepN > 0 ? 'to the north' : 'to the south'}`);
+
+    // Units involved
+    const allAffinity = [...new Set(concepts.flatMap(c => c.unitAffinity ?? []))];
+    const unitsSentence = allAffinity.length > 0
+      ? `This model targets unit${allAffinity.length > 1 ? 's' : ''} <b>${allAffinity.map(escHtml).join(', ')}</b>.`
+      : 'Concepts apply to all geological units globally.';
+
+    // Temporal summary
+    const withTemporal = concepts.filter(c => c.temporalOrder != null).sort((a, b) => a.temporalOrder - b.temporalOrder);
+    const chronologySentence = withTemporal.length >= 2
+      ? `Temporal order: ${withTemporal.map(c => `<b>${escHtml(c.description.slice(0, 30))}</b>`).join(' → ')} (oldest → youngest).`
+      : '';
+
+    const summaryLines = statements.length > 0
+      ? statements.map(s => `<li>${escHtml(s)}</li>`).join('')
+      : '<li style="color:var(--text-dim)">No dominant geometric patterns detected</li>';
+
+    outEl.style.display = 'block';
+    outEl.innerHTML = `
+      <div style="font-weight:600;color:var(--accent);margin-bottom:4px">Conceptual model predicts:</div>
+      <ul style="margin:0 0 6px 14px;padding:0;list-style:disc">${summaryLines}</ul>
+      <div style="color:var(--text-mid);margin-bottom:3px">${unitsSentence}</div>
+      ${chronologySentence ? `<div style="color:var(--text-mid)">${chronologySentence}</div>` : ''}
+      <div style="color:var(--text-dim);margin-top:5px;font-style:italic">${concepts.length} active concept${concepts.length !== 1 ? 's' : ''} · avg confidence ${(totalW / concepts.length * 100).toFixed(0)}%</div>`;
+  });
+
   document.addEventListener('geomodel:model-built', () => {
     setEnabled('btn-show-concept-influence', !!(AppState.voxelGrid?.conceptInfluence));
     setEnabled('btn-show-dominant-concept', !!(AppState.voxelGrid?.conceptInfluence));

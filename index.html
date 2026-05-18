@@ -561,7 +561,12 @@
             title="Re-infer without concepts and highlight voxels where semantic knowledge changed the prediction">
             ⊕ Concept effect map
           </button>
+          <button id="btn-concept-interp-summary" class="btn btn-secondary btn-sm" style="flex:1;font-size:10px"
+            title="Instantly describe what the active concepts predict about the site geology — no model build needed">
+            ✦ Interpret
+          </button>
         </div>
+        <div id="concept-interp-summary-output" style="display:none;margin-top:6px;font-size:9.5px;background:var(--bg-surface);border-radius:4px;padding:6px;border:1px solid var(--border)"></div>
 
         <!-- Export / Import concept store -->
         <div class="btn-row" style="margin-top:4px;gap:4px">
