@@ -3977,7 +3977,9 @@ function initSemanticModel() {
           const stmt = cd.statement ?? cd;
           if (!stmt?.trim()) continue;
           try {
-            const emb = await encodeGeologicalConcept(stmt, AppState.apiKey, AppState.demoMode);
+            const emb = await encodeGeologicalConcept(stmt, AppState.apiKey, AppState.demoMode, {
+              siteContext: { units: AppState.geoUnits.map(u => ({ code: u.code, name: u.name })), description: AppState.siteContext?.description ?? '' },
+            });
             AppState.conceptStore.add({
               description:  stmt,
               embedding:    emb,
@@ -6477,7 +6479,11 @@ function initConceptPanel() {
     const warnEl = document.getElementById('concept-encode-warnings');
     if (warnEl) { warnEl.style.display = 'none'; warnEl.innerHTML = ''; }
     try {
-      const emb  = await encodeGeologicalConcept(text, AppState.apiKey, AppState.demoMode);
+      const siteContext = {
+        units: AppState.geoUnits.map(u => ({ code: u.code, name: u.name })),
+        description: AppState.siteContext?.description ?? '',
+      };
+      const emb  = await encodeGeologicalConcept(text, AppState.apiKey, AppState.demoMode, { siteContext });
       const conf = parseFloat(confidence?.value ?? 0.7);
 
       // ── Pre-add checks ───────────────────────────────────────────────────────

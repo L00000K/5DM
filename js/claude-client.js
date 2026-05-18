@@ -859,10 +859,12 @@ function defaultUnits() {
 // Claude rates the concept on 32 geological geometry axes (−1 to +1).
 // Demo mode uses keyword heuristics when no API key is provided.
 // Returns Float32Array(32).
-export async function encodeGeologicalConcept(description, apiKey, demoMode) {
+// options.siteContext: { units: [{code, name}], description: string }
+export async function encodeGeologicalConcept(description, apiKey, demoMode, options = {}) {
   if (demoMode || !apiKey) {
     return _demoConceptEmbedding(description);
   }
+  const { siteContext } = options;
 
   const AXIS_HINTS = [
     'flat horizontal beds (+) vs structureless/massive (−)',
@@ -916,7 +918,8 @@ export async function encodeGeologicalConcept(description, apiKey, demoMode) {
         content: `Rate the following geological concept on each of the 32 morphological geometry axes.
 Use values: −1.0 = strongly absent or opposite sense, 0.0 = neutral/not applicable, +1.0 = strongly present/dominant.
 Be generous with non-zero values when the concept implies a clear geometric tendency.
-
+${siteContext?.units?.length ? `\nSite geological units (for context): ${siteContext.units.map(u => `${u.code} (${u.name})`).join(', ')}.` : ''}
+${siteContext?.description ? `\nSite description: ${siteContext.description.slice(0, 300)}` : ''}
 Concept: "${description}"
 
 Axes (index: name: geometric meaning):

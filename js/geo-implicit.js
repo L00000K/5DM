@@ -762,7 +762,10 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
         const inp = new Float32Array(nIn);
         inp.set(pos);
         inp.set(ctx.vec, fourierEnc.outDim);
-        samples.push({ inp, target: tiInt, weight: w * ctx.totalWeight });
+        // Scale weight by data_confidence axis (26): 0=uncertain concept, 1=high confidence.
+        // Concepts with low data_confidence should guide geometry more weakly.
+        const dataConf = Math.max(0.2, (ctx.vec[26] + 1) / 2); // −1..+1 → 0.1..1.0
+        samples.push({ inp, target: tiInt, weight: w * ctx.totalWeight * dataConf });
       };
 
       for (const [ti, pts] of Object.entries(unitBHs)) {
