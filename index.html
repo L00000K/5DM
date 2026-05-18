@@ -683,6 +683,19 @@
           <div id="concept-corr-legend" style="font-size:9px;color:var(--text-dim);margin-top:4px;text-align:center"></div>
         </div>
 
+        <!-- Concept Manifold — 2D PCA projection of concept embeddings -->
+        <div class="collapsible-hdr" id="concept-manifold-toggle" style="margin-top:8px">
+          <span>Concept Similarity Map <span class="badge-opt">2D PCA</span></span>
+          <span class="collapse-arrow">›</span>
+        </div>
+        <div id="concept-manifold-body" class="collapsible-body" hidden>
+          <p class="hint" style="margin-bottom:4px;font-size:10px">
+            Projects all concept embeddings to 2D via PCA. Close dots = semantically similar concepts. Hover to see concept name.
+          </p>
+          <canvas id="concept-manifold-canvas" width="240" height="200" style="display:block;margin:0 auto;border-radius:4px;background:#192330;cursor:crosshair"></canvas>
+          <div id="concept-manifold-tooltip" style="font-size:9px;color:var(--text-dim);margin-top:3px;text-align:center;min-height:14px"></div>
+        </div>
+
         <!-- Geological Events Timeline — Leapfrog-style chronological ordering -->
         <div class="collapsible-hdr" id="geo-events-toggle" style="margin-top:10px">
           <span>Geological Event Timeline <span class="badge-opt">Leapfrog-style</span></span>

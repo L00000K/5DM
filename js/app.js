@@ -6566,6 +6566,19 @@ function initConceptPanel() {
     });
   }
 
+  // Wire concept manifold (2D PCA) collapsible
+  const manifoldToggle = document.getElementById('concept-manifold-toggle');
+  const manifoldBody   = document.getElementById('concept-manifold-body');
+  if (manifoldToggle && manifoldBody) {
+    manifoldToggle.addEventListener('click', () => {
+      const hidden = manifoldBody.hasAttribute('hidden');
+      if (hidden) { manifoldBody.removeAttribute('hidden'); _drawConceptManifold(); }
+      else manifoldBody.setAttribute('hidden', '');
+      const arrow = manifoldToggle.querySelector('.collapse-arrow');
+      if (arrow) arrow.textContent = hidden ? '⌄' : '›';
+    });
+  }
+
   // Wire scenario section toggle
   const scToggle = document.getElementById('concept-scenario-toggle');
   const scBody   = document.getElementById('concept-scenario-body');
@@ -7840,9 +7853,12 @@ export function _renderConceptList() {
   _renderConceptConflicts();
   // Update 3D scene concept domain boxes (only bbox concepts show a 3D marker)
   AppState.scene?.drawConceptDomains?.(AppState.conceptStore);
-  // Refresh correlation matrix if panel is open
+  // Refresh correlation matrix and manifold map if panels are open
   if (!document.getElementById('concept-corr-body')?.hasAttribute('hidden')) {
     _drawConceptCorrelationMatrix();
+  }
+  if (!document.getElementById('concept-manifold-body')?.hasAttribute('hidden')) {
+    _drawConceptManifold();
   }
 }
 
@@ -8512,6 +8528,143 @@ function _drawConceptCorrelationMatrix() {
   // Color scale legend
   const legEl = document.getElementById('concept-corr-legend');
   if (legEl) legEl.textContent = `${N} concepts · red=positive · blue=negative correlation across axes`;
+}
+
+// ── Concept similarity map — 2D PCA of 32-dim embeddings ─────────────────────
+// Projects each concept's effective embedding (with inheritance) to 2D via PCA.
+// Points close together = semantically similar concepts.
+function _drawConceptManifold() {
+  const canvas = document.getElementById('concept-manifold-canvas');
+  const tooltip = document.getElementById('concept-manifold-tooltip');
+  if (!canvas) return;
+  const store = AppState.conceptStore;
+  const ctx2  = canvas.getContext('2d');
+  ctx2.clearRect(0, 0, canvas.width, canvas.height);
+  ctx2.fillStyle = '#192330';
+  ctx2.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (!store || store.isEmpty) {
+    ctx2.fillStyle = '#4a6275';
+    ctx2.font = '11px Inter, sans-serif';
+    ctx2.textAlign = 'center';
+    ctx2.fillText('No concepts encoded', canvas.width / 2, canvas.height / 2);
+    return;
+  }
+
+  const concepts = store.concepts;
+  const DIM = 32;
+
+  // Collect effective embeddings (with inheritance)
+  const vecs = concepts.map(c => Array.from(store._effectiveEmbedding(c)));
+
+  // ── 2D PCA: compute covariance, find top 2 eigenvectors by power iteration ──
+  const N = vecs.length;
+  if (N < 2) {
+    ctx2.fillStyle = '#4a6275';
+    ctx2.font = '11px Inter, sans-serif';
+    ctx2.textAlign = 'center';
+    ctx2.fillText('Need ≥ 2 concepts for PCA', canvas.width / 2, canvas.height / 2);
+    return;
+  }
+
+  // Mean-centre the data
+  const mean = new Array(DIM).fill(0);
+  for (const v of vecs) for (let i = 0; i < DIM; i++) mean[i] += v[i] / N;
+  const centred = vecs.map(v => v.map((x, i) => x - mean[i]));
+
+  // Power iteration to find first 2 eigenvectors of covariance matrix
+  function powerIter(data, iters = 50) {
+    let v = new Array(DIM).fill(0); v[0] = 1;
+    for (let it = 0; it < iters; it++) {
+      const next = new Array(DIM).fill(0);
+      for (const x of data) {
+        const dot = x.reduce((s, xi, i) => s + xi * v[i], 0);
+        for (let i = 0; i < DIM; i++) next[i] += dot * x[i];
+      }
+      const norm = Math.sqrt(next.reduce((s, x) => s + x * x, 0)) + 1e-9;
+      v = next.map(x => x / norm);
+    }
+    return v;
+  }
+
+  const pc1 = powerIter(centred);
+  // Deflate data for PC2
+  const deflated = centred.map(x => {
+    const d = x.reduce((s, xi, i) => s + xi * pc1[i], 0);
+    return x.map((xi, i) => xi - d * pc1[i]);
+  });
+  const pc2 = powerIter(deflated);
+
+  // Project
+  const proj = centred.map(x => [
+    x.reduce((s, xi, i) => s + xi * pc1[i], 0),
+    x.reduce((s, xi, i) => s + xi * pc2[i], 0),
+  ]);
+
+  const xs = proj.map(p => p[0]), ys = proj.map(p => p[1]);
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  const yMin = Math.min(...ys), yMax = Math.max(...ys);
+  const xRange = xMax - xMin || 1, yRange = yMax - yMin || 1;
+
+  const PAD = 20;
+  const toCanv = (px, py) => [
+    PAD + (px - xMin) / xRange * (canvas.width  - PAD * 2),
+    PAD + (py - yMin) / yRange * (canvas.height - PAD * 2),
+  ];
+
+  // Draw axis labels
+  ctx2.fillStyle = '#3a4a5a';
+  ctx2.font = '9px Inter, sans-serif';
+  ctx2.textAlign = 'left';
+  ctx2.fillText('PC1 →', 4, canvas.height - 5);
+  ctx2.save(); ctx2.translate(12, canvas.height - 20);
+  ctx2.rotate(-Math.PI / 2);
+  ctx2.fillText('PC2 ↑', 0, 0);
+  ctx2.restore();
+
+  // Draw concept points with golden-angle hue per index
+  const pointData = [];
+  concepts.forEach((c, ci) => {
+    const [cx, cy] = toCanv(proj[ci][0], proj[ci][1]);
+    const hue = (ci * 137.508 % 360) / 360;
+    ctx2.beginPath();
+    ctx2.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx2.fillStyle = `hsl(${(hue * 360).toFixed(0)},80%,58%)`;
+    ctx2.fill();
+    // Draw inheritance arrow if parent
+    if (c.parentId) {
+      const pi = concepts.findIndex(p => p.id === c.parentId);
+      if (pi >= 0) {
+        const [px, py] = toCanv(proj[pi][0], proj[pi][1]);
+        ctx2.strokeStyle = 'rgba(255,255,255,0.25)';
+        ctx2.lineWidth = 1;
+        ctx2.setLineDash([3, 3]);
+        ctx2.beginPath(); ctx2.moveTo(px, py); ctx2.lineTo(cx, cy); ctx2.stroke();
+        ctx2.setLineDash([]);
+      }
+    }
+    pointData.push({ cx, cy, concept: c });
+  });
+
+  // Short labels (first 12 chars)
+  ctx2.font = '8px Inter, sans-serif';
+  concepts.forEach((c, ci) => {
+    const [cx, cy] = toCanv(proj[ci][0], proj[ci][1]);
+    ctx2.fillStyle = 'rgba(180,200,220,0.9)';
+    ctx2.textAlign = 'center';
+    ctx2.fillText(c.description.slice(0, 14), cx, cy - 9);
+  });
+
+  // Hover: show full concept name
+  canvas.onmousemove = e => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const hit = pointData.find(p => Math.hypot(p.cx - mx, p.cy - my) < 10);
+    if (tooltip) tooltip.textContent = hit
+      ? `${hit.concept.description} (conf ${(hit.concept.confidence * 100).toFixed(0)}%)`
+      : '';
+  };
+  canvas.onmouseleave = () => { if (tooltip) tooltip.textContent = ''; };
 }
 
 // ── Concept interpretation narrative ─────────────────────────────────────────
