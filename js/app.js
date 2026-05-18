@@ -37,7 +37,7 @@ import { parseSectionFromText, sectionToVirtualBoreholes,
 import { SectionSketch } from './section-sketch.js';
 import { FourierEncoder, measureConceptGeometry, analyzeBoreholeGeometry } from './geo-implicit.js';
 import { ConceptStore, CONCEPT_AXES } from './concept-store.js';
-import { encodeGeologicalConcept, refineConceptsWithClaude, extractConceptsFromText, analyseBoreholeGaps, setupConceptsFromSiteDescription } from './claude-client.js';
+import { encodeGeologicalConcept, refineConceptsWithClaude, extractConceptsFromText, analyseBoreholeGaps, setupConceptsFromSiteDescription, analyseUnitSimilarity } from './claude-client.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -4631,6 +4631,42 @@ function initFoundationExport() {
 function initRiskAssessment() {
   const container = document.getElementById('risk-results');
   renderRiskReport(null, container);
+
+  // ── Unit similarity analysis ───────────────────────────────────────────────
+  document.getElementById('btn-unit-similarity')?.addEventListener('click', async () => {
+    const units = AppState.geoUnits.filter(u => u.code !== 'UNKN');
+    if (units.length < 2) { log('Need at least 2 units for similarity analysis.', 'warn'); return; }
+    const btn = document.getElementById('btn-unit-similarity');
+    const resEl = document.getElementById('unit-similarity-results');
+    setEnabled('btn-unit-similarity', false);
+    btn.textContent = '⊛ Analysing…';
+    const apiKey = sessionStorage.getItem('anthropic_api_key') ?? '';
+    try {
+      const { pairs } = await analyseUnitSimilarity(units, apiKey, !apiKey || AppState.demoMode);
+      resEl.style.display = '';
+      if (!pairs.length) {
+        resEl.innerHTML = '<p style="color:var(--text-muted);font-style:italic">No similar unit pairs detected — all units appear distinct.</p>';
+        log('Unit similarity: all units appear distinct.', 'ok');
+      } else {
+        resEl.innerHTML = pairs.map(p => {
+          const pct = Math.round(p.similarity * 100);
+          const col = pct >= 88 ? 'var(--error)' : pct >= 72 ? 'var(--warn)' : 'var(--text-mid)';
+          return `<div style="border-left:3px solid ${col};padding:4px 6px;margin-bottom:5px;background:var(--bg-surface)">
+            <div style="font-weight:600;color:${col}">${p.codeA} ↔ ${p.codeB} <span style="font-weight:400;float:right">${pct}%</span></div>
+            <div style="color:var(--text-mid);margin-top:2px">${p.nameA} / ${p.nameB}</div>
+            ${p.sharedTokens?.length ? `<div style="color:var(--text-muted);font-size:9px;margin-top:2px">Shared: ${p.sharedTokens.slice(0, 6).join(', ')}</div>` : ''}
+            <div style="color:var(--text-dim);font-style:italic;margin-top:2px;font-size:9px">${p.suggestion}</div>
+          </div>`;
+        }).join('');
+        log(`Unit similarity: ${pairs.length} similar pair(s) found — highest ${Math.round(pairs[0].similarity * 100)}% (${pairs[0].codeA} ↔ ${pairs[0].codeB})`, pairs[0].similarity > 0.88 ? 'warn' : 'info');
+      }
+    } catch (e) {
+      log(`Unit similarity error: ${e.message}`, 'error');
+    } finally {
+      btn.textContent = '⊛ Analyse Unit Similarity';
+      setEnabled('btn-unit-similarity', true);
+    }
+  });
 
   document.getElementById('btn-assess-risk')?.addEventListener('click', () => {
     if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }

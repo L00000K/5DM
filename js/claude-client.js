@@ -1807,3 +1807,115 @@ function _demoSiteSetup(text, geoUnits) {
   const stratOrder = [...codes].reverse();
   return { concepts, events, stratOrder };
 }
+
+// ── Unit semantic similarity analysis ─────────────────────────────────────────
+// Compares all pairs of geological units and flags likely duplicates or near-
+// duplicates using keyword cosine similarity (demo) or Claude (API mode).
+// Returns { pairs: [{codeA, nameA, codeB, nameB, similarity, sharedTokens, suggestion}] }
+export async function analyseUnitSimilarity(geoUnits, apiKey, demoMode) {
+  if (geoUnits.length < 2) return { pairs: [] };
+  if (!demoMode && apiKey) return _claudeUnitSimilarity(geoUnits, apiKey);
+  return _heuristicUnitSimilarity(geoUnits);
+}
+
+function _heuristicUnitSimilarity(geoUnits) {
+  // Weighted token list: [token, weight]
+  const TOKENS = [
+    ['clay', 2], ['sand', 2], ['gravel', 2], ['chalk', 2], ['limestone', 2],
+    ['mudstone', 2], ['sandstone', 2], ['made ground', 2], ['made', 1.5],
+    ['fill', 2], ['peat', 2], ['silt', 2], ['alluvium', 2], ['cobble', 2],
+    ['boulder', 2], ['flint', 1.5], ['rock', 1.5], ['bedrock', 2],
+    ['soft', 1], ['firm', 1], ['stiff', 1], ['hard', 1],
+    ['loose', 1], ['medium dense', 1], ['dense', 1], ['very dense', 1],
+    ['brown', 0.5], ['grey', 0.5], ['gray', 0.5], ['red', 0.5],
+    ['orange', 0.5], ['yellow', 0.5], ['blue', 0.5], ['black', 0.5],
+    ['fissured', 1], ['laminated', 1], ['weathered', 1], ['organic', 1],
+    ['calcareous', 1], ['sandy', 1], ['silty', 1], ['gravelly', 1],
+    ['plastic', 1], ['brittle', 1], ['fractured', 1],
+  ];
+
+  function vecFor(u) {
+    const text = `${u.name ?? ''} ${u.code ?? ''}`.toLowerCase();
+    return TOKENS.map(([t, w]) => (text.includes(t) ? w : 0));
+  }
+
+  function cosineSim(a, b) {
+    let dot = 0, na = 0, nb = 0;
+    for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] ** 2; nb += b[i] ** 2; }
+    const denom = Math.sqrt(na * nb);
+    return denom > 0 ? dot / denom : 0;
+  }
+
+  const vecs = geoUnits.map(u => ({ u, v: vecFor(u) }));
+  const pairs = [];
+
+  for (let i = 0; i < vecs.length; i++) {
+    for (let j = i + 1; j < vecs.length; j++) {
+      const sim = cosineSim(vecs[i].v, vecs[j].v);
+      if (sim < 0.60) continue;
+      const sharedTokens = TOKENS
+        .filter((_tok, k) => vecs[i].v[k] > 0 && vecs[j].v[k] > 0)
+        .map(([t]) => t);
+      pairs.push({
+        codeA: vecs[i].u.code, nameA: vecs[i].u.name ?? vecs[i].u.code,
+        codeB: vecs[j].u.code, nameB: vecs[j].u.name ?? vecs[j].u.code,
+        similarity: sim,
+        sharedTokens,
+        suggestion: sim > 0.88 ? 'Consider merging — nearly identical descriptions'
+          : sim > 0.72 ? 'Possible subdivision of same material — verify in logs'
+          : 'Similar material type — check depth / lateral boundaries',
+      });
+    }
+  }
+
+  pairs.sort((a, b) => b.similarity - a.similarity);
+  return { pairs };
+}
+
+async function _claudeUnitSimilarity(geoUnits, apiKey) {
+  const unitList = geoUnits.map(u => `${u.code}: ${u.name ?? u.code}`).join('\n');
+
+  const prompt = `You are an expert geotechnical geologist reviewing geological unit definitions for a ground model.
+
+UNITS:
+${unitList}
+
+Identify all pairs of units that appear to be duplicates, near-duplicates, or subdivisions of the same geological material. For each pair, estimate a similarity score (0.0–1.0).
+
+Only include pairs with similarity > 0.60.
+
+Return ONLY a JSON array (no markdown, no prose):
+[
+  {
+    "code_a": "CODE",
+    "code_b": "CODE",
+    "similarity": 0.0–1.0,
+    "reason": "brief explanation ≤80 chars",
+    "suggestion": "Consider merging" | "Verify subdivision" | "Check boundary"
+  }
+]`;
+
+  try {
+    const resp = await _claudeRequest([{ role: 'user', content: prompt }], apiKey, 'claude-haiku-4-5-20251001', 512);
+    const text  = resp.content?.[0]?.text ?? '';
+    const raw   = JSON.parse(text.match(/\[[\s\S]*\]/)?.[0] ?? '[]');
+    const unitMap = new Map(geoUnits.map(u => [u.code, u]));
+
+    const pairs = raw
+      .filter(p => p?.code_a && p?.code_b && unitMap.has(p.code_a) && unitMap.has(p.code_b))
+      .map(p => ({
+        codeA: p.code_a, nameA: unitMap.get(p.code_a)?.name ?? p.code_a,
+        codeB: p.code_b, nameB: unitMap.get(p.code_b)?.name ?? p.code_b,
+        similarity: Math.max(0, Math.min(1, parseFloat(p.similarity) || 0)),
+        sharedTokens: [],
+        suggestion: p.suggestion ?? p.reason ?? '',
+        reason: p.reason ?? '',
+      }))
+      .sort((a, b) => b.similarity - a.similarity);
+
+    return { pairs };
+  } catch (e) {
+    console.warn('analyseUnitSimilarity Claude error:', e.message);
+    return _heuristicUnitSimilarity(geoUnits);
+  }
+}
