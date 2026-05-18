@@ -11302,6 +11302,155 @@ window._analyseUnitConceptSignatures = async function() {
   log(`Unit concept signatures: ${geoUnits.length} units analysed`, 'ok');
 };
 
+// Concept-Driven Geomechanical Parameter Inference
+// Maps 32-axis concept embeddings → geomechanical parameter ranges (SPT N, Cu, φ′, γ).
+// No borehole test data required — purely semantic embeddings → engineering parameters.
+window._inferGeomechanicalParameters = function() {
+  const el    = document.getElementById('geomech-infer-output');
+  const store = AppState.conceptStore;
+  const units = AppState.geoUnits;
+  if (!el) return;
+  el.style.display = 'block';
+
+  if (!store || store.isEmpty) {
+    el.innerHTML = '<div style="color:#e06c75">No active concepts. Encode concepts first.</div>';
+    return;
+  }
+  if (!units.length) {
+    el.innerHTML = '<div style="color:#e06c75">No geological units defined.</div>';
+    return;
+  }
+
+  // ── Axis-to-parameter rule table ────────────────────────────────────────────
+  // Each rule: { axis, sign, param, delta, reason }
+  // sign: 1 = positive axis activates rule, -1 = negative axis activates rule
+  // delta applied to BASE parameter range as multiplier shift
+  const RULES = [
+    // SPT N
+    { axis: 23, sign:  1, param: 'N', delta:  20, reason: 'basal gravel lag → dense granular' },
+    { axis:  5, sign:  1, param: 'N', delta: -8,  reason: 'channel fill → potentially loose' },
+    { axis:  0, sign:  1, param: 'N', delta: -10, reason: 'horizontal lamination → finer-grained' },
+    { axis: 22, sign:  1, param: 'N', delta: -8,  reason: 'fining-upward → clay-rich top' },
+    { axis: 21, sign:  1, param: 'N', delta:  5,  reason: 'coarsening-upward → denser base' },
+    { axis: 25, sign:  1, param: 'N', delta: -5,  reason: 'structural complexity → variable' },
+    { axis: 30, sign:  1, param: 'N', delta:  8,  reason: 'overburden control → preconsolidated' },
+    { axis: 24, sign:  1, param: 'N', delta: -15, reason: 'dissolution/karst → weak rock zones' },
+    { axis:  7, sign:  1, param: 'N', delta: -12, reason: 'fault shear zone → disturbed material' },
+    { axis: 27, sign:  1, param: 'N', delta:  3,  reason: 'lateral anisotropy → well-sorted granular' },
+    // Cu (kPa) — applies to cohesive materials
+    { axis:  0, sign:  1, param: 'Cu', delta:  20, reason: 'horizontal lamination → stiff clay fabric' },
+    { axis: 22, sign:  1, param: 'Cu', delta: -15, reason: 'fining-upward → softer near-surface clay' },
+    { axis: 30, sign:  1, param: 'Cu', delta:  25, reason: 'overburden → preconsolidated, high Cu' },
+    { axis:  7, sign:  1, param: 'Cu', delta: -20, reason: 'fault zone → reduced strength' },
+    { axis:  9, sign:  1, param: 'Cu', delta:  10, reason: 'lateral continuity → uniform deposit' },
+    { axis: 28, sign:  1, param: 'Cu', delta:  8,  reason: 'vertical anisotropy → fabric-parallel strength' },
+    // phi′ (degrees)
+    { axis: 23, sign:  1, param: 'phi', delta:  4,  reason: 'gravel lag → high friction angle' },
+    { axis:  1, sign:  1, param: 'phi', delta:  2,  reason: 'inclined bedding → interlocked fabric' },
+    { axis: 25, sign:  1, param: 'phi', delta: -3,  reason: 'structural complexity → weaker planes' },
+    { axis:  7, sign:  1, param: 'phi', delta: -4,  reason: 'fault zone → residual friction' },
+    { axis:  0, sign:  1, param: 'phi', delta: -3,  reason: 'laminated → clay-rich, lower friction' },
+    // γ (kN/m³)
+    { axis: 23, sign:  1, param: 'gamma', delta:  1.5, reason: 'dense gravel → higher bulk unit weight' },
+    { axis:  0, sign:  1, param: 'gamma', delta: -0.5, reason: 'laminated clay → lower unit weight' },
+    { axis: 24, sign:  1, param: 'gamma', delta: -2.0, reason: 'dissolution voids → lower bulk weight' },
+    { axis: 30, sign:  1, param: 'gamma', delta:  0.8, reason: 'overburden → denser, less voids' },
+  ];
+
+  // Base parameter ranges per material type (heuristic from description keywords)
+  const _baseParams = (unit) => {
+    const d = (unit.description ?? unit.name ?? '').toLowerCase();
+    const isGravel  = /gravel|cobble|sand.?gravel|dense sand/.test(d);
+    const isSand    = /sand|aeolian|dune/.test(d) && !isGravel;
+    const isClay    = /clay|silt|cohesive|alluvial|tidal/.test(d);
+    const isPeat    = /peat|organic|bog/.test(d);
+    const isMade    = /made|fill|demolition|anthropo/.test(d);
+    const isChalk   = /chalk|weak rock|marl/.test(d);
+
+    if (isGravel)   return { N: [25, 45, 80], Cu: null, phi: [35, 39, 43], gamma: [19, 21, 23], type: 'Granular (gravel)' };
+    if (isSand)     return { N: [10, 25, 50], Cu: null, phi: [30, 34, 38], gamma: [17, 19, 21], type: 'Granular (sand)' };
+    if (isClay)     return { N: [3, 10, 25],  Cu: [25, 60, 150], phi: [18, 24, 28], gamma: [16, 18, 20], type: 'Cohesive (clay)' };
+    if (isPeat)     return { N: [0, 2, 5],    Cu: [5, 15, 30],  phi: [10, 15, 20], gamma: [10, 12, 14], type: 'Organic (peat)' };
+    if (isMade)     return { N: [2, 10, 30],  Cu: [10, 30, 80], phi: [20, 27, 34], gamma: [14, 17, 20], type: 'Made ground' };
+    if (isChalk)    return { N: [10, 30, 60], Cu: [50, 150, 400], phi: [25, 32, 38], gamma: [17, 20, 22], type: 'Chalk/weak rock' };
+    // Default (mixed/unknown)
+    return { N: [5, 20, 50], Cu: [20, 60, 120], phi: [22, 28, 36], gamma: [16, 19, 22], type: 'Mixed/unknown' };
+  };
+
+  // Compute adjusted params per unit using concept store
+  const cards = units.map(unit => {
+    const base  = _baseParams(unit);
+    const deltas = { N: 0, Cu: 0, phi: 0, gamma: 0 };
+    const reasons = [];
+
+    // Find concepts with affinity for this unit (or global concepts)
+    for (const c of store.concepts) {
+      const hasAffinity = !c.unitAffinity?.length || c.unitAffinity.includes(unit.code);
+      if (!hasAffinity) continue;
+      const emb = c.embedding;
+      if (!emb) continue;
+      const w = c.confidence;
+      for (const rule of RULES) {
+        const v = emb[rule.axis] ?? 0;
+        if (rule.sign > 0 ? v > 0.35 : v < -0.35) {
+          const mag = Math.abs(v) * w;
+          deltas[rule.param] += rule.delta * mag;
+          if (Math.abs(rule.delta * mag) > 1.5) reasons.push(rule.reason);
+        }
+      }
+    }
+
+    // Apply deltas to base ranges (clamp to sensible limits)
+    const adj = (arr, d, lo, hi) => arr
+      ? arr.map(v => Math.max(lo, Math.min(hi, +(v + d).toFixed(1))))
+      : null;
+
+    const N     = adj(base.N,     deltas.N,     0,   150);
+    const Cu    = adj(base.Cu,    deltas.Cu,    0,   600);
+    const phi   = adj(base.phi,   deltas.phi,  10,   50);
+    const gamma = adj(base.gamma, deltas.gamma, 8,   26);
+
+    const uniqueReasons = [...new Set(reasons)].slice(0, 3);
+
+    const paramRow = (label, arr, unit2, color) => arr
+      ? `<div style="display:flex;gap:4px;align-items:center;margin-bottom:2px">
+          <span style="width:46px;font-size:8.5px;color:var(--text-dim);flex-shrink:0">${label}</span>
+          <div style="flex:1;background:var(--bg-deep);border-radius:2px;height:10px;position:relative">
+            <div style="position:absolute;left:${(arr[0] / arr[2] * 100).toFixed(0)}%;width:${((arr[2] - arr[0]) / arr[2] * 100).toFixed(0)}%;height:100%;background:${color};opacity:0.35;border-radius:2px"></div>
+            <div style="position:absolute;left:${(arr[1] / arr[2] * 100).toFixed(0)}%;width:2px;height:100%;background:${color};border-radius:1px"></div>
+          </div>
+          <span style="font-size:8.5px;font-family:monospace;color:${color};width:80px;text-align:right">${arr[0]}–${arr[1]}–${arr[2]}${unit2}</span>
+        </div>` : '';
+
+    return `<div style="padding:5px;background:var(--bg-surface);border:1px solid var(--border);border-radius:4px;margin-bottom:5px;border-left:3px solid ${unit.color ?? '#888'}">
+      <div style="display:flex;align-items:center;gap:4px;margin-bottom:5px">
+        <div style="width:10px;height:10px;background:${unit.color ?? '#888'};border-radius:2px;flex-shrink:0"></div>
+        <span style="font-size:9.5px;font-weight:600;color:var(--text)">${escHtml(unit.code)}</span>
+        <span style="font-size:9px;color:var(--text-dim);flex:1">${escHtml(unit.name)}</span>
+        <span style="font-size:8px;color:var(--text-dim);background:var(--bg-deep);padding:1px 4px;border-radius:3px">${base.type}</span>
+      </div>
+      ${paramRow('SPT N', N, '', 'var(--accent)')}
+      ${Cu ? paramRow('Cu (kPa)', Cu, ' kPa', '#c8a855') : ''}
+      ${paramRow('φ′ (°)', phi, '°', '#5ab97d')}
+      ${paramRow('γ (kN/m³)', gamma, ' kN', '#a0a8c0')}
+      ${uniqueReasons.length ? `<div style="font-size:8.5px;color:var(--text-dim);margin-top:4px;line-height:1.4">${uniqueReasons.map(r => '• ' + r).join('<br>')}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="font-size:10px;font-weight:600;color:var(--text);margin-bottom:5px">
+      Concept-inferred parameter ranges
+      <span style="font-weight:400;color:var(--text-dim)"> (min – typical – max)</span>
+    </div>
+    ${cards}
+    <div style="font-size:9px;color:var(--text-dim);margin-top:4px;font-style:italic;line-height:1.4">
+      Parameter ranges derived from 32-axis concept embeddings and material type heuristics.<br>
+      These are preliminary indicative ranges — verify against borehole test data before use in design.
+    </div>`;
+
+  log(`Geomechanical parameter inference: ${units.length} unit(s) from concept embeddings`, 'ok');
+};
+
 // Helper: add a unit's concept signature as a new concept in the store
 window._addSignatureAsConcept = function(unitCode, unitName, embArray) {
   const store = AppState.conceptStore;

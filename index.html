@@ -1812,6 +1812,15 @@
       </div>
 
       <div class="panel-section">
+        <h3>Concept-Inferred Geomechanics</h3>
+        <p class="hint" style="font-size:10px;margin-bottom:6px">Derives geomechanical parameter ranges (SPT N, Cu, φ′, unit weight) from concept axis values and their affinity to each geological unit. No borehole test data required — purely from the semantic concept embeddings.</p>
+        <button onclick="_inferGeomechanicalParameters()" class="btn-secondary btn-sm" style="width:100%;margin-bottom:4px">
+          ⚙ Infer Geomechanical Parameters
+        </button>
+        <div id="geomech-infer-output" style="display:none;margin-top:4px;font-size:10px"></div>
+      </div>
+
+      <div class="panel-section">
         <h3>Geotechnical Risk</h3>
         <p class="hint" style="font-size:10px;margin-bottom:6px">Identifies settlement, bearing, liquefaction and uncertainty hazards from the model.</p>
         <button id="btn-assess-risk" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:6px">⚠ Assess Risk Zones</button>
