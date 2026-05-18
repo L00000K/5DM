@@ -8579,6 +8579,36 @@ export function getVoxelAttribution(worldX, worldY, worldZ, unitCode = null) {
       if (ix < 0 || ix >= nx || iy < 0 || iy >= ny || iz < 0 || iz >= nz) return null;
       return grid.sharpnessT[ix + iy * nx + iz * nx * ny];
     })(),
+    // 3-component uncertainty decomposition for this voxel
+    uncertaintyDecomp: (() => {
+      // dataUncertainty: how poorly covered by BH data (1 - coverageDensity)
+      const dataUncert = coverageDensityVal != null ? Math.max(0, 1 - coverageDensityVal) : null;
+
+      // modelUncertainty: from network's softmax confidence via certainty field
+      let modelUncert = null;
+      if (grid?.certainty) {
+        const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O } = grid;
+        const ix = Math.floor((worldX - O.x) / cs);
+        const iy = Math.floor((worldY - O.z) / cs);
+        const iz = Math.floor((worldZ - O.y) / ch);
+        if (ix >= 0 && ix < nx && iy >= 0 && iy < ny && iz >= 0 && iz < nz) {
+          modelUncert = Math.max(0, 1 - grid.certainty[ix + iy * nx + iz * nx * ny]);
+        }
+      }
+
+      // conceptUncertainty: inverse of weighted-average concept confidence at this location
+      let conceptUncert = null;
+      if (concepts.weights.length > 0 && AppState.conceptStore) {
+        const wtdConf = concepts.weights.reduce((sum, w) => {
+          const c = AppState.conceptStore.concepts.find(c => c.id === w.id);
+          return sum + w.weight * (c?.confidence ?? 0.7);
+        }, 0);
+        const totalWt = concepts.weights.reduce((s, w) => s + w.weight, 0);
+        conceptUncert = totalWt > 0 ? Math.max(0, 1 - wtdConf / totalWt) : 0.3;
+      }
+
+      return { dataUncert, modelUncert, conceptUncert };
+    })(),
   };
 }
 
@@ -9300,6 +9330,21 @@ function _renderAttribution(attr, unitCode) {
     ? `<div class="trace-narrative">${narrativeParts.join(' · ')}</div>`
     : '';
 
+  // Uncertainty decomposition section
+  const ud = attr.uncertaintyDecomp;
+  const uncertSection = (ud && (ud.dataUncert != null || ud.modelUncert != null || ud.conceptUncert != null)) ? (() => {
+    const fmt = v => v != null ? `${(v * 100).toFixed(0)}%` : '—';
+    const bar = (v, col) => v != null
+      ? `<div style="display:inline-block;width:${(v * 50).toFixed(0)}px;height:5px;border-radius:2px;background:${col};vertical-align:middle;margin:0 4px 0 2px"></div>`
+      : '';
+    return `<div class="trace-section">
+      <div class="trace-section-hdr">Uncertainty decomposition</div>
+      <div class="trace-row"><span class="trace-label">Data</span>${bar(ud.dataUncert,'hsl(30,80%,55%)')}<span class="trace-weight" style="color:hsl(30,80%,55%)">${fmt(ud.dataUncert)}</span></div>
+      <div class="trace-row"><span class="trace-label">Model</span>${bar(ud.modelUncert,'hsl(200,70%,55%)')}<span class="trace-weight" style="color:hsl(200,70%,55%)">${fmt(ud.modelUncert)}</span></div>
+      <div class="trace-row"><span class="trace-label">Concept</span>${bar(ud.conceptUncert,'hsl(280,60%,60%)')}<span class="trace-weight" style="color:hsl(280,60%,60%)">${fmt(ud.conceptUncert)}</span></div>
+    </div>`;
+  })() : '';
+
   return `
     <div class="trace-section">
       <div class="trace-section-hdr">Semantic influence: ${semPct}% · Data: ${datPct}%
@@ -9307,6 +9352,7 @@ function _renderAttribution(attr, unitCode) {
       </div>
       ${narrative}
     </div>
+    ${uncertSection}
     <div class="trace-section">
       <div class="trace-section-hdr">Concepts</div>
       ${conceptRows}
