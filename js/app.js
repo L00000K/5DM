@@ -6440,6 +6440,22 @@ const CONCEPT_LIBRARY = [
   { label: 'Massive (no fabric)', axes: { horizontal_layering: -0.7, inclined_bedding: -0.4, vertical_anisotropy: -0.5, structural_complexity: 0.3 } },
   { label: 'Lacustrine clay',    axes: { horizontal_layering: 0.9, lateral_continuity: 0.9, fining_upward: 0.3, overburden_control: 0.3, lateral_anisotropy: 0.3 } },
   { label: 'Sand Lens / Pod',    axes: { channel_morphology: 0.5, lateral_thinning_north: 0.6, lateral_thinning_south: 0.6, lateral_continuity: -0.5 } },
+  // ── Coastal / Estuarine ─────────────────────────────────────────────────────
+  { label: 'Tidal flat / mudflat',axes: { horizontal_layering: 0.9, lateral_continuity: 0.8, coarsening_upward: -0.4, fining_upward: 0.3, overburden_control: 0.4 } },
+  { label: 'Estuarine channel',  axes: { east_west_elongation: 0.6, channel_morphology: 0.8, erosional_contact: 0.7, gravel_basal_lag: 0.5, lateral_continuity: 0.4, horizontal_layering: -0.4 } },
+  { label: 'Beach / Shoreface',  axes: { east_west_elongation: 0.8, horizontal_layering: 0.5, lateral_continuity: 0.6, coarsening_upward: 0.3, gravel_basal_lag: 0.4 } },
+  // ── Urban / Made Ground ──────────────────────────────────────────────────────
+  { label: 'Made ground',        axes: { horizontal_layering: -0.5, lateral_continuity: -0.3, structural_complexity: 0.7, irregular_base: 0.6, overburden_control: 0.8 } },
+  { label: 'Mining spoil',       axes: { structural_complexity: 0.9, irregular_base: 0.7, lateral_continuity: -0.5, horizontal_layering: -0.7, overburden_control: 0.6 } },
+  // ── Chalk / Weak Rock ────────────────────────────────────────────────────────
+  { label: 'Chalk rockhead',     axes: { dissolution_features: 0.5, irregular_base: 0.7, stepped_boundary: 0.4, erosional_contact: 0.5, data_confidence: 0.7 } },
+  { label: 'Weathered chalk',    axes: { structural_complexity: 0.5, lateral_continuity: 0.5, vertical_anisotropy: 0.7, overburden_control: 0.5, data_confidence: 0.6 } },
+  // ── Soft Soils ──────────────────────────────────────────────────────────────
+  { label: 'Peat / Organics',    axes: { horizontal_layering: 0.7, lateral_continuity: 0.5, irregular_base: 0.5, fining_upward: 0.2, overburden_control: 0.3 } },
+  { label: 'Soft alluvial clay', axes: { horizontal_layering: 0.8, lateral_continuity: 0.7, fining_upward: 0.5, overburden_control: 0.4, data_confidence: 0.6 } },
+  // ── Intrusive / Igneous ──────────────────────────────────────────────────────
+  { label: 'Igneous intrusion',  axes: { dome_anticline: 0.7, structural_complexity: 0.8, lateral_continuity: -0.4, inclined_bedding: 0.5, dip_magnitude: 0.7 } },
+  { label: 'Dyke / Sill',       axes: { fault_controlled: 0.6, stepped_boundary: 0.5, structural_complexity: 0.8, lateral_continuity: -0.6, dip_magnitude: 0.8 } },
 ];
 
 function _libraryEmbedding(axes) {
