@@ -4619,23 +4619,31 @@ function initRiskAssessment() {
     const grid = AppState.voxelGrid;
     if (!grid) { log('Build the 3D model first.', 'warn'); return; }
     const nSuggest = parseInt(document.getElementById('drill-plan-n')?.value ?? '5') || 5;
-    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty, blendRatios } = grid;
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds, certainty, blendRatios, probVolumes } = grid;
     const LOG2 = Math.log(2);
     const nUnits = Math.max(2, AppState.geoUnits.length);
 
-    // Compute per-column mean entropy
+    // Compute per-column mean entropy — use exact Shannon entropy from probVolumes if available
     const colEntropy = new Float32Array(nx * ny);
+    const probArrays = probVolumes?.size > 0 ? [...probVolumes.values()] : null;
+    const xEnt = p => (p > 1e-6 && p < 1 - 1e-6) ? -p * Math.log(p) / LOG2 : 0;
     for (let iy = 0; iy < ny; iy++) {
       for (let ix = 0; ix < nx; ix++) {
         let sumH = 0, cnt = 0;
         for (let iz = 0; iz < nz; iz++) {
           const flat = ix + iy * nx + iz * nx * ny;
           if (!unitIds[flat]) continue;
-          const p1 = Math.max(0.001, Math.min(0.999, certainty[flat]));
-          const p2 = Math.max(0, Math.min(1 - p1, blendRatios ? (blendRatios[flat] ?? 0) : 0));
-          const pR = Math.max(0, 1 - p1 - p2);
-          const xE = (p) => p > 0 && p < 1 ? -p * Math.log(p) / LOG2 : 0;
-          sumH += xE(p1) + xE(p2) + xE(pR);
+          let H;
+          if (probArrays) {
+            H = 0;
+            for (const arr of probArrays) H += xEnt(arr[flat]);
+          } else {
+            const p1 = Math.max(0.001, Math.min(0.999, certainty[flat]));
+            const p2 = Math.max(0, Math.min(1 - p1, blendRatios ? (blendRatios[flat] ?? 0) : 0));
+            const pR = Math.max(0, 1 - p1 - p2);
+            H = xEnt(p1) + xEnt(p2) + xEnt(pR);
+          }
+          sumH += H;
           cnt++;
         }
         colEntropy[ix + iy * nx] = cnt > 0 ? sumH / cnt : 0;

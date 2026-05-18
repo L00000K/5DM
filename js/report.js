@@ -187,6 +187,9 @@ export class ModelReport {
     const perUnit = {}; // { code: { correct, total } }
     const mismatches = [];
 
+    // Confusion matrix: confMat[observed][predicted] = count
+    const confMat = {};
+
     for (const bh of bhs) {
       // Grid column for this BH
       const ix = Math.max(0, Math.min(nx - 1, Math.round((bh.x - O.x) / cs - 0.5)));
@@ -207,6 +210,11 @@ export class ModelReport {
         perUnit[obsCode].total++;
         total++;
 
+        // Build confusion matrix entry
+        const predCode = predUnit?.code ?? '(none)';
+        if (!confMat[obsCode]) confMat[obsCode] = {};
+        confMat[obsCode][predCode] = (confMat[obsCode][predCode] ?? 0) + 1;
+
         if (predUnit?.code === obsCode) {
           correct++;
           perUnit[obsCode].correct++;
@@ -220,11 +228,11 @@ export class ModelReport {
     }
 
     const accuracy = total > 0 ? (correct / total * 100).toFixed(1) : null;
-    this._renderValidation({ accuracy, total, correct, perUnit, mismatches, geoUnits });
-    return { accuracy, total, correct, perUnit, mismatches };
+    this._renderValidation({ accuracy, total, correct, perUnit, mismatches, confMat, geoUnits });
+    return { accuracy, total, correct, perUnit, mismatches, confMat };
   }
 
-  _renderValidation({ accuracy, total, correct, perUnit, mismatches, geoUnits }) {
+  _renderValidation({ accuracy, total, correct, perUnit, mismatches, confMat, geoUnits }) {
     const el = document.getElementById('validation-results');
     if (!el) return;
 
@@ -254,6 +262,60 @@ export class ModelReport {
         </span>
         <span class="quality-val" style="color:${c}">${acc}% (${stats.correct}/${stats.total})</span>
       </div>`;
+    }
+
+    // ── Confusion matrix ──────────────────────────────────────────────────────
+    const codes = Object.keys(perUnit);
+    if (codes.length >= 2 && confMat) {
+      // All predicted codes (superset in case of unseen units)
+      const predCodes = [...new Set(Object.values(confMat).flatMap(row => Object.keys(row)))];
+      // Union of actual + predicted
+      const allCodes  = [...new Set([...codes, ...predCodes])];
+
+      // Max cell value for colour scaling
+      let maxVal = 1;
+      for (const obs of allCodes) {
+        for (const pred of allCodes) {
+          maxVal = Math.max(maxVal, confMat[obs]?.[pred] ?? 0);
+        }
+      }
+
+      // Build colour: diagonal=green tint, off-diagonal=red tint, intensity ∝ count
+      const cellStyle = (obs, pred, count) => {
+        if (!count) return 'background:#0d1520;color:var(--text-dim)';
+        const norm = count / maxVal;
+        if (obs === pred) {
+          const g = Math.round(80 + norm * 120);
+          return `background:rgb(10,${g},40);color:#a8ffb0`;
+        }
+        const r = Math.round(80 + norm * 140);
+        return `background:rgb(${r},20,20);color:#ffb0b0`;
+      };
+
+      const cellW = Math.max(24, Math.floor(180 / allCodes.length));
+      let matrix = `<div style="margin:10px 0 4px;font-size:11px;color:var(--text-mid);font-weight:600">Confusion matrix (actual→predicted):</div>`;
+      matrix += `<div style="overflow-x:auto"><table style="font-size:9px;border-collapse:collapse;margin:0 auto">`;
+
+      // Header row
+      matrix += `<tr><td style="padding:2px;font-size:8px;color:var(--text-dim)">Act.↓Pred.→</td>`;
+      for (const pred of allCodes) {
+        const unit = geoUnits.find(u => u.code === pred);
+        matrix += `<td style="padding:2px;text-align:center;font-weight:600;font-family:var(--font-mono);width:${cellW}px;max-width:${cellW}px;overflow:hidden;border-bottom:1px solid #2e3a4a" title="${unit?.name ?? pred}">${pred.slice(0,4)}</td>`;
+      }
+      matrix += '</tr>';
+
+      for (const obs of allCodes) {
+        const unit = geoUnits.find(u => u.code === obs);
+        matrix += `<tr><td style="padding:2px 4px 2px 0;font-weight:600;font-family:var(--font-mono);white-space:nowrap;border-right:1px solid #2e3a4a;color:var(--accent)" title="${unit?.name ?? obs}">${obs}</td>`;
+        for (const pred of allCodes) {
+          const n = confMat[obs]?.[pred] ?? 0;
+          const style = cellStyle(obs, pred, n);
+          matrix += `<td style="${style};padding:2px;text-align:center;font-family:var(--font-mono);width:${cellW}px;min-width:${cellW}px;border:1px solid #1a2230" title="${n} ${obs}→${pred}">${n || ''}</td>`;
+        }
+        matrix += '</tr>';
+      }
+      matrix += '</table></div>';
+      html += matrix;
     }
 
     if (mismatches.length) {
