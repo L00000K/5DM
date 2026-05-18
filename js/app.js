@@ -7345,13 +7345,39 @@ function initConceptPanel() {
         });
       }
 
+      // 3. Geological implication gap check: flag axes that this concept implies
+      // but which are not covered by ANY existing concept (below threshold).
+      const GEO_IMPLICATIONS = [
+        { trigger: [5, 0.7],  implies: [23, 0.3], msg: 'channel_morphology implies a basal gravel lag (axis gravel_basal_lag) — consider adding a complementary concept' },
+        { trigger: [5, 0.7],  implies: [8,  0.5], msg: 'channel_morphology implies an erosional contact (axis erosional_contact)' },
+        { trigger: [7, 0.7],  implies: [18, 0.5], msg: 'fault_controlled implies a stepped boundary (axis stepped_boundary)' },
+        { trigger: [24, 0.6], implies: [19, 0.4], msg: 'dissolution_features implies an irregular base (axis irregular_base)' },
+        { trigger: [29, 0.6], implies: [5,  0.4], msg: 'incision_depth_ratio implies a channel form (axis channel_morphology)' },
+        { trigger: [3, 0.6],  implies: [27, 0.4], msg: 'east_west_elongation implies lateral anisotropy (axis lateral_anisotropy)' },
+        { trigger: [4, 0.6],  implies: [27, 0.4], msg: 'north_south_elongation implies lateral anisotropy' },
+        { trigger: [21, 0.6], implies: [23, 0.3], msg: 'coarsening_upward implies a coarse base (gravel_basal_lag likely)' },
+        { trigger: [25, 0.6], implies: [31, 0.3], msg: 'structural_complexity implies a complexity gradient (axis complexity_gradient)' },
+      ];
+      for (const rule of GEO_IMPLICATIONS) {
+        const [trigAx, trigThresh] = rule.trigger;
+        const [impAx,  impThresh]  = rule.implies;
+        if ((emb[trigAx] ?? 0) >= trigThresh) {
+          // Check if ANY existing concept covers the implied axis at threshold
+          const covered = AppState.conceptStore.concepts.some(c => (c.embedding?.[impAx] ?? 0) >= impThresh);
+          if (!covered && (emb[impAx] ?? 0) < impThresh) {
+            encodeWarnings.push({ sev: 'info', text: `ℹ Geological implication: ${rule.msg}` });
+          }
+        }
+      }
+
       if (warnEl && encodeWarnings.length) {
         warnEl.style.display = 'block';
         warnEl.innerHTML = encodeWarnings.map(w => {
-          const col = w.sev === 'error' ? 'var(--red)' : '#e0a020';
-          const icon = w.sev === 'error' ? '⚠' : '△';
+          const col  = w.sev === 'error' ? 'var(--red)' : w.sev === 'info' ? 'var(--accent)' : '#e0a020';
+          const icon = w.sev === 'error' ? '⚠' : w.sev === 'info' ? 'ℹ' : '△';
+          const text = w.sev === 'info' ? w.text.replace(/^ℹ\s*/, '') : w.text;
           return `<div style="border-left:2px solid ${col};padding:3px 6px;margin-bottom:3px;font-size:9.5px;color:var(--text-mid)">
-            <span style="color:${col};margin-right:4px">${icon}</span>${escHtml(w.text)}
+            <span style="color:${col};margin-right:4px">${icon}</span>${escHtml(text)}
           </div>`;
         }).join('');
         if (encodeWarnings.some(w => w.sev === 'error')) {
