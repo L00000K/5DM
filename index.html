@@ -643,6 +643,15 @@
           <div id="concept-coherence-output" style="display:none;margin-top:6px"></div>
         </div>
 
+        <!-- Concept contribution report — per-concept ablation vs BH accuracy -->
+        <div style="margin-top:4px">
+          <button class="btn btn-ghost" style="font-size:10px;width:100%" onclick="_runConceptContributionReport()"
+            title="Remove each concept one at a time and measure how much it shifts the model and affects prediction accuracy at boreholes. Shows which concepts genuinely help.">
+            ◉ Concept contribution report
+          </button>
+          <div id="concept-contrib-output" style="display:none;margin-top:6px"></div>
+        </div>
+
         <!-- Concept sensitivity — which concepts influence the most voxels -->
         <div style="margin-top:4px">
           <button class="btn btn-ghost" style="font-size:10px;width:100%" onclick="_showConceptSensitivity()" title="Show how many voxels each concept influences">

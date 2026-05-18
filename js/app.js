@@ -9487,3 +9487,138 @@ function initProbVolPanel() {
     log('Probability overlay cleared — restored unit colours.', 'info');
   });
 }
+
+// ── Concept contribution report ────────────────────────────────────────────────
+// Ablation study: removes each concept one at a time, re-infers without it,
+// and measures (1) % of voxels changed vs. baseline and (2) accuracy change at
+// borehole observations. Identifies which concepts genuinely improve the model.
+window._runConceptContributionReport = async function() {
+  const el    = document.getElementById('concept-contrib-output');
+  const grid  = AppState.voxelGrid;
+  const store = AppState.conceptStore;
+  if (!el) return;
+  el.style.display = 'block';
+
+  if (!AppState.trainedModel || !grid) {
+    el.innerHTML = '<div style="font-size:10px;color:#e06c75">Requires neural-implicit method — build the model with neural-implicit first.</div>';
+    return;
+  }
+  if (!store || store.isEmpty) {
+    el.innerHTML = '<div style="font-size:10px;color:#e06c75">No active concepts. Add concepts first.</div>';
+    return;
+  }
+
+  const concepts = store.concepts;
+  if (!concepts.length) return;
+
+  el.innerHTML = '<div style="font-size:10px;color:var(--text-mid)">Running ablation study…</div>';
+
+  const gridMeta = {
+    nx: grid.nx, ny: grid.ny, nz: grid.nz,
+    cellSize: grid.cellSize, cellHeight: grid.cellHeight, origin: grid.origin,
+  };
+  const total = grid.unitIds.length;
+  const realBHs = AppState.classifiedBH.filter(b => !b.synthetic && b.layers?.length >= 1);
+
+  // Helper: count how many BH layer observations the given unitIds array predicts correctly
+  function _bhAccuracy(unitIds) {
+    let correct = 0, count = 0;
+    const unitById = {};
+    AppState.geoUnits.forEach(u => { unitById[u.id] = u; });
+    for (const bh of realBHs) {
+      const ix = Math.max(0, Math.min(grid.nx - 1, Math.round((bh.x - grid.origin.x) / grid.cellSize - 0.5)));
+      const iy = Math.max(0, Math.min(grid.ny - 1, Math.round((bh.y - grid.origin.z) / grid.cellSize - 0.5)));
+      for (const layer of bh.layers) {
+        if (!layer.unitCode) continue;
+        const elev = (bh.groundLevel ?? 0) - (layer.top + layer.base) / 2;
+        const iz   = Math.max(0, Math.min(grid.nz - 1, Math.round((elev - grid.origin.y) / grid.cellHeight - 0.5)));
+        const pred = unitById[unitIds[ix + iy * grid.nx + iz * grid.nx * grid.ny]];
+        count++;
+        if (pred?.code === layer.unitCode) correct++;
+      }
+    }
+    return count > 0 ? correct / count : null;
+  }
+
+  // Baseline: full concept store
+  const baselineResult = inferGeoImplicit(AppState.trainedModel, gridMeta, AppState.geoUnits, store);
+  const baselineAcc    = _bhAccuracy(baselineResult.unitIds);
+
+  const rows = [];
+
+  for (let ci = 0; ci < concepts.length; ci++) {
+    el.innerHTML = `<div style="font-size:10px;color:var(--text-mid)">Ablating concept ${ci + 1}/${concepts.length}…</div>`;
+    await new Promise(r => setTimeout(r, 0));
+
+    // Clone store without concept ci
+    const ablatedStore = store.cloneScaled(1.0);
+    ablatedStore._concepts.splice(ci, 1);
+
+    const ablResult = inferGeoImplicit(AppState.trainedModel, gridMeta, AppState.geoUnits, ablatedStore);
+
+    let changed = 0;
+    for (let i = 0; i < total; i++) {
+      if (ablResult.unitIds[i] !== baselineResult.unitIds[i]) changed++;
+    }
+    const influence = changed / total;
+
+    const ablAcc    = _bhAccuracy(ablResult.unitIds);
+    const accDelta  = (baselineAcc != null && ablAcc != null) ? (baselineAcc - ablAcc) : null;
+
+    rows.push({
+      concept: concepts[ci],
+      influence,
+      accDelta,
+      ablAcc,
+    });
+  }
+
+  // Sort by influence (most impactful first)
+  rows.sort((a, b) => b.influence - a.influence);
+
+  const baseAccStr = baselineAcc != null
+    ? `${(baselineAcc * 100).toFixed(1)}%`
+    : 'N/A (no BH data)';
+
+  const rowsHtml = rows.map(r => {
+    const infPct  = (r.influence * 100).toFixed(1);
+    const infBar  = '▓'.repeat(Math.round(r.influence * 20)).padEnd(20, '░');
+    const infCol  = r.influence > 0.1 ? 'var(--ok)' : r.influence > 0.03 ? '#c8a855' : 'var(--text-muted)';
+
+    let accHtml = '';
+    if (r.accDelta != null) {
+      const sign  = r.accDelta >= 0 ? '+' : '';
+      const col   = r.accDelta > 0.01 ? 'var(--ok)' : r.accDelta < -0.01 ? 'var(--error)' : 'var(--text-muted)';
+      accHtml = `<span style="color:${col};margin-left:6px">${sign}${(r.accDelta * 100).toFixed(1)}% acc</span>`;
+    }
+
+    const desc = r.concept.description.length > 40
+      ? r.concept.description.slice(0, 40) + '…'
+      : r.concept.description;
+
+    return `<div style="margin-bottom:6px;padding:5px 6px;background:var(--bg-surface);border-radius:3px;border-left:3px solid ${infCol}">
+      <div style="font-size:9.5px;font-weight:600;color:var(--text)">${desc}</div>
+      <div style="font-size:9px;color:${infCol};margin-top:2px;font-family:monospace">${infBar} ${infPct}%${accHtml}</div>
+      <div style="font-size:8.5px;color:var(--text-muted);margin-top:1px">Removing shifts ${infPct}% of voxels${r.accDelta != null ? ` · BH accuracy without: ${(r.ablAcc * 100).toFixed(1)}%` : ''}</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="font-size:10px;font-weight:600;margin-bottom:6px">
+      Baseline accuracy: ${baseAccStr}
+      <span style="font-weight:400;color:var(--text-muted)"> (${realBHs.length} BHs)</span>
+    </div>
+    ${rowsHtml}
+    <p style="font-size:9px;color:var(--text-muted);margin-top:4px;font-style:italic">
+      Higher influence = more voxels shift when concept is removed.<br>
+      Positive accuracy delta = concept improves BH prediction accuracy.
+    </p>`;
+
+  const topInfluence = rows[0]?.influence ?? 0;
+  const avgAccBoost  = rows.filter(r => r.accDelta != null).reduce((s, r) => s + r.accDelta, 0) / (rows.filter(r => r.accDelta != null).length || 1);
+  log(
+    `Concept contribution: ${rows.length} concepts · top influence ${(topInfluence * 100).toFixed(1)}%` +
+    (baselineAcc != null ? ` · baseline accuracy ${(baselineAcc * 100).toFixed(1)}%` : ''),
+    'ok'
+  );
+};
