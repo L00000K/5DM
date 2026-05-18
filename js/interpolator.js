@@ -197,6 +197,57 @@ function idwVote(neighbours, power, unitIndex, unknownId, typicalSpacing) {
   return makeResult(bc, sc, bw / totalW, totalW, sw, Math.min(1, cert * semAdj), unitIndex, unknownId);
 }
 
+// ── Topographic surface elevation at (x, y) via IDW from scattered points ────
+// Returns the interpolated elevation. If topoPoints is empty, returns +Infinity
+// so all voxels pass the "below ground" check.
+function _topoElevAt(x, y, topoPoints) {
+  if (!topoPoints?.length) return Infinity;
+  const k = Math.min(6, topoPoints.length);
+  // Find k nearest by Euclidean XY distance
+  let maxHeap = []; // will hold [negDist2, idx]
+  for (let i = 0; i < topoPoints.length; i++) {
+    const dx = topoPoints[i].x - x, dy = topoPoints[i].y - y;
+    const d2 = dx * dx + dy * dy;
+    if (maxHeap.length < k) {
+      maxHeap.push([d2, i]);
+      maxHeap.sort((a, b) => b[0] - a[0]); // max at front
+    } else if (d2 < maxHeap[0][0]) {
+      maxHeap[0] = [d2, i];
+      maxHeap.sort((a, b) => b[0] - a[0]);
+    }
+  }
+  let wSum = 0, zSum = 0;
+  for (const [d2, i] of maxHeap) {
+    const w = 1 / (d2 + 1e-9);
+    wSum += w; zSum += w * topoPoints[i].z;
+  }
+  return wSum > 0 ? zSum / wSum : Infinity;
+}
+
+// Apply topographic masking to a completed grid in-place.
+// Sets unitIds[idx]=0 and certainty[idx]=0 for voxels whose centre elevation
+// exceeds the IDW-interpolated topo surface at that (x,y) column.
+function _applyTopoMask(unitIds, certainty, gridMeta, topoPoints) {
+  if (!topoPoints?.length) return;
+  const { nx, ny, nz, cellSize, cellHeight, origin } = gridMeta;
+  const ox = origin.x, oy = origin.z, oz = origin.y; // note: origin.z = min Northing
+  for (let iy = 0; iy < ny; iy++) {
+    const wy = oy + iy * cellSize + cellSize * 0.5;
+    for (let ix = 0; ix < nx; ix++) {
+      const wx   = ox + ix * cellSize + cellSize * 0.5;
+      const elev = _topoElevAt(wx, wy, topoPoints);
+      for (let iz = 0; iz < nz; iz++) {
+        const wz  = oz + iz * cellHeight + cellHeight * 0.5;
+        if (wz > elev) {
+          const idx = ix + iy * nx + iz * nx * ny;
+          unitIds[idx]   = 0;
+          certainty[idx] = 0;
+        }
+      }
+    }
+  }
+}
+
 // ── Anisotropic distance transform for Kriging ────────────────────────────────
 // When aniso is provided ({sinAz, cosAz, ratio}), the major axis (azimuth Az) uses
 // full range; the minor axis uses range/ratio. This gives an ellipsoidal variogram
@@ -504,6 +555,7 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
 
   const semanticModel  = options.semanticModel ?? null;
   const semanticWeight = Math.max(0, Math.min(1, options.semanticWeight ?? 0.3));
+  const topoPoints     = options.topoPoints ?? null;
 
   // Pre-compute deviation trajectories (minimum curvature)
   for (const bh of boreholes) {
@@ -618,6 +670,9 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
   const hasPerUnitGeom = Object.keys(unitGeomMap).length > 0;
   if (hasPerUnitGeom) {
     log(`Per-unit geometry active for: ${Object.keys(unitGeomMap).join(', ')}`, 'info');
+  }
+  if (topoPoints?.length) {
+    log(`Topographic masking: ${topoPoints.length} surface point(s) — voxels above ground will be hidden`, 'info');
   }
 
   // ── Neural Implicit Geological Field ──────────────────────────────────────
@@ -854,6 +909,31 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
         }
       }
 
+      // Topographic masking (neural path): mask voxels above ground surface
+      // Pre-compute per-column topo elevation to avoid repeated IDW for each iz layer.
+      if (topoPoints?.length) {
+        const colTopoElev = new Float32Array(nx * ny);
+        for (let iy = 0; iy < ny; iy++) {
+          const wy = oy + iy * cellSize + cellSize * 0.5;
+          for (let ix = 0; ix < nx; ix++) {
+            const wx = ox + ix * cellSize + cellSize * 0.5;
+            colTopoElev[ix + iy * nx] = _topoElevAt(wx, wy, topoPoints);
+          }
+        }
+        for (let iz = 0; iz < nz; iz++) {
+          const wz = oz + iz * cellH + cellH * 0.5;
+          const base = iz * nx * ny;
+          for (let iy = 0; iy < ny; iy++) {
+            for (let ix = 0; ix < nx; ix++) {
+              if (wz > colTopoElev[ix + iy * nx]) {
+                unitIds[base + ix + iy * nx]   = 0;
+                certainty[base + ix + iy * nx] = 0;
+              }
+            }
+          }
+        }
+      }
+
       if (onProgress) onProgress(1);
       return {
         nx, ny, nz,
@@ -919,6 +999,18 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
     conceptAnisoCache.set(key, cached);
     return cached;
   }
+
+  // Pre-compute per-column topographic elevation for efficiency (avoids O(nx*ny*nz) IDW calls)
+  const colTopoElev = topoPoints?.length ? (() => {
+    const arr = new Float32Array(nx * ny);
+    for (let iy = 0; iy < ny; iy++) {
+      const wy = oy + iy * cellSize + cellSize * 0.5;
+      for (let ix = 0; ix < nx; ix++) {
+        arr[ix + iy * nx] = _topoElevAt(ox + ix * cellSize + cellSize * 0.5, wy, topoPoints);
+      }
+    }
+    return arr;
+  })() : null;
 
   // ── 3. Classify every voxel (top-down so transition matrix can look upward) ─
   for (let iz = nz - 1; iz >= 0; iz--) {
@@ -1036,6 +1128,12 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
           }
         }
 
+        // Topographic masking: voxels whose centre is above the ground surface are air
+        if (colTopoElev && z > colTopoElev[ix + iy * nx]) {
+          certainty[idx] = 0;
+          continue;
+        }
+
         unitIds[idx]      = result.unitId;
         certainty[idx]    = Math.max(0.05, cert);
         blendUnitIds[idx] = result.blendUnitId;
@@ -1045,15 +1143,13 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
   }
 
   if (onProgress) onProgress(1);
-  return {
-    nx, ny, nz,
-    cellSize, cellHeight: cellH,
+  const idwBase = {
+    nx, ny, nz, cellSize, cellHeight: cellH,
     origin: { x: ox, y: oz, z: oy },
-    worldWidth:  nx * cellSize,
-    worldHeight: nz * cellH,
-    worldDepth:  ny * cellSize,
-    unitIds, certainty, blendUnitIds, blendRatios,
+    worldWidth: nx * cellSize, worldHeight: nz * cellH, worldDepth: ny * cellSize,
   };
+  _applyTopoMask(unitIds, certainty, idwBase, topoPoints);
+  return { ...idwBase, unitIds, certainty, blendUnitIds, blendRatios };
 }
 
 // ── Monte Carlo Uncertainty Quantification ───────────────────────────────────
@@ -1136,6 +1232,7 @@ export async function buildVoxelGridMonteCarlo(boreholes, geoUnits, cellSizeH, o
   if (onProgress) onProgress(1);
   log(`Monte Carlo complete — mean certainty ${(Array.from(certainty).reduce((a,b)=>a+b,0)/total*100).toFixed(0)}%`, 'ok');
 
+  _applyTopoMask(unitIds, certainty, base, options.topoPoints);
   return { ...base, unitIds, certainty, blendUnitIds, blendRatios };
 }
 
@@ -1333,15 +1430,13 @@ export async function buildIndicatorKriging(boreholes, geoUnits, cellSizeParam, 
   if (onProgress) onProgress(1);
   log(`Indicator kriging complete — ${nUnits} units · ${total.toLocaleString()} voxels`, 'ok');
 
-  return {
-    nx, ny, nz,
-    cellSize, cellHeight: cellH,
+  const ikBase = {
+    nx, ny, nz, cellSize, cellHeight: cellH,
     origin: { x: ox, y: oz, z: oy },
     worldWidth: nx * cellSize, worldHeight: nz * cellH, worldDepth: ny * cellSize,
-    unitIds, certainty, blendUnitIds, blendRatios,
-    probVolumes,
-    method: 'indicator-kriging',
   };
+  _applyTopoMask(unitIds, certainty, ikBase, options.topoPoints);
+  return { ...ikBase, unitIds, certainty, blendUnitIds, blendRatios, probVolumes, method: 'indicator-kriging' };
 }
 
 export function voxelIndex(ix, iy, iz, grid) {

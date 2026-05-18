@@ -939,6 +939,7 @@ function initBuildModel() {
         varSill:   AppState.varSill,
         varNugget: AppState.varNugget,
         faultPlanes: AppState.faultPlanes,
+        topoPoints:  AppState.topoPoints ?? null,
         conceptStore: AppState.conceptStore ?? null,
         nMCPasses:   AppState.nMCPasses ?? 8,
         // Concept-driven iterative refinement: enabled by default when concepts are active.
