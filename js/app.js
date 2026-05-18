@@ -7658,6 +7658,88 @@ document.getElementById('btn-suggest-sections')?.addEventListener('click', () =>
   log(`${suggestions.length} section suggestions based on concept anisotropy`, 'info');
 });
 
+// ── Borehole concept validation ───────────────────────────────────────────────
+// For each borehole, samples concept context at observed depths and checks whether
+// the dominant concept's unitAffinity matches what was actually observed.
+// Uses the built model's column predictions when available; falls back to concept-only.
+document.getElementById('btn-bh-concept-validation')?.addEventListener('click', () => {
+  const out = document.getElementById('bh-concept-validation-output');
+  if (!out) return;
+  const store = AppState.conceptStore;
+  if (!store || store.isEmpty) { log('Add concepts first.', 'warn'); return; }
+  const bhs = (AppState.classifiedBH ?? []).filter(b => !b.synthetic);
+  if (!bhs.length) { log('Load borehole data first.', 'warn'); return; }
+  const grid = AppState.voxelGrid;
+
+  const results = [];
+  for (const bh of bhs) {
+    let matched = 0, total = 0;
+    const layers = (bh.layers ?? []).filter(l => l.unitCode && l.unitCode !== 'UNKN');
+    for (const layer of layers) {
+      const nSamples = Math.max(1, Math.round((layer.base - layer.top) / 2));
+      for (let s = 0; s < nSamples; s++) {
+        const wz = bh.groundLevel - (layer.top + (s + 0.5) / nSamples * (layer.base - layer.top));
+        total++;
+
+        // Get model prediction at this voxel if grid available
+        let modelPredCode = null;
+        if (grid) {
+          const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O, unitIds } = grid;
+          const ix = Math.round((bh.x - O.x) / cs - 0.5);
+          const iy = Math.round(((bh.y ?? bh.z ?? bh.x) - O.z) / cs - 0.5);
+          const iz = Math.round((wz - O.y) / ch - 0.5);
+          if (ix >= 0 && ix < nx && iy >= 0 && iy < ny && iz >= 0 && iz < nz) {
+            const uid = unitIds[ix + iy * nx + iz * nx * ny];
+            modelPredCode = AppState.geoUnits.find(u => u.id === uid)?.code ?? null;
+          }
+        }
+
+        // Compare model prediction with observation
+        if (modelPredCode !== null) {
+          if (modelPredCode === layer.unitCode) matched++;
+        } else {
+          // Fallback: concept-only prediction — check if dominant concept's unitAffinity matches
+          const ctx = store.computeAt(bh.x, bh.y ?? bh.z ?? 0, wz, layer.unitCode);
+          if (ctx.totalWeight < 0.05) { matched++; continue; } // no active concepts = neutral
+          const topConcept = store.concepts.find(c => c.id === ctx.weights[0]?.id);
+          if (!topConcept?.unitAffinity?.length || topConcept.unitAffinity.includes(layer.unitCode)) {
+            matched++;
+          }
+        }
+      }
+    }
+    if (total > 0) results.push({ id: bh.id, score: matched / total, total, matched, x: bh.x, y: bh.y ?? bh.z ?? 0 });
+  }
+
+  if (!results.length) { log('No data to validate.', 'warn'); return; }
+  const globalScore = results.reduce((s,r) => s + r.score, 0) / results.length;
+
+  out.style.display = 'block';
+  const scoreCol = s => s >= 0.8 ? 'var(--accent)' : s >= 0.6 ? '#d4a843' : 'var(--red)';
+  out.innerHTML = `
+    <div style="font-size:10px;font-weight:600;margin-bottom:5px;color:var(--text-mid)">
+      ${grid ? 'Model' : 'Concept'} prediction accuracy vs borehole observations
+    </div>
+    <div style="margin-bottom:6px;padding:5px;background:var(--bg-surface);border-radius:4px;text-align:center">
+      <div style="font-size:20px;font-weight:700;color:${scoreCol(globalScore)}">${(globalScore*100).toFixed(0)}%</div>
+      <div style="font-size:9px;color:var(--text-dim)">Mean accuracy across ${results.length} boreholes</div>
+    </div>
+    ${results.sort((a,b) => a.score - b.score).map(r => `
+      <div style="display:flex;align-items:center;gap:5px;margin-bottom:2px;font-size:10px">
+        <span style="width:30px;font-family:var(--font-mono);font-size:9px">${escHtml(r.id ?? '?')}</span>
+        <div style="flex:1;height:5px;background:var(--bg-deep);border-radius:2px;overflow:hidden">
+          <div style="width:${(r.score*100).toFixed(0)}%;height:100%;background:${scoreCol(r.score)}"></div>
+        </div>
+        <span style="font-family:var(--font-mono);font-size:9px;color:${scoreCol(r.score)};min-width:28px;text-align:right">${(r.score*100).toFixed(0)}%</span>
+        <span style="font-size:8px;color:var(--text-dim)">${r.matched}/${r.total}</span>
+      </div>`).join('')}
+    ${globalScore < 0.6 ? `<div style="margin-top:5px;font-size:9px;color:#d4a843;border-left:2px solid #d4a843;padding-left:5px">
+      Low accuracy: consider refining concept unit affinities or adding more targeted concepts for poorly predicted boreholes.
+    </div>` : ''}
+  `;
+  log(`Concept validation: ${(globalScore*100).toFixed(0)}% mean accuracy across ${results.length} boreholes`, globalScore >= 0.7 ? 'ok' : 'warn');
+});
+
 window._showConceptCoherence = function() {
   const results = computeConceptCoherence();
   if (!results.length) { log('Build the 3D model first, then check coherence.', 'warn'); return; }
