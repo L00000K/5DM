@@ -1154,7 +1154,9 @@
           <button class="view-mode-btn" data-mode="surfaces" title="Show surfaces (S)">Surfaces</button>
           <button class="view-mode-btn" data-mode="both" title="Show both (B)">Both</button>
         </div>
-        <button id="btn-build-isosurfaces" class="btn-open-slicer" title="Build smooth 3D unit solids using marching cubes (MC)" disabled>⬡ Isosurfaces</button>
+        <button id="btn-build-isosurfaces" class="btn-open-slicer" title="Build smooth 3D unit solids using marching cubes (MC). Uses MC probability volumes when available for genuine smooth surfaces." disabled>⬡ Isosurfaces</button>
+        <button id="btn-uncertainty-surface" class="btn-open-slicer" title="Show isosurface of high model uncertainty — orange cloud where the model is least confident. Ideal locations for new boreholes." disabled style="color:#e8a020">◈ Uncertainty</button>
+        <label style="font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:4px;margin-left:4px" title="Entropy threshold for uncertainty surface (0=show all, 1=show only maximum uncertainty)">Unc.%<input type="range" id="uncertainty-threshold" min="10" max="90" value="60" style="width:50px;accent-color:#e8a020"><span id="uncertainty-threshold-val" style="font-size:9px;color:#e8a020;width:22px">60%</span></label>
         <div class="view-mode-ctrl">
           <button class="cam-preset-btn" data-preset="3d" title="3D perspective view">3D</button>
           <button class="cam-preset-btn" data-preset="plan" title="Plan view (top-down)">Plan</button>

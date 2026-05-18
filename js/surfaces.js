@@ -113,19 +113,25 @@ export class SurfaceManager {
 
   // ── Marching-cubes isosurface build ─────────────────────────────────────────
   // Called asynchronously — pass onProgress(0..1) for progress feedback.
+  // When grid.probVolumes (MC inference) is available, uses probability fields
+  // directly (no artificial smoothing needed — the gradient is genuine).
   buildIsosurfaces(grid, geoUnits, opacity = 0.6, onProgress = null) {
     this._clearMC();
-    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin, unitIds } = grid;
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin, unitIds, probVolumes } = grid;
     const total = nx * ny * nz;
 
     let done = 0;
     for (const unit of geoUnits) {
-      // Binary scalar field: 1.0 inside this unit, 0.0 outside
-      const field = new Float32Array(total);
-      for (let i = 0; i < total; i++) field[i] = unitIds[i] === unit.id ? 1.0 : 0.0;
-
-      // 2-pass smoothing to get a gradient transition at boundaries
-      const smoothed = smooth3D(smooth3D(field, nx, ny, nz, 1), nx, ny, nz, 1);
+      let smoothed;
+      if (probVolumes?.has(unit.code)) {
+        // MC probability volumes: genuine smooth gradient, no artificial smoothing
+        smoothed = probVolumes.get(unit.code);
+      } else {
+        // Fallback: binary field + 2-pass box-blur
+        const field = new Float32Array(total);
+        for (let i = 0; i < total; i++) field[i] = unitIds[i] === unit.id ? 1.0 : 0.0;
+        smoothed = smooth3D(smooth3D(field, nx, ny, nz, 1), nx, ny, nz, 1);
+      }
 
       const pos = marchingCubes(smoothed, nx, ny, nz, 0.5, origin, cs, ch);
       if (!pos.length) { done++; onProgress?.(done / geoUnits.length); continue; }
@@ -151,6 +157,71 @@ export class SurfaceManager {
 
       done++;
       onProgress?.(done / geoUnits.length);
+    }
+  }
+
+  // ── Uncertainty isosurface ───────────────────────────────────────────────────
+  // Extracts a surface where model uncertainty is highest (Shannon entropy ≥ threshold).
+  // Useful for locating where new boreholes would most reduce model uncertainty.
+  buildUncertaintySurface(grid, threshold = 0.6, opacity = 0.35) {
+    this._clearUncertainty();
+    const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin, certainty, probVolumes } = grid;
+    const total = nx * ny * nz;
+    if (!certainty && !probVolumes) return;
+
+    const xEnt = p => (p > 0 && p < 1) ? -p * Math.log2(p) - (1 - p) * Math.log2(1 - p) : 0;
+
+    // Build entropy field
+    const entropy = new Float32Array(total);
+    const probArrays = probVolumes ? [...probVolumes.values()] : null;
+    for (let i = 0; i < total; i++) {
+      if (probArrays) {
+        let H = 0;
+        for (const arr of probArrays) H += xEnt(arr[i]);
+        entropy[i] = Math.min(1, H);
+      } else {
+        // Approximate from certainty: certainty≈p_max, so H ≈ 1 - certainty
+        entropy[i] = 1 - (certainty[i] ?? 0.5);
+      }
+    }
+
+    const pos = marchingCubes(entropy, nx, ny, nz, threshold, origin, cs, ch);
+    if (!pos.length) return;
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geom.computeVertexNormals();
+
+    const mat = new THREE.MeshLambertMaterial({
+      color: new THREE.Color('#e8a020').convertSRGBToLinear(),
+      transparent: true,
+      opacity,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      wireframe: false,
+    });
+
+    const mesh = new THREE.Mesh(geom, mat);
+    mesh.userData.isUncertainty = true;
+    mesh.visible = false;
+    this._uncertaintyMesh = mesh;
+    this._scene.add(mesh);
+  }
+
+  setUncertaintyVisible(v) {
+    if (this._uncertaintyMesh) this._uncertaintyMesh.visible = v;
+  }
+
+  setUncertaintyOpacity(op) {
+    if (this._uncertaintyMesh) this._uncertaintyMesh.material.opacity = op;
+  }
+
+  _clearUncertainty() {
+    if (this._uncertaintyMesh) {
+      this._scene.remove(this._uncertaintyMesh);
+      this._uncertaintyMesh.geometry.dispose();
+      this._uncertaintyMesh.material.dispose();
+      this._uncertaintyMesh = null;
     }
   }
 
@@ -207,5 +278,6 @@ export class SurfaceManager {
     }
     this._meshes = {};
     this._clearMC();
+    this._clearUncertainty();
   }
 }

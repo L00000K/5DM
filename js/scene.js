@@ -411,6 +411,18 @@ class SceneManager {
     this._surfaces.setMCUnitVisible(code, v);
   }
 
+  buildUncertaintySurface(grid, threshold, opacity) {
+    this._surfaces.buildUncertaintySurface(grid, threshold, opacity);
+  }
+
+  setUncertaintySurfaceVisible(v) {
+    this._surfaces.setUncertaintyVisible(v);
+  }
+
+  setUncertaintySurfaceOpacity(op) {
+    this._surfaces.setUncertaintyOpacity(op);
+  }
+
   // ── Vertical exaggeration ─────────────────────────────────────────────────
   setVerticalExaggeration(ve) {
     this._builder.group.scale.y = ve;

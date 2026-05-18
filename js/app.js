@@ -659,6 +659,7 @@ function initReset() {
     setEnabled('btn-param-apply', false);
     setEnabled('btn-param-reset', false);
     setEnabled('btn-build-isosurfaces', false);
+    setEnabled('btn-uncertainty-surface', false);
     setEnabled('btn-grade-apply', false);
     setEnabled('btn-crossplot-draw', false); setEnabled('btn-depthplot-draw', false);
     setEnabled('btn-formation-stats', false);
@@ -1011,6 +1012,7 @@ function initBuildModel() {
       setEnabled('btn-param-apply', true);
       setEnabled('btn-param-reset', true);
       setEnabled('btn-build-isosurfaces', true);
+      setEnabled('btn-uncertainty-surface', true);
       setEnabled('btn-grade-apply', true);
       const fdPanel = document.getElementById('foundation-panel');
       if (fdPanel) fdPanel.style.display = 'block';
@@ -3788,24 +3790,38 @@ function initScenarioManager() {
 function initIsosurfaces() {
   const btn = document.getElementById('btn-build-isosurfaces');
   if (!btn) return;
-  let built = false;
-  let visible = false;
+  let isoBuilt = false;
+  let isoVisible = false;
+  let uncertBuilt = false;
+  let uncertVisible = false;
+
+  // Reset state when a new model is built
+  window.addEventListener('geomodel:model-built', () => {
+    isoBuilt = false;
+    isoVisible = false;
+    uncertBuilt = false;
+    uncertVisible = false;
+    btn.classList.remove('active');
+    const ub = document.getElementById('btn-uncertainty-surface');
+    if (ub) ub.classList.remove('active');
+  });
 
   btn.addEventListener('click', async () => {
     if (!AppState.voxelGrid || !AppState.scene) { log('Build the 3D model first.', 'warn'); return; }
 
-    if (built) {
-      // Toggle visibility
-      visible = !visible;
-      AppState.scene.setIsosurfacesVisible(visible);
-      btn.classList.toggle('active', visible);
-      log(`Isosurfaces ${visible ? 'shown' : 'hidden'}.`, 'info');
+    if (isoBuilt) {
+      isoVisible = !isoVisible;
+      AppState.scene.setIsosurfacesVisible(isoVisible);
+      btn.classList.toggle('active', isoVisible);
+      log(`Isosurfaces ${isoVisible ? 'shown' : 'hidden'}.`, 'info');
       return;
     }
 
     btn.disabled = true;
     btn.textContent = '⬡ Building…';
-    log('Building marching-cubes isosurfaces…', 'info');
+    log(AppState.voxelGrid.probVolumes?.size > 0
+      ? 'Building isosurfaces from MC probability volumes…'
+      : 'Building marching-cubes isosurfaces…', 'info');
     await new Promise(r => setTimeout(r, 0));
 
     const op = parseFloat(document.getElementById('surface-opacity')?.value ?? 55) / 100;
@@ -3814,13 +3830,58 @@ function initIsosurfaces() {
       p => { btn.textContent = `⬡ ${(p * 100).toFixed(0)}%`; },
     );
 
-    built = true;
-    visible = true;
+    isoBuilt = true;
+    isoVisible = true;
     AppState.scene.setIsosurfacesVisible(true);
     btn.disabled = false;
     btn.textContent = '⬡ Isosurfaces';
     btn.classList.add('active');
-    log(`Isosurfaces built for ${AppState.geoUnits.length} unit(s).`, 'ok');
+    const src = AppState.voxelGrid.probVolumes?.size > 0 ? ' (MC probability)' : '';
+    log(`Isosurfaces built for ${AppState.geoUnits.length} unit(s)${src}.`, 'ok');
+  });
+
+  // ── Uncertainty isosurface ─────────────────────────────────────────────────
+  const uncertBtn = document.getElementById('btn-uncertainty-surface');
+  uncertBtn?.addEventListener('click', async () => {
+    if (!AppState.voxelGrid || !AppState.scene) { log('Build the 3D model first.', 'warn'); return; }
+
+    if (uncertBuilt) {
+      uncertVisible = !uncertVisible;
+      AppState.scene.setUncertaintySurfaceVisible(uncertVisible);
+      uncertBtn.classList.toggle('active', uncertVisible);
+      log(`Uncertainty surface ${uncertVisible ? 'shown' : 'hidden'}.`, 'info');
+      return;
+    }
+
+    uncertBtn.disabled = true;
+    uncertBtn.textContent = '◈ Building…';
+    log('Building uncertainty isosurface…', 'info');
+    await new Promise(r => setTimeout(r, 0));
+
+    const threshold = parseFloat(document.getElementById('uncertainty-threshold')?.value ?? 60) / 100;
+    AppState.scene.buildUncertaintySurface(AppState.voxelGrid, threshold, 0.35);
+
+    uncertBuilt = true;
+    uncertVisible = true;
+    AppState.scene.setUncertaintySurfaceVisible(true);
+    uncertBtn.disabled = false;
+    uncertBtn.textContent = '◈ Uncertainty';
+    uncertBtn.classList.add('active');
+    log(`Uncertainty surface built (threshold: ${(threshold * 100).toFixed(0)}% entropy).`, 'ok');
+  });
+
+  const uncertThresh = document.getElementById('uncertainty-threshold');
+  const uncertThreshLbl = document.getElementById('uncertainty-threshold-val');
+  uncertThresh?.addEventListener('input', () => {
+    if (uncertThreshLbl) uncertThreshLbl.textContent = uncertThresh.value + '%';
+  });
+  uncertThresh?.addEventListener('change', () => {
+    if (!uncertBuilt) return;
+    // rebuild with new threshold
+    uncertBuilt = false;
+    uncertVisible = false;
+    uncertBtn?.classList.remove('active');
+    uncertBtn?.click();
   });
 }
 
