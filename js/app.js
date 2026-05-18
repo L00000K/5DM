@@ -6336,6 +6336,19 @@ function initConceptPanel() {
   // Render concept library chips and scenario list
   _initConceptLibrary();
 
+  // Wire concept correlation matrix collapsible
+  const corrToggle = document.getElementById('concept-corr-toggle');
+  const corrBody   = document.getElementById('concept-corr-body');
+  if (corrToggle && corrBody) {
+    corrToggle.addEventListener('click', () => {
+      const hidden = corrBody.hasAttribute('hidden');
+      if (hidden) { corrBody.removeAttribute('hidden'); _drawConceptCorrelationMatrix(); }
+      else corrBody.setAttribute('hidden', '');
+      const arrow = corrToggle.querySelector('.collapse-arrow');
+      if (arrow) arrow.textContent = hidden ? '⌄' : '›';
+    });
+  }
+
   // Wire scenario section toggle
   const scToggle = document.getElementById('concept-scenario-toggle');
   const scBody   = document.getElementById('concept-scenario-body');
@@ -7160,6 +7173,10 @@ export function _renderConceptList() {
   _renderConceptConflicts();
   // Update 3D scene concept domain boxes (only bbox concepts show a 3D marker)
   AppState.scene?.drawConceptDomains?.(AppState.conceptStore);
+  // Refresh correlation matrix if panel is open
+  if (!document.getElementById('concept-corr-body')?.hasAttribute('hidden')) {
+    _drawConceptCorrelationMatrix();
+  }
 }
 
 function _renderConceptConflicts() {
@@ -7579,6 +7596,116 @@ function _warnLowInfluenceConcepts() {
   }).join('');
   confEl.style.display = 'block';
   confEl.innerHTML += newRows;
+}
+
+// ── Concept axis correlation matrix ──────────────────────────────────────────
+// Renders a 32×32 heatmap on #concept-corr-canvas showing how geological axes
+// co-vary across the active concept store.
+// r[i][j] = Pearson correlation of axis-i vs axis-j values across all concepts.
+function _drawConceptCorrelationMatrix() {
+  const canvas = document.getElementById('concept-corr-canvas');
+  if (!canvas) return;
+  const ctx2 = canvas.getContext('2d');
+  const store = AppState.conceptStore;
+  if (!store || store.isEmpty) {
+    ctx2.clearRect(0, 0, canvas.width, canvas.height);
+    ctx2.fillStyle = '#2a3848';
+    ctx2.fillRect(0, 0, canvas.width, canvas.height);
+    ctx2.fillStyle = '#4a6275';
+    ctx2.font = '11px Inter, sans-serif';
+    ctx2.textAlign = 'center';
+    ctx2.fillText('Add concepts to see correlation', canvas.width / 2, canvas.height / 2);
+    return;
+  }
+
+  const concepts = store.concepts;
+  const DIM = 32;
+  const N = concepts.length;
+  if (N < 2) {
+    ctx2.clearRect(0, 0, canvas.width, canvas.height);
+    ctx2.fillStyle = '#2a3848';
+    ctx2.fillRect(0, 0, canvas.width, canvas.height);
+    ctx2.fillStyle = '#4a6275';
+    ctx2.font = '11px Inter, sans-serif';
+    ctx2.textAlign = 'center';
+    ctx2.fillText('Add ≥2 concepts to see correlation', canvas.width / 2, canvas.height / 2);
+    return;
+  }
+
+  // Build DIM×DIM correlation matrix
+  // Each concept contributes one sample vector of length 32
+  const means = new Float32Array(DIM);
+  for (const c of concepts) for (let i = 0; i < DIM; i++) means[i] += c.embedding[i];
+  for (let i = 0; i < DIM; i++) means[i] /= N;
+
+  const corr = new Float32Array(DIM * DIM);
+  for (let i = 0; i < DIM; i++) {
+    for (let j = i; j < DIM; j++) {
+      let num = 0, si = 0, sj = 0;
+      for (const c of concepts) {
+        const di = c.embedding[i] - means[i];
+        const dj = c.embedding[j] - means[j];
+        num += di * dj;
+        si  += di * di;
+        sj  += dj * dj;
+      }
+      const r = (si > 1e-9 && sj > 1e-9) ? num / Math.sqrt(si * sj) : (i === j ? 1 : 0);
+      corr[i * DIM + j] = r;
+      corr[j * DIM + i] = r;
+    }
+  }
+
+  const W = canvas.width, H = canvas.height;
+  const MARGIN = 18;
+  const cellW = (W - MARGIN) / DIM;
+  const cellH = (H - MARGIN) / DIM;
+
+  ctx2.clearRect(0, 0, W, H);
+  ctx2.fillStyle = '#1a2230';
+  ctx2.fillRect(0, 0, W, H);
+
+  // Draw cells
+  for (let i = 0; i < DIM; i++) {
+    for (let j = 0; j < DIM; j++) {
+      const r = corr[i * DIM + j];
+      let color;
+      if (r >= 0) {
+        const t = r;
+        color = `rgb(${Math.round(20 + t * 180)},${Math.round(30 + t * 30)},${Math.round(30)})`;
+      } else {
+        const t = -r;
+        color = `rgb(${Math.round(30)},${Math.round(30 + t * 30)},${Math.round(20 + t * 180)})`;
+      }
+      ctx2.fillStyle = color;
+      ctx2.fillRect(MARGIN + j * cellW, i * cellH, Math.ceil(cellW + 0.3), Math.ceil(cellH + 0.3));
+    }
+  }
+
+  // Axis tick labels (every 4th axis, abbreviated)
+  ctx2.fillStyle = '#8898a8';
+  ctx2.font = `${Math.max(5, Math.min(7, cellW * 0.85))}px Inter, sans-serif`;
+  ctx2.textAlign = 'right';
+  for (let i = 0; i < DIM; i += 4) {
+    const label = CONCEPT_AXES[i]?.slice(0, 6) ?? String(i);
+    const y = i * cellH + cellH * 0.5 + 3;
+    ctx2.fillText(label, MARGIN - 1, y);
+  }
+  ctx2.textAlign = 'center';
+  ctx2.save();
+  for (let j = 0; j < DIM; j += 4) {
+    const label = CONCEPT_AXES[j]?.slice(0, 6) ?? String(j);
+    const x = MARGIN + j * cellW + cellW * 0.5;
+    ctx2.save();
+    ctx2.translate(x, DIM * cellH + 2);
+    ctx2.rotate(-Math.PI / 2);
+    ctx2.fillText(label, 0, 0);
+    ctx2.restore();
+  }
+  ctx2.restore();
+
+  // Color scale legend
+  const legEl = document.getElementById('concept-corr-legend');
+  if (legEl) legEl.textContent = `${N} concepts · red=positive · blue=negative correlation across axes`;
 }
 
 // ── Concept interpretation narrative ─────────────────────────────────────────

@@ -594,6 +594,20 @@
           <button id="btn-copy-narrative" style="display:none;font-size:9px;padding:2px 8px;margin-top:3px" class="btn btn-ghost">⧉ Copy to clipboard</button>
         </div>
 
+        <!-- Concept axis correlation matrix -->
+        <div class="collapsible-hdr" id="concept-corr-toggle" style="margin-top:8px">
+          <span>Axis Correlation Matrix <span class="badge-opt">semantic coherence</span></span>
+          <span class="collapse-arrow">›</span>
+        </div>
+        <div id="concept-corr-body" class="collapsible-body" hidden>
+          <p class="hint" style="margin-bottom:4px;font-size:10px">
+            Shows how the 32 geological axes co-vary across your active concepts.
+            Red = positive correlation (axes fire together), Blue = negative (mutually exclusive).
+          </p>
+          <canvas id="concept-corr-canvas" width="260" height="260" style="display:block;margin:0 auto;border-radius:4px"></canvas>
+          <div id="concept-corr-legend" style="font-size:9px;color:var(--text-dim);margin-top:4px;text-align:center"></div>
+        </div>
+
         <!-- Geological Events Timeline — Leapfrog-style chronological ordering -->
         <div class="collapsible-hdr" id="geo-events-toggle" style="margin-top:10px">
           <span>Geological Event Timeline <span class="badge-opt">Leapfrog-style</span></span>
