@@ -1142,9 +1142,10 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore, options 
     blendUnitIds[idx] = b2 >= 0 ? (codeToId[unitCodes[b2]] ?? 0) : 0;
     blendRatios[idx]  = p2;
 
-    // Certainty: mean top-1 probability ± concept boost.
-    const conceptBoost = conceptInfluence[idx] > 0 ? Math.min(0.1, conceptInfluence[idx] * 0.08) : 0;
-    certainty[idx] = Math.max(0.05, Math.min(1, 0.5 + p1 - p2 + conceptBoost));
+    // Certainty from MC probability: higher p1 and larger gap to p2 = more certain.
+    // No concept boost here — concept-aware calibration is applied post-hoc in
+    // interpolator.js using coverageDensity (which isn't available inside this function).
+    certainty[idx] = Math.max(0.05, Math.min(1, 0.5 + p1 - p2));
 
     // Fill probability volumes with UNSHARPENED probabilities (raw MC averages)
     // so isosurfaces and uncertainty maps reflect the true learned distribution.

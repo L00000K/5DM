@@ -719,6 +719,26 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
         return arr;
       })();
 
+      // ── Concept-aware certainty calibration ──────────────────────────────────
+      // In data-sparse areas where the model is driven by concept embeddings rather
+      // than borehole observations, we deflate certainty to prevent the model from
+      // appearing artificially confident about unvalidated semantic interpretations.
+      // The penalty scales with conceptInfluence and inversely with borehole coverage:
+      //   penalty = conceptInfluence × (1 − coverage) × 0.22
+      // This keeps certainty high near boreholes (where FiLM conditioning is validated)
+      // and appropriately uncertain in pure-concept regions.
+      if (conceptInfluence && coverageDensity) {
+        const total3D = nx * ny * nz;
+        for (let idx = 0; idx < total3D; idx++) {
+          const inf = conceptInfluence[idx];
+          const cov = coverageDensity[idx];
+          if (inf > 0.25 && cov < 0.35) {
+            const penalty = inf * (1 - cov) * 0.22;
+            certainty[idx] = Math.max(0.05, certainty[idx] - penalty);
+          }
+        }
+      }
+
       if (onProgress) onProgress(1);
       return {
         nx, ny, nz,
