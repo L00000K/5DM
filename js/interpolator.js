@@ -1495,6 +1495,121 @@ export function detectAndCorrectInversions(grid, geoUnits, stratOrder) {
   };
 }
 
+// ── 3D geotechnical parameter volumes ─────────────────────────────────────────
+// Builds IDW-interpolated 3D volumes for engineering test parameters:
+//   N_spt — SPT blow count (from borehole layers)
+//   cu    — undrained shear strength (from unit params, unit-constant)
+//   phi   — friction angle (from unit params)
+//   gamma — unit weight (from unit params)
+// Returns Map<paramName, Float32Array(nx*ny*nz)>
+export function buildParamVolumes(boreholes, geoUnits, grid) {
+  const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin, unitIds } = grid;
+  const ox = origin.x, oy = origin.y, oz = origin.z;
+  const total = nx * ny * nz;
+  const n2    = nx * ny;
+  const vols  = new Map();
+
+  // ── SPT N-value: point observations from borehole layers ─────────────────
+  const sptObs = [];
+  for (const bh of boreholes) {
+    if (!bh.layers) continue;
+    let depthTop = 0;
+    for (const layer of bh.layers) {
+      if (layer.sptN != null && layer.sptN > 0) {
+        const depthMid = (depthTop + (layer.base ?? depthTop + 1)) / 2;
+        const zWorld   = (bh.groundLevel ?? 0) - depthMid;
+        sptObs.push({ x: bh.x, y: bh.y, z: zWorld, v: Math.min(layer.sptN, 100) });
+      }
+      depthTop = layer.base ?? depthTop + 1;
+    }
+  }
+
+  if (sptObs.length >= 2) {
+    vols.set('N_spt', _idw3D(sptObs, nx, ny, nz, ox, oy, oz, cs, ch, 6, 2.0));
+  }
+
+  // ── Unit-parameter volumes: fill each voxel from its unit's params ─────────
+  const UNIT_PARAMS = ['cu', 'phi', 'gamma', 'E', 'Cc'];
+  const unitParamMaps = {};
+  for (const pname of UNIT_PARAMS) {
+    const map = new Map();
+    for (const u of geoUnits) {
+      const v = u.params?.[pname];
+      if (v != null && isFinite(v)) map.set(u.id, v);
+    }
+    if (map.size > 0) unitParamMaps[pname] = map;
+  }
+
+  for (const [pname, map] of Object.entries(unitParamMaps)) {
+    const vol = new Float32Array(total).fill(NaN);
+    for (let i = 0; i < total; i++) {
+      const uid = unitIds[i];
+      const val = map.get(uid);
+      if (val != null) vol[i] = val;
+    }
+    vols.set(pname, vol);
+  }
+
+  return vols;
+}
+
+function _idw3D(obs, nx, ny, nz, ox, oy, oz, cs, ch, k, power) {
+  const n2   = nx * ny;
+  const vol  = new Float32Array(nx * ny * nz).fill(NaN);
+
+  // Bucket by (ix, iy) column for fast 2D neighbor search
+  const buckets = new Map();
+  for (const o of obs) {
+    const ix = Math.floor((o.x - ox) / cs);
+    const iy = Math.floor((o.y - oz) / cs);
+    const key = `${ix},${iy}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(o);
+  }
+
+  const SEARCH_R = Math.max(3, Math.ceil(Math.sqrt(nx * ny / obs.length) * 2));
+
+  for (let iz = 0; iz < nz; iz++) {
+    const wz = oy + iz * ch + ch * 0.5;
+    for (let iy = 0; iy < ny; iy++) {
+      const wy = oz + iy * cs + cs * 0.5;
+      for (let ix = 0; ix < nx; ix++) {
+        const wx = ox + ix * cs + cs * 0.5;
+
+        // Collect candidate observations within column-search radius
+        const cands = [];
+        for (let diy = -SEARCH_R; diy <= SEARCH_R; diy++) {
+          for (let dix = -SEARCH_R; dix <= SEARCH_R; dix++) {
+            const key = `${ix + dix},${iy + diy}`;
+            const b = buckets.get(key);
+            if (b) for (const o of b) cands.push(o);
+          }
+        }
+        if (!cands.length) continue;
+
+        // k-nearest in 3D and IDW
+        cands.sort((a, b) => {
+          const da = (a.x - wx) ** 2 + (a.y - wy) ** 2 + (a.z - wz) ** 2;
+          const db = (b.x - wx) ** 2 + (b.y - wy) ** 2 + (b.z - wz) ** 2;
+          return da - db;
+        });
+        const near = cands.slice(0, k);
+        const d0 = Math.sqrt((near[0].x - wx) ** 2 + (near[0].y - wy) ** 2 + (near[0].z - wz) ** 2);
+        if (d0 < 0.001) { vol[ix + iy * nx + iz * n2] = near[0].v; continue; }
+
+        let sum = 0, wsum = 0;
+        for (const n of near) {
+          const d = Math.sqrt((n.x - wx) ** 2 + (n.y - wy) ** 2 + (n.z - wz) ** 2);
+          const w = 1 / Math.pow(Math.max(d, 0.01), power);
+          sum += w * n.v; wsum += w;
+        }
+        vol[ix + iy * nx + iz * n2] = wsum > 0 ? sum / wsum : NaN;
+      }
+    }
+  }
+  return vol;
+}
+
 export function voxelIndex(ix, iy, iz, grid) {
   return ix + iy * grid.nx + iz * grid.nx * grid.ny;
 }

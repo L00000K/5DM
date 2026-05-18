@@ -4,7 +4,7 @@ import { initTextInput } from './text-input.js';
 import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel, oracleRefinement, generateReportNarrative, parseGeologicalFeatures, suggestConceptsFromBoreholes } from './claude-client.js';
 import { parseShapesFromClaude, generateShapeBoreholes } from './geo-shapes.js';
 import { exportConfig, importConfig } from './project-config.js';
-import { buildVoxelGrid, buildVoxelGridMonteCarlo, buildIndicatorKriging, detectAndCorrectInversions } from './interpolator.js';
+import { buildVoxelGrid, buildVoxelGridMonteCarlo, buildIndicatorKriging, detectAndCorrectInversions, buildParamVolumes } from './interpolator.js';
 import { inferGeoImplicit } from './geo-implicit.js';
 import { initScene } from './scene.js';
 import { initLayerControls } from './layer-controls.js';
@@ -965,6 +965,16 @@ function initBuildModel() {
       }
       // Cache trained neural model for fast concept-ensemble re-inference
       AppState.trainedModel = AppState.voxelGrid?.trainedModel ?? null;
+
+      // Build 3D parameter volumes (SPT, cu, phi, gamma) from borehole test data
+      {
+        const pvols = buildParamVolumes(bhForModel, AppState.geoUnits, AppState.voxelGrid);
+        if (pvols.size) {
+          AppState.voxelGrid.paramVolumes = pvols;
+          const names = [...pvols.keys()].join(', ');
+          log(`Parameter volumes built: ${names}`, 'info');
+        }
+      }
 
       // Stratigraphic inversion correction
       if (document.getElementById('correct-inversions')?.checked && _stratOrder?.length) {
@@ -4165,7 +4175,9 @@ function initParameterView() {
       return;
     }
 
-    const range = AppState.scene.colorByParameter(paramName, AppState.geoUnits);
+    // Use spatially-interpolated 3D parameter volume if available
+    const paramGrid = AppState.voxelGrid?.paramVolumes?.get(paramName) ?? null;
+    const range = AppState.scene.colorByParameter(paramName, AppState.geoUnits, paramGrid);
     if (!range) {
       log(`No unit has the parameter "${paramName}" defined. Use Auto-Fill Parameters first.`, 'warn');
       return;
@@ -4175,9 +4187,10 @@ function initParameterView() {
     document.getElementById('param-scale-min').textContent = min.toFixed(1);
     document.getElementById('param-scale-mid').textContent = mid;
     document.getElementById('param-scale-max').textContent = max.toFixed(1);
-    document.getElementById('param-scale-label').textContent = PARAM_LABELS[paramName] ?? paramName;
+    document.getElementById('param-scale-label').textContent =
+      (paramGrid ? '3D IDW — ' : '') + (PARAM_LABELS[paramName] ?? paramName);
     document.getElementById('param-colorscale').style.display = 'block';
-    log(`Parameter view: ${PARAM_LABELS[paramName] ?? paramName} (${min.toFixed(1)} – ${max.toFixed(1)})`, 'ok');
+    log(`Parameter view: ${paramGrid ? '3D IDW ' : ''}${PARAM_LABELS[paramName] ?? paramName} (${min.toFixed(1)} – ${max.toFixed(1)})`, 'ok');
   });
 
   document.getElementById('btn-param-reset')?.addEventListener('click', () => {
