@@ -4,7 +4,7 @@ import { initTextInput } from './text-input.js';
 import { runAIAnalysis, interpretGeology, inferStratOrderFromData, inferUnitParameters, generateSemanticModel, oracleRefinement, generateReportNarrative, parseGeologicalFeatures, suggestConceptsFromBoreholes, scoreConceptCoherence } from './claude-client.js';
 import { parseShapesFromClaude, generateShapeBoreholes } from './geo-shapes.js';
 import { exportConfig, importConfig } from './project-config.js';
-import { buildVoxelGrid, buildVoxelGridMonteCarlo, buildIndicatorKriging, detectAndCorrectInversions, buildParamVolumes, detectPinchouts } from './interpolator.js';
+import { buildVoxelGrid, buildVoxelGridMonteCarlo, buildIndicatorKriging, detectAndCorrectInversions, buildParamVolumes, detectPinchouts, identifySequenceSurfaces } from './interpolator.js';
 import { inferGeoImplicit } from './geo-implicit.js';
 import { initScene } from './scene.js';
 import { initLayerControls } from './layer-controls.js';
@@ -36,7 +36,7 @@ import { parseSectionFromText, sectionToVirtualBoreholes,
          sketchToVirtualBoreholes, fenceLength } from './section-interpreter.js';
 import { SectionSketch } from './section-sketch.js';
 import { FourierEncoder, measureConceptGeometry, analyzeBoreholeGeometry } from './geo-implicit.js';
-import { ConceptStore, CONCEPT_AXES } from './concept-store.js';
+import { ConceptStore, CONCEPT_AXES, warpPoint, computeWarpedBounds } from './concept-store.js';
 import { encodeGeologicalConcept, refineConceptsWithClaude, extractConceptsFromText, analyseBoreholeGaps, setupConceptsFromSiteDescription, analyseUnitSimilarity, compileGeologicalRules, recommendDrillingLocations } from './claude-client.js';
 
 // ── Global application state ──────────────────────────────────────────────────
@@ -655,6 +655,7 @@ function initReset() {
     setEnabled('btn-assess-risk', false);
     setEnabled('btn-drill-plan', false);
     setEnabled('btn-recommend-drilling', false);
+    setEnabled('btn-seq-surfaces', false);
     setEnabled('btn-strat-corr', false);
     setEnabled('btn-plan-view', false);
     setEnabled('btn-export-contacts', false);
@@ -1044,6 +1045,7 @@ function initBuildModel() {
       setEnabled('btn-assess-risk', true);
       setEnabled('btn-drill-plan', true);
       setEnabled('btn-recommend-drilling', true);
+      setEnabled('btn-seq-surfaces', true);
       setEnabled('btn-strat-corr', AppState.classifiedBH.filter(b => !b.synthetic).length >= 2);
       setEnabled('btn-plan-view', true);
       setEnabled('btn-export-contacts', true);
@@ -4751,6 +4753,61 @@ function initRiskAssessment() {
     log(`Pinch-out detection: ${pinchMap.size} units with lateral terminations`, 'info');
   });
 
+  document.getElementById('btn-seq-surfaces')?.addEventListener('click', () => {
+    const grid = AppState.voxelGrid;
+    if (!grid) { log('Build the 3D model first.', 'warn'); return; }
+    const resEl = document.getElementById('seq-surfaces-results');
+
+    try {
+      const surfaces = identifySequenceSurfaces(grid, AppState.geoUnits, AppState.conceptStore);
+      if (!surfaces.length) {
+        if (resEl) { resEl.style.display = 'block'; resEl.innerHTML = '<p class="hint" style="font-size:10px">No sequence surfaces identified. Add temporally ordered concepts (set temporal rank in concept controls) to enable this analysis.</p>'; }
+        return;
+      }
+
+      const unitById = {};
+      AppState.geoUnits.forEach(u => { unitById[u.code] = u; });
+
+      const rows = surfaces.slice(0, 12).map(s => {
+        const youngUnit = unitById[s.youngerCode];
+        const oldUnit   = unitById[s.olderCode];
+        const youngCol  = youngUnit?.color ?? '#888';
+        const oldCol    = oldUnit?.color   ?? '#666';
+        const isBoundary = s.type === 'boundary';
+        const typeLabel  = isBoundary ? 'Sequence boundary' : '⚠ Inversion';
+        const typeColor  = isBoundary ? 'var(--accent)' : 'var(--red)';
+        const elevRange  = s.elevMin !== s.elevMax
+          ? `${s.elevMin} – ${s.elevMax} m AOD` : `${s.elevation} m AOD`;
+        return `<div style="padding:5px;border:1px solid var(--border);border-radius:4px;margin-bottom:3px">
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+            <span style="font-size:10px;font-weight:600;color:${typeColor}">${typeLabel}</span>
+            <span style="margin-left:auto;font-size:9px;color:var(--text-dim)">${s.voxelCount} contacts</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:3px;font-size:9.5px">
+            <span style="width:8px;height:8px;border-radius:1px;background:${youngCol};flex-shrink:0"></span>
+            <span style="color:var(--text)">${escHtml(s.youngerCode)}</span>
+            <span style="color:var(--text-dim)"> overlies </span>
+            <span style="width:8px;height:8px;border-radius:1px;background:${oldCol};flex-shrink:0"></span>
+            <span style="color:var(--text)">${escHtml(s.olderCode)}</span>
+          </div>
+          <div style="font-size:9px;color:var(--text-mid);margin-top:2px">${elevRange}</div>
+        </div>`;
+      });
+
+      const nBound = surfaces.filter(s => s.type === 'boundary').length;
+      const nRev   = surfaces.filter(s => s.type === 'reversal').length;
+      if (resEl) {
+        resEl.style.display = 'block';
+        resEl.innerHTML = `<div style="font-size:10px;font-weight:600;color:var(--text-mid);margin-bottom:5px">
+          ${nBound} surface${nBound !== 1 ? 's' : ''} · ${nRev > 0 ? `${nRev} inversion${nRev !== 1 ? 's' : ''} ⚠` : 'no inversions'}
+        </div>${rows.join('')}`;
+      }
+      log(`Sequence stratigraphy: ${nBound} surface(s) identified${nRev > 0 ? `, ${nRev} inversion(s)` : ''}`, nRev > 0 ? 'warn' : 'ok');
+    } catch (e) {
+      log(`Sequence surface identification failed: ${e.message}`, 'error');
+    }
+  });
+
   document.getElementById('btn-recommend-drilling')?.addEventListener('click', () => {
     const grid = AppState.voxelGrid;
     if (!grid) { log('Build the 3D model first.', 'warn'); return; }
@@ -5857,6 +5914,47 @@ async function init() {
     const attr = _computeAttribution(d.worldX, d.worldY, d.worldZ);
     panel.classList.remove('hidden');
     content.innerHTML = _renderAttribution(attr, d.unitCode);
+
+    // Wire neural sensitivity scan button (rendered inside attribution HTML)
+    const sensBtn = document.getElementById('btn-trace-sensitivity');
+    if (sensBtn) {
+      sensBtn.addEventListener('click', () => {
+        const sensEl = document.getElementById('trace-sensitivity-content');
+        if (!sensEl) return;
+        sensBtn.disabled = true;
+        sensBtn.textContent = '⟳ Scanning…';
+        // Run in next tick to allow UI update
+        setTimeout(() => {
+          try {
+            const result = _computeVoxelSensitivity(d.worldX, d.worldY, d.worldZ);
+            if (!result) {
+              sensEl.innerHTML = '<span style="color:var(--text-dim)">No neural model available.</span>';
+              return;
+            }
+            const { sensitivity, dominantUnitCode, basePDom } = result;
+            const maxAbs = Math.max(0.01, ...Array.from(sensitivity).map(Math.abs));
+            const bars = Array.from(sensitivity).map((v, i) => {
+              const pct = Math.round(Math.abs(v) / maxAbs * 100);
+              const col = v > 0.01 ? 'var(--accent)' : v < -0.01 ? 'var(--red)' : 'var(--border)';
+              const sign = v > 0.005 ? '↑' : v < -0.005 ? '↓' : '·';
+              return `<div style="display:flex;align-items:center;gap:3px;margin-bottom:1px">
+                <span style="width:14px;text-align:center;font-size:9px;color:${col}">${sign}</span>
+                <div style="flex:1;height:5px;background:var(--bg-deep);border-radius:2px;overflow:hidden">
+                  <div style="width:${pct}%;height:100%;background:${col}"></div>
+                </div>
+                <span style="font-size:8.5px;font-family:var(--font-mono);color:var(--text-dim);width:36px;text-align:right">${v >= 0 ? '+' : ''}${v.toFixed(2)}</span>
+                <span style="font-size:8.5px;color:var(--text-dim);width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${CONCEPT_AXES[i]}">${CONCEPT_AXES[i]}</span>
+              </div>`;
+            }).join('');
+            sensEl.innerHTML = `<div style="font-size:9px;color:var(--text-mid);margin-bottom:4px">
+              ∂P(${dominantUnitCode ?? '?'}) / ∂axis (base P=${(basePDom * 100).toFixed(0)}%) — how each axis shifts the dominant unit probability
+            </div>${bars}`;
+          } catch (err) {
+            if (sensEl) sensEl.innerHTML = `<span style="color:var(--red);font-size:9px">Sensitivity scan failed: ${err.message}</span>`;
+          }
+        }, 20);
+      });
+    }
   });
 
   const scene = await initScene('three-canvas');
@@ -9487,6 +9585,62 @@ function _computeAttribution(worldX, worldY, worldZ) {
   return getVoxelAttribution(worldX, worldY, worldZ);
 }
 
+// Numerically differentiate the neural implicit field w.r.t. each concept axis.
+// For the voxel at (wx,wy,wz), perturbs each concept axis by +DELTA and measures
+// the change in P(dominantUnit). Returns Float32Array(32) of ∂P/∂axis_i values.
+function _computeVoxelSensitivity(wx, wy, wz) {
+  const trained = AppState.trainedModel;
+  if (!trained?.net || !trained.fourierEnc) return null;
+  const { net, fourierEnc, bounds, warpedBounds, unitCodes, CONCEPT_DIM } = trained;
+  const cdim  = CONCEPT_DIM ?? 32;
+  const nIn   = fourierEnc.outDim + cdim;
+  const store = AppState.conceptStore;
+
+  const ctx     = store?.computeAt?.(wx, wy, wz) ?? null;
+  const ctxVec  = ctx?.vec ?? new Float32Array(cdim);
+  const tensor  = ctx?.tensor ?? { Ax: 1, Ay: 1, Az: 1, Amaj: 1, Amin: 1, theta: 0, cosT: 1, sinT: 0 };
+  const useB    = store ? computeWarpedBounds(bounds, tensor) : (warpedBounds ?? bounds);
+
+  const warped  = warpPoint(wx, wy, wz, tensor);
+  // Handle dip trend if present (mirrors inferGeoImplicit logic)
+  let wz2 = warped.z;
+  const iTrend = ctx?.trend;
+  if (iTrend && (Math.abs(iTrend.dz_dxN) > 0.005 || Math.abs(iTrend.dz_dyN) > 0.005)) {
+    const xN = 2 * (warped.x - useB.minX) / Math.max(1e-6, useB.maxX - useB.minX) - 1;
+    const yN = 2 * (warped.y - useB.minY) / Math.max(1e-6, useB.maxY - useB.minY) - 1;
+    wz2 += iTrend.dz_dxN * xN + iTrend.dz_dyN * yN;
+  }
+
+  const pos = fourierEnc.encode(warped.x, warped.y, wz2, useB);
+
+  // Base prediction
+  const baseInp = new Float32Array(nIn);
+  baseInp.set(pos);
+  for (let i = 0; i < cdim; i++) baseInp[fourierEnc.outDim + i] = ctxVec[i] ?? 0;
+  let baseResult;
+  try { baseResult = net.forward(baseInp, 0); } catch { return null; }
+  const baseProbs  = baseResult.probs;
+  let domIdx = 0;
+  for (let u = 1; u < baseProbs.length; u++) { if (baseProbs[u] > baseProbs[domIdx]) domIdx = u; }
+  const basePDom   = baseProbs[domIdx];
+
+  // Perturb each axis
+  const DELTA = 0.2;
+  const sensitivity = new Float32Array(Math.min(32, cdim));
+  for (let i = 0; i < sensitivity.length; i++) {
+    const pertInp = new Float32Array(nIn);
+    pertInp.set(pos);
+    for (let j = 0; j < cdim; j++) pertInp[fourierEnc.outDim + j] = ctxVec[j] ?? 0;
+    pertInp[fourierEnc.outDim + i] = Math.min(1, (ctxVec[i] ?? 0) + DELTA);
+    try {
+      const pertProbs = net.forward(pertInp, 0).probs;
+      sensitivity[i] = (pertProbs[domIdx] - basePDom) / DELTA;
+    } catch { sensitivity[i] = 0; }
+  }
+
+  return { sensitivity, dominantUnitCode: unitCodes[domIdx] ?? null, basePDom };
+}
+
 function _renderAttribution(attr, unitCode) {
   if (!attr) return '';
   const { conceptWeights, bhWeights, tensor, semanticDominance, activeAxes, trend, coverageDensity, sharpnessT } = attr;
@@ -9602,7 +9756,15 @@ function _renderAttribution(attr, unitCode) {
       <div class="trace-warp">Major ×${(tensor.Amaj ?? Math.max(tensor.Ax, tensor.Ay)).toFixed(2)} at ${(tensor.thetaDeg ?? 0).toFixed(0)}° · Minor ×${(tensor.Amin ?? Math.min(tensor.Ax, tensor.Ay)).toFixed(2)} · Z ×${tensor.Az}</div>
       ${trend && (Math.abs(trend.dz_dxN) > 0.01 || Math.abs(trend.dz_dyN) > 0.01) ? `<div class="trace-warp" style="margin-top:2px;color:var(--text-mid)">Depth trend: E ${trend.dz_dxN >= 0 ? '↘' : '↗'} ${Math.abs(trend.dz_dxN).toFixed(3)} · N ${trend.dz_dyN >= 0 ? '↘' : '↗'} ${Math.abs(trend.dz_dyN).toFixed(3)}</div>` : ''}
       ${sharpnessT != null && sharpnessT < 0.95 ? `<div class="trace-warp" style="margin-top:2px;color:#e8a020">Contact sharpness T=${sharpnessT.toFixed(2)}${sharpnessT < 0.5 ? ' (sharp/stepped boundary)' : ' (slightly sharpened)'}</div>` : ''}
-    </div>`;
+    </div>
+    ${AppState.trainedModel ? `<div class="trace-section">
+      <div class="trace-section-hdr">Neural Sensitivity <span style="font-weight:400;font-size:9px;color:var(--text-dim)">∂P(unit)/∂axis</span></div>
+      <div id="trace-sensitivity-content" style="font-size:9.5px;color:var(--text-dim)">
+        <button style="font-size:9px;padding:2px 6px;border:1px solid var(--border);border-radius:3px;background:var(--bg-el);color:var(--text);cursor:pointer" id="btn-trace-sensitivity">
+          ⟳ Scan 32 axes
+        </button>
+      </div>
+    </div>` : ''}`;
 }
 
 // ── Model QC Dashboard ───────────────────────────────────────────────────────

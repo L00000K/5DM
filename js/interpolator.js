@@ -1693,3 +1693,110 @@ export function voxelWorldPos(ix, iy, iz, grid) {
     z: grid.origin.z + iy * grid.cellSize   + grid.cellSize   * 0.5,
   };
 }
+
+// ── Sequence Stratigraphic Surface Identification ───────────────────────────────
+// Scans the voxel grid for columns where a unit with a HIGHER temporal order
+// (younger) directly overlies a unit with a LOWER temporal order (older).
+// These transitions represent concept-grounded sequence boundaries.
+//
+// Requires geoUnits with temporalOrder derived from conceptStore temporal ordering.
+// Also detects reversals (older overlying younger) as potential inversion flags.
+//
+// Returns [{
+//   type: 'boundary' | 'reversal',
+//   youngerCode, olderCode,
+//   elevation,        // AOD elevation of the transition (metres)
+//   x, y,             // world coordinates of the column centroid
+//   ix, iy, iz,       // grid indices of the contact voxel (top of older unit)
+//   voxelCount,       // how many columns share this same transition pair
+// }]
+export function identifySequenceSurfaces(grid, geoUnits, conceptStore) {
+  if (!grid || !geoUnits.length) return [];
+
+  // Build temporal rank map from concept store
+  const temporalRank = {};
+  if (conceptStore && !conceptStore.isEmpty) {
+    for (const c of conceptStore.concepts) {
+      if (c.temporalOrder == null || !c.unitAffinity?.length) continue;
+      for (const code of c.unitAffinity) {
+        if (temporalRank[code] == null || c.temporalOrder > temporalRank[code]) {
+          temporalRank[code] = c.temporalOrder;
+        }
+      }
+    }
+  }
+  // If no concept-derived ranks, fall back to geoUnit index as proxy stratigraphy
+  if (!Object.keys(temporalRank).length) {
+    geoUnits.forEach((u, i) => { temporalRank[u.code] = i; });
+  }
+
+  const idToCode = {};
+  geoUnits.forEach(u => { idToCode[u.id] = u.code; });
+
+  const { nx, ny, nz, cellSize, cellHeight, origin, unitIds } = grid;
+
+  // Map: "youngerCode|olderCode" → {count, elevSum, type}
+  const surfaceMap = new Map();
+
+  for (let iy = 0; iy < ny; iy++) {
+    for (let ix = 0; ix < nx; ix++) {
+      // Scan column from top (highest iz) to bottom
+      let prevCode = null;
+      for (let iz = nz - 1; iz >= 0; iz--) {
+        const flat  = ix + iy * nx + iz * nx * ny;
+        const uid   = unitIds[flat];
+        const code  = idToCode[uid];
+        if (!code) { prevCode = code; continue; }
+
+        if (prevCode && prevCode !== code) {
+          const prevRank = temporalRank[prevCode] ?? -1;
+          const currRank = temporalRank[code]     ?? -1;
+
+          // Descending column (high iz = shallower). prevCode is above (shallow).
+          // Normal stratigraphy: prevCode (shallow/younger) has HIGHER rank than currCode (deep/older).
+          const isNormal  = prevRank > currRank  && prevRank >= 0 && currRank >= 0;
+          const isReversal = prevRank < currRank && prevRank >= 0 && currRank >= 0;
+
+          if (isNormal || isReversal) {
+            const key  = `${prevCode}|${code}`;
+            const elev = origin.y + iz * cellHeight + cellHeight;
+            const wx   = origin.x + ix * cellSize + cellSize * 0.5;
+            const wy   = origin.z + iy * cellSize + cellSize * 0.5;
+            if (!surfaceMap.has(key)) {
+              surfaceMap.set(key, {
+                type:         isNormal ? 'boundary' : 'reversal',
+                youngerCode:  isNormal ? prevCode : code,
+                olderCode:    isNormal ? code : prevCode,
+                elevSum:      0, elevMin: Infinity, elevMax: -Infinity,
+                voxelCount:   0, wxSum: 0, wySum: 0,
+                iz, ix, iy,
+              });
+            }
+            const s = surfaceMap.get(key);
+            s.voxelCount++;
+            s.elevSum += elev;
+            s.wxSum   += wx;
+            s.wySum   += wy;
+            if (elev < s.elevMin) s.elevMin = elev;
+            if (elev > s.elevMax) s.elevMax = elev;
+          }
+        }
+        prevCode = code;
+      }
+    }
+  }
+
+  // Convert to array, compute averages, sort by voxelCount desc
+  return Array.from(surfaceMap.values()).map(s => ({
+    type:        s.type,
+    youngerCode: s.youngerCode,
+    olderCode:   s.olderCode,
+    elevation:   +(s.elevSum / s.voxelCount).toFixed(2),
+    elevMin:     +s.elevMin.toFixed(2),
+    elevMax:     +s.elevMax.toFixed(2),
+    x:           +(s.wxSum / s.voxelCount).toFixed(1),
+    y:           +(s.wySum / s.voxelCount).toFixed(1),
+    ix:          s.ix, iy: s.iy, iz: s.iz,
+    voxelCount:  s.voxelCount,
+  })).sort((a, b) => b.voxelCount - a.voxelCount);
+}
