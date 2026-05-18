@@ -209,6 +209,14 @@ export class SlicerTool {
     if (ps) ps.value = 0;
   }
 
+  // Programmatically set section by two world XZ points.
+  // x1/z1 and x2/z2 are in geological coordinates (X=Easting, Z=Northing).
+  setByWorldPoints(x1, z1, x2, z2) {
+    const wA = new THREE.Vector3(x1, 0, z1);
+    const wB = new THREE.Vector3(x2, 0, z2);
+    this._finalize(wA, wB);
+  }
+
   // ── Clipping planes ───────────────────────────────────────────────────────
   // Three.js clips fragments where: plane.normal · point + plane.constant < 0
   _updatePlanes() {

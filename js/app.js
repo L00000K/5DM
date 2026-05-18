@@ -7561,6 +7561,103 @@ export function computeConceptCoherence() {
 }
 
 // Show coherence scores when triggered (button in concept panel)
+// ── Section line suggestion from concept anisotropy ───────────────────────────
+document.getElementById('btn-suggest-sections')?.addEventListener('click', () => {
+  const out = document.getElementById('concept-section-suggestions');
+  if (!out) return;
+  if (!AppState.conceptStore || AppState.conceptStore.isEmpty) {
+    log('Add concepts first to get section suggestions.', 'warn'); return;
+  }
+
+  const tensor  = AppState.conceptStore.globalTensor();
+  const geoUnits = AppState.geoUnits;
+  const grid     = AppState.voxelGrid;
+  const bhs      = AppState.classifiedBH?.filter(b => !b.synthetic) ?? [];
+
+  // Compute site centre from grid or boreholes
+  let cx, cz, halfSpan;
+  if (grid) {
+    cx = grid.origin.x + grid.nx * grid.cellSize / 2;
+    cz = grid.origin.z + grid.ny * grid.cellSize / 2;
+    halfSpan = Math.max(grid.nx, grid.ny) * grid.cellSize / 2;
+  } else if (bhs.length) {
+    cx = bhs.reduce((s, b) => s + b.x, 0) / bhs.length;
+    cz = bhs.reduce((s, b) => s + (b.y ?? b.z ?? 0), 0) / bhs.length;
+    const xs = bhs.map(b => b.x), zs = bhs.map(b => b.y ?? b.z ?? 0);
+    halfSpan = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs)) / 2;
+  } else {
+    log('Add boreholes or build a model first.', 'warn'); return;
+  }
+  halfSpan = Math.max(halfSpan, 20);
+
+  // Derive dominant elongation direction from global tensor
+  const theta = tensor.theta ?? 0; // angle of major axis from North (radians)
+  const ew    = (AppState.conceptStore.concepts.reduce((s, c) => s + c.embedding[3] * c.confidence, 0) /
+                 Math.max(1, AppState.conceptStore.concepts.reduce((s,c) => s + c.confidence, 0)));
+  const ns    = (AppState.conceptStore.concepts.reduce((s, c) => s + c.embedding[4] * c.confidence, 0) /
+                 Math.max(1, AppState.conceptStore.concepts.reduce((s,c) => s + c.confidence, 0)));
+  const hasFault = AppState.conceptStore.concepts.some(c => c.embedding[7] > 0.5);
+
+  // Generate 3 section suggestions:
+  // 1. Perpendicular to elongation (crosses the body — shows thickness variation)
+  // 2. Along elongation (shows along-strike continuity)
+  // 3. 45° (catches NE-SW structural features)
+  const suggestions = [];
+  const elongationAngle = Math.atan2(ew, ns); // angle from North to elongation direction
+  const perpAngle = elongationAngle + Math.PI / 2; // perpendicular cuts across the body
+
+  suggestions.push({
+    name:   'Cross-strike section',
+    reason: `Perpendicular to ${Math.abs(ew) > Math.abs(ns) ? 'E-W' : 'N-S'} predicted elongation — best reveals unit thickness and base geometry`,
+    x1: cx - Math.sin(perpAngle) * halfSpan,
+    z1: cz - Math.cos(perpAngle) * halfSpan,
+    x2: cx + Math.sin(perpAngle) * halfSpan,
+    z2: cz + Math.cos(perpAngle) * halfSpan,
+  });
+  suggestions.push({
+    name:   'Along-strike section',
+    reason: `Along the predicted ${Math.abs(ew) > Math.abs(ns) ? 'E-W' : 'N-S'} elongation direction — verifies lateral continuity and pinch-out`,
+    x1: cx - Math.sin(elongationAngle) * halfSpan,
+    z1: cz - Math.cos(elongationAngle) * halfSpan,
+    x2: cx + Math.sin(elongationAngle) * halfSpan,
+    z2: cz + Math.cos(elongationAngle) * halfSpan,
+  });
+  if (hasFault) {
+    suggestions.push({
+      name:   'Fault-perpendicular section',
+      reason: 'Perpendicular to predicted fault trend — shows vertical offset and stepped contacts',
+      x1: cx - Math.sin(elongationAngle + Math.PI / 4) * halfSpan,
+      z1: cz - Math.cos(elongationAngle + Math.PI / 4) * halfSpan,
+      x2: cx + Math.sin(elongationAngle + Math.PI / 4) * halfSpan,
+      z2: cz + Math.cos(elongationAngle + Math.PI / 4) * halfSpan,
+    });
+  }
+
+  out.style.display = 'block';
+  out.innerHTML = suggestions.map((s, i) =>
+    `<div style="border:1px solid var(--border);border-radius:4px;padding:5px 6px;margin-bottom:4px;font-size:10px">
+      <div style="font-weight:600;color:var(--text-primary);margin-bottom:1px">${escHtml(s.name)}</div>
+      <div style="font-size:9px;color:var(--text-dim);margin-bottom:3px">${escHtml(s.reason)}</div>
+      <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-mid);margin-bottom:3px">
+        (${s.x1.toFixed(0)}, ${s.z1.toFixed(0)}) → (${s.x2.toFixed(0)}, ${s.z2.toFixed(0)})
+      </div>
+      <button class="btn-ghost btn-sm" style="font-size:9px" data-sec-i="${i}">⌖ Apply section in 3D</button>
+    </div>`
+  ).join('');
+
+  out.querySelectorAll('[data-sec-i]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const s = suggestions[parseInt(btn.dataset.secI)];
+      if (!s || !AppState.scene?.slicer) { log('Open the 3D view first.', 'warn'); return; }
+      AppState.scene.slicer.setByWorldPoints(s.x1, s.z1, s.x2, s.z2);
+      log(`Section line set: ${s.name}`, 'ok');
+      btn.textContent = '✓ Applied';
+      btn.disabled = true;
+    });
+  });
+  log(`${suggestions.length} section suggestions based on concept anisotropy`, 'info');
+});
+
 window._showConceptCoherence = function() {
   const results = computeConceptCoherence();
   if (!results.length) { log('Build the 3D model first, then check coherence.', 'warn'); return; }
