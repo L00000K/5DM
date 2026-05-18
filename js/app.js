@@ -871,6 +871,31 @@ function initBuildModel() {
           ? inferStratOrderFromData(AppState.classifiedBH, AppState.geoUnits)
           : { order: [] };
         _stratOrder = inferred.order;
+
+        // If inference produced no order, try to derive one from concept temporal ranks.
+        // Concepts with unitAffinity + temporalOrder suggest which units are older/younger.
+        if (!_stratOrder.length && AppState.conceptStore && !AppState.conceptStore.isEmpty) {
+          const rankedUnits = [];
+          for (const concept of AppState.conceptStore.concepts) {
+            if (concept.temporalOrder == null || !concept.unitAffinity?.length) continue;
+            for (const code of concept.unitAffinity) {
+              if (!AppState.geoUnits.find(u => u.code === code)) continue;
+              const existing = rankedUnits.find(r => r.code === code);
+              if (!existing) rankedUnits.push({ code, rank: concept.temporalOrder });
+              else existing.rank = Math.min(existing.rank, concept.temporalOrder); // take oldest rank
+            }
+          }
+          if (rankedUnits.length >= 2) {
+            rankedUnits.sort((a, b) => b.rank - a.rank); // highest rank = youngest (top)
+            _stratOrder = rankedUnits.map(r => r.code);
+            // Append any remaining units not covered by concepts
+            for (const u of AppState.geoUnits) {
+              if (!_stratOrder.includes(u.code)) _stratOrder.push(u.code);
+            }
+            log(`Stratigraphic order (concept temporal ranks): ${_stratOrder.join(' → ')}`, 'info');
+          }
+        }
+
         AppState.stratOrder = _stratOrder;
         if (_stratOrder.length) {
           log(`Stratigraphic order (inferred): ${_stratOrder.join(' → ')}`, 'info');
@@ -6642,9 +6667,49 @@ function initConceptPanel() {
     if (!ok) log('Dominant concept data not available — build with Neural Implicit method first.', 'warn');
     else log('3D view: coloured by dominant geological concept', 'ok');
   });
+  document.getElementById('btn-show-concept-effect')?.addEventListener('click', async () => {
+    const btn = document.getElementById('btn-show-concept-effect');
+    if (!AppState.trainedModel || !AppState.voxelGrid || !AppState.scene) {
+      log('Build neural-implicit model first.', 'warn'); return;
+    }
+    if (!AppState.conceptStore || AppState.conceptStore.isEmpty) {
+      log('No active concepts — add concepts first to see their effect.', 'warn'); return;
+    }
+    btn.disabled = true; btn.textContent = '⊕ Computing…';
+    await new Promise(r => setTimeout(r, 0));
+    try {
+      const grid = AppState.voxelGrid;
+      const gridMeta = {
+        nx: grid.nx, ny: grid.ny, nz: grid.nz,
+        cellSize: grid.cellSize, cellHeight: grid.cellHeight, origin: grid.origin,
+      };
+      // Re-infer with no concepts to get the pure-data baseline
+      const { ConceptStore: CS } = await import('./concept-store.js');
+      const emptyStore = new CS();
+      const baseline = inferGeoImplicit(AppState.trainedModel, gridMeta, AppState.geoUnits, emptyStore);
+
+      // Build effect map: 1 where concept changed prediction, 0 where same
+      const current = grid.unitIds;
+      const total   = current.length;
+      const effectMap = new Float32Array(total);
+      let changedCount = 0;
+      for (let i = 0; i < total; i++) {
+        if (current[i] !== baseline.unitIds[i]) { effectMap[i] = 1; changedCount++; }
+      }
+      const pct = (changedCount / total * 100).toFixed(1);
+      AppState.scene.colorByParameter(null, AppState.geoUnits, effectMap);
+      log(`Concept effect map: ${changedCount.toLocaleString()} / ${total.toLocaleString()} voxels (${pct}%) changed by semantic embedding. Yellow=concept-changed, dark=unchanged.`, 'ok');
+    } catch (e) {
+      log(`Concept effect map failed: ${e.message}`, 'error');
+    } finally {
+      btn.disabled = false; btn.textContent = '⊕ Concept effect map';
+    }
+  });
+
   document.addEventListener('geomodel:model-built', () => {
     setEnabled('btn-show-concept-influence', !!(AppState.voxelGrid?.conceptInfluence));
     setEnabled('btn-show-dominant-concept', !!(AppState.voxelGrid?.conceptInfluence));
+    setEnabled('btn-show-concept-effect', !!(AppState.trainedModel && AppState.voxelGrid?.conceptInfluence));
     // Auto-run sensitivity and warn about low-influence concepts
     _warnLowInfluenceConcepts();
   });
