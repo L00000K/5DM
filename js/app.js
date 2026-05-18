@@ -5960,9 +5960,11 @@ init();
 
 const CONCEPT_LIBRARY = [
   // ── Fluvial / Alluvial ──────────────────────────────────────────────────────
-  { label: 'Palaeochannel E-W',  axes: { east_west_elongation: 0.9, channel_morphology: 1.0, erosional_contact: 0.9, gravel_basal_lag: 0.8, incision_depth_ratio: 0.8, lateral_anisotropy: 0.9, horizontal_layering: -0.7 } },
-  { label: 'Palaeochannel N-S',  axes: { north_south_elongation: 0.9, channel_morphology: 1.0, erosional_contact: 0.9, gravel_basal_lag: 0.8, incision_depth_ratio: 0.8, lateral_anisotropy: 0.9, horizontal_layering: -0.7 } },
-  { label: 'Nested Channels',    axes: { channel_morphology: 0.9, nested_channels: 1.0, erosional_contact: 0.9, gravel_basal_lag: 0.7, lateral_continuity: 0.3 } },
+  { label: 'Palaeochannel E-W',    axes: { east_west_elongation: 0.9, north_south_elongation: -0.5, channel_morphology: 1.0, erosional_contact: 0.9, gravel_basal_lag: 0.8, incision_depth_ratio: 0.8, lateral_anisotropy: 0.9, horizontal_layering: -0.7 } },
+  { label: 'Palaeochannel N-S',    axes: { north_south_elongation: 0.9, east_west_elongation: -0.5, channel_morphology: 1.0, erosional_contact: 0.9, gravel_basal_lag: 0.8, incision_depth_ratio: 0.8, lateral_anisotropy: 0.9, horizontal_layering: -0.7 } },
+  { label: 'Palaeochannel NE-SW',  axes: { east_west_elongation: 0.65, north_south_elongation: 0.65, channel_morphology: 1.0, erosional_contact: 0.9, gravel_basal_lag: 0.8, incision_depth_ratio: 0.8, lateral_anisotropy: 0.9, horizontal_layering: -0.7 } },
+  { label: 'Palaeochannel NW-SE',  axes: { east_west_elongation: 0.65, north_south_elongation: 0.65, channel_morphology: 1.0, erosional_contact: 0.8, gravel_basal_lag: 0.7, incision_depth_ratio: 0.7, lateral_anisotropy: 0.8, horizontal_layering: -0.5 } },
+  { label: 'Nested Channels',      axes: { channel_morphology: 0.9, nested_channels: 1.0, erosional_contact: 0.9, gravel_basal_lag: 0.7, lateral_continuity: 0.3 } },
   { label: 'River Terrace',      axes: { horizontal_layering: 0.7, lateral_continuity: 0.8, gravel_basal_lag: 0.7, fining_upward: 0.4, erosional_contact: 0.6, lateral_anisotropy: 0.6 } },
   { label: 'Alluvial Fan',       axes: { lateral_thinning_east: 0.4, lateral_thinning_west: 0.4, lateral_thinning_north: 0.4, coarsening_upward: -0.5, gravel_basal_lag: 0.5 } },
   { label: 'Floodplain',         axes: { horizontal_layering: 0.8, lateral_continuity: 0.8, fining_upward: 0.5, lateral_anisotropy: 0.5 } },
@@ -5975,8 +5977,11 @@ const CONCEPT_LIBRARY = [
   { label: 'Fault E-W (stepped)', axes: { fault_controlled: 1.0, stepped_boundary: 0.9, structural_complexity: 0.7, deepens_north: 0.4 } },
   { label: 'Fault N-S (stepped)', axes: { fault_controlled: 1.0, stepped_boundary: 0.9, structural_complexity: 0.7, deepens_east: 0.5 } },
   { label: 'Deepening North',    axes: { deepens_north: 0.85, inclined_bedding: 0.6, dip_magnitude: 0.5 } },
+  { label: 'Deepening South',    axes: { deepens_south: 0.85, inclined_bedding: 0.6, dip_magnitude: 0.5 } },
   { label: 'Deepening East',     axes: { deepens_east: 0.85, inclined_bedding: 0.6, dip_magnitude: 0.5 } },
+  { label: 'Deepening West',     axes: { deepens_west: 0.85, inclined_bedding: 0.6, dip_magnitude: 0.5 } },
   { label: 'Deepening NE',       axes: { deepens_north: 0.6, deepens_east: 0.6, inclined_bedding: 0.5, dip_magnitude: 0.5 } },
+  { label: 'Deepening SW',       axes: { deepens_south: 0.6, deepens_west: 0.6, inclined_bedding: 0.5, dip_magnitude: 0.5 } },
   { label: 'Dome / Anticline',   axes: { dome_anticline: 0.9, lateral_continuity: 0.6, horizontal_layering: -0.3 } },
   // ── Dissolution / Karst ─────────────────────────────────────────────────────
   { label: 'Karst / Dissolution', axes: { dissolution_features: 1.0, irregular_base: 0.9, structural_complexity: 0.6, lateral_continuity: -0.4 } },
