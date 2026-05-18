@@ -116,15 +116,39 @@ export class ConceptStore {
    * @param {string[]}      [entry.unitAffinity]- unit codes this concept applies to ([] = all)
    * @returns {string} concept id
    */
-  add({ description, embedding, confidence = 0.7, domain = { type: 'global' }, unitAffinity = [], temporalOrder = null }) {
+  add({ description, embedding, confidence = 0.7, domain = { type: 'global' }, unitAffinity = [], temporalOrder = null, parentId = null }) {
     const id = `c${this._nextId++}`;
     this._concepts.push({
       id, description,
       embedding: embedding instanceof Float32Array ? embedding : new Float32Array(embedding),
       confidence, domain, unitAffinity,
       temporalOrder, // integer rank: lower = older, higher = younger; null = unspecified
+      parentId,      // optional parent concept id for inheritance (child blends in 40% of parent)
     });
     return id;
+  }
+
+  // Set parent concept (for inheritance). parentId = null removes the relationship.
+  setParent(id, parentId) {
+    const c = this._concepts.find(c => c.id === id);
+    if (c) c.parentId = parentId ?? null;
+  }
+
+  // Compute effective embedding for a concept, blending in parent embedding if set.
+  // Inheritance weight: each level contributes (INHERIT_W)^depth to the blend.
+  _effectiveEmbedding(concept, depth = 0) {
+    const INHERIT_W = 0.4; // parent contributes 40% at each level
+    const MAX_DEPTH = 3;
+    if (depth >= MAX_DEPTH || !concept.parentId) return concept.embedding;
+    const parent = this._concepts.find(p => p.id === concept.parentId);
+    if (!parent) return concept.embedding;
+    const parentEmb = this._effectiveEmbedding(parent, depth + 1);
+    const result = new Float32Array(concept.embedding.length);
+    const selfW = 1 - INHERIT_W;
+    for (let i = 0; i < result.length; i++) {
+      result[i] = selfW * concept.embedding[i] + INHERIT_W * parentEmb[i];
+    }
+    return result;
   }
 
   setTemporalOrder(id, rank) {
@@ -223,7 +247,8 @@ export class ConceptStore {
       if (w < 0.005) continue;
       weights.push({ id: c.id, description: c.description, weight: w });
       totalW += w;
-      for (let i = 0; i < DIM; i++) vec[i] += w * c.embedding[i];
+      const emb = this._effectiveEmbedding(c);  // may blend in parent embedding
+      for (let i = 0; i < DIM; i++) vec[i] += w * emb[i];
     }
 
     if (totalW > 0) {

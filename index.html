@@ -510,6 +510,13 @@
               <!-- populated dynamically from geoUnits -->
             </select>
           </div>
+          <div class="concept-ctrl-row" title="Optional parent concept — child inherits 40% of parent embedding, specialising the parent's geometry">
+            <label>Inherits from</label>
+            <select id="concept-parent" style="font-size:10px;flex:1;background:var(--bg-deep);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:2px 4px">
+              <option value="">None (standalone concept)</option>
+              <!-- populated by _renderConceptList() -->
+            </select>
+          </div>
         </div>
 
         <!-- Instant preview: shows demo-encoded embedding as user types -->

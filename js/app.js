@@ -6933,7 +6933,11 @@ function initConceptPanel() {
         domain.sigmaZ = sigZVal;
       }
 
-      AppState.conceptStore.add({ description: text, embedding: emb, confidence: conf, domain, unitAffinity });
+      // Parent concept (inheritance): child blends in 40% of parent's embedding
+      const parentSel = document.getElementById('concept-parent');
+      const parentId  = parentSel?.value || null;
+
+      AppState.conceptStore.add({ description: text, embedding: emb, confidence: conf, domain, unitAffinity, parentId });
       _renderConceptList();
       _saveConceptStore();
 
@@ -7782,12 +7786,16 @@ export function _renderConceptList() {
         <div class="concept-bar" style="width:${pct}%;background:${col}"></div>
       </div>`;
     }).join('');
-    const dom     = c.domain?.type === 'bbox' ? '⬛ bbox' : '🌐 global';
-    const affText = c.unitAffinity?.length ? ` · ${c.unitAffinity.join(',')}` : '';
+    const dom       = c.domain?.type === 'bbox' ? '⬛ bbox' : '🌐 global';
+    const affText   = c.unitAffinity?.length ? ` · ${c.unitAffinity.join(',')}` : '';
     const depthText = (c.domain?.minZ !== undefined || c.domain?.maxZ !== undefined)
       ? ` · Z [${c.domain.minZ ?? '?'}..${c.domain.maxZ ?? '?'}]m`
       : '';
-    const confPct = (c.confidence * 100).toFixed(0);
+    const confPct   = (c.confidence * 100).toFixed(0);
+    const parentC   = c.parentId ? concepts.find(p => p.id === c.parentId) : null;
+    const parentTag = parentC
+      ? `<span style="font-size:9px;color:var(--accent);opacity:.8;margin-left:4px" title="Inherits 40% of parent embedding">↳ ${parentC.description.slice(0, 28)}</span>`
+      : '';
     return `<div class="concept-entry" data-id="${c.id}">
       <div class="concept-header">
         <span class="concept-desc" title="${c.description}">${c.description.slice(0, 55)}${c.description.length > 55 ? '…' : ''}</span>
@@ -7798,7 +7806,7 @@ export function _renderConceptList() {
         </div>
       </div>
       <div class="concept-meta">
-        <span class="concept-dom-tag">${dom}${affText}${depthText}</span>
+        <span class="concept-dom-tag">${dom}${affText}${depthText}${parentTag}</span>
         <label class="concept-conf-row">
           conf <input type="range" class="concept-conf-slider" min="0" max="100" value="${confPct}"
             oninput="this.nextElementSibling.textContent=this.value+'%'; _updateConceptConf('${c.id}', this.value/100)"
@@ -7820,6 +7828,14 @@ export function _renderConceptList() {
     </div>`;
   }).join('');
   _updateConceptInfluenceBar();
+  // Refresh parent concept selector with current concept list
+  const parentSel = document.getElementById('concept-parent');
+  if (parentSel) {
+    const prevVal = parentSel.value;
+    parentSel.innerHTML = '<option value="">None (standalone concept)</option>'
+      + concepts.map(c => `<option value="${c.id}">${escHtml(c.description.slice(0, 50))}</option>`).join('');
+    if (concepts.some(c => c.id === prevVal)) parentSel.value = prevVal;
+  }
   // Conflict detection: run live after every concept change so warnings appear inline
   _renderConceptConflicts();
   // Update 3D scene concept domain boxes (only bbox concepts show a 3D marker)
