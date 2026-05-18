@@ -1288,6 +1288,129 @@ Return ONLY the JSON array, nothing else.`;
   }
 }
 
+// ── Extract geological concepts from free-form text ──────────────────────────
+// Parses a site investigation report, field notes, or any geological text and
+// returns an array of encodable concept descriptions.
+//
+// Returns [{description, confidence, unitAffinity: string[]}]
+export async function extractConceptsFromText(text, geoUnits, apiKey, demoMode) {
+  if (!text?.trim()) return [];
+  if (demoMode || !apiKey) return _demoExtractConcepts(text, geoUnits);
+
+  const unitList = geoUnits.map(u => `${u.code}: ${u.name ?? u.code}`).join('\n');
+  const axisNames = CONCEPT_AXES.join(', ');
+
+  const prompt = `You are an expert geotechnical interpreter. Extract all distinct geological conceptual statements from the text below that would inform the 3D geometry of subsurface units — things like depositional environment, structural controls, directional trends, erosional surfaces, and unit morphology.
+
+AVAILABLE UNIT CODES:
+${unitList}
+
+TEXT TO ANALYSE:
+${text.slice(0, 4000)}
+
+For each concept you identify, produce one entry. A "concept" here means a single statement about the 3D geometry, shape, or spatial character of one or more units (not a factual observation like "BH01 encountered clay at 2m").
+
+Examples of valid concepts:
+- "Alluvial gravel forms a laterally continuous sheet dipping gently to the north-east"
+- "Chalk rockhead is irregular and stepped, controlled by E-W joint sets"
+- "River terrace deposits thin westward and pinch out near the valley margin"
+- "Palaeochannel incised into Till — trending approximately north-south"
+
+Return ONLY a JSON array (no markdown, no prose):
+[
+  {
+    "description": "concise 1-sentence concept statement (≤120 chars)",
+    "confidence": 0.0-1.0,
+    "unit_codes": ["CODE"] or []
+  }
+]
+
+Rules:
+- confidence: 0.9 if stated as fact/certain, 0.7 if inferred, 0.5 if speculative/possible
+- unit_codes: only codes from the list above; empty array if multiple or unknown
+- Omit pure factual depth observations — only geometry/morphology concepts
+- 3–8 concepts maximum; omit duplicates or near-duplicates
+- Return ONLY the JSON array`;
+
+  try {
+    const resp = await _claudeRequest([{ role: 'user', content: prompt }], apiKey, 'claude-haiku-4-5-20251001', 600);
+    const raw  = resp.content?.[0]?.text ?? '';
+    const arr  = JSON.parse(raw.match(/\[[\s\S]*\]/)?.[0] ?? '[]');
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter(c => c?.description?.trim())
+      .map(c => ({
+        description:  c.description.trim(),
+        confidence:   Math.max(0.1, Math.min(1.0, parseFloat(c.confidence) || 0.7)),
+        unitAffinity: Array.isArray(c.unit_codes) ? c.unit_codes.filter(Boolean) : [],
+      }))
+      .slice(0, 10);
+  } catch (e) {
+    console.warn('extractConceptsFromText error:', e.message);
+    return _demoExtractConcepts(text, geoUnits);
+  }
+}
+
+function _demoExtractConcepts(text, geoUnits) {
+  const lower = text.toLowerCase();
+  const results = [];
+
+  const PATTERNS = [
+    { re: /palaeochannel|palaeo.?channel|buried.?channel|incised.?channel/,
+      fn: () => 'Palaeochannel — incised erosional feature, concave-up base', conf: 0.8, axisHint: [5, 8, 29] },
+    { re: /e.?w.*(channel|trend|orient)|east.*west.*(elongat|trend)|trending.*e.?w/,
+      fn: () => 'E-W trending elongation — east-west directional anisotropy', conf: 0.75 },
+    { re: /n.?s.*(channel|trend|orient)|north.*south.*(elongat|trend)|trending.*n.?s/,
+      fn: () => 'N-S trending elongation — north-south directional anisotropy', conf: 0.75 },
+    { re: /terrace|river.?terrace|fluvial.?terrace/,
+      fn: () => 'River terrace deposits — laterally continuous, dipping gently toward valley', conf: 0.75 },
+    { re: /fault|faulted|fault.?controlled|downthrow/,
+      fn: () => 'Fault-controlled geometry — abrupt lateral unit changes, stepped boundaries', conf: 0.7 },
+    { re: /stepped|step.?like|abrupt.?(change|boundary)|irregular.?rockhead/,
+      fn: () => 'Stepped rockhead — irregular erosional surface with abrupt level changes', conf: 0.7 },
+    { re: /chalk|limestone|karst|dissolution/,
+      fn: () => 'Irregular dissolution features in bedrock — localised depressions and pinnacles', conf: 0.65 },
+    { re: /dip.*north|northward.?dip|gentle.?dip/,
+      fn: () => 'Gently dipping stratigraphy — units deepen toward north', conf: 0.65 },
+    { re: /dip.*south|southward.?dip/,
+      fn: () => 'Units dipping southward — deepening in south direction', conf: 0.65 },
+    { re: /lateral.?continu|laterally.?persist|sheet.?deposit/,
+      fn: () => 'Laterally continuous sheet deposits — high lateral continuity across site', conf: 0.7 },
+    { re: /pinch.?out|thin.?westward|wedge.?out|thickens/,
+      fn: () => 'Unit lateral pinch-out — thinning toward site margin', conf: 0.7 },
+    { re: /gravel.?lag|basal.?gravel|coarsen.?down|lag.?deposit/,
+      fn: () => 'Coarse basal lag gravels — gravel concentration at base of channel', conf: 0.75 },
+    { re: /till|glacial|boulder.?clay|drumlin/,
+      fn: () => 'Glacial till — poorly sorted, structurally complex, variable thickness', conf: 0.7 },
+    { re: /alluvial|alluvium|floodplain|holocene/,
+      fn: () => 'Recent alluvial deposits — sub-horizontal, variable thickness over irregular base', conf: 0.65 },
+  ];
+
+  for (const p of PATTERNS) {
+    if (p.re.test(lower)) {
+      const desc = p.fn();
+      if (!results.some(r => r.description === desc)) {
+        const unitMatch = geoUnits.find(u => lower.includes(u.name?.toLowerCase() ?? ''));
+        results.push({
+          description:  desc,
+          confidence:   p.conf,
+          unitAffinity: unitMatch ? [unitMatch.code] : [],
+        });
+      }
+    }
+    if (results.length >= 6) break;
+  }
+
+  if (!results.length) {
+    results.push({
+      description:  'Sub-horizontal stratified deposits — broadly layered geology with lateral continuity',
+      confidence:   0.55,
+      unitAffinity: [],
+    });
+  }
+  return results;
+}
+
 // ── Concept Refinement Loop ───────────────────────────────────────────────────
 // After building the neural implicit model, if concept-geometry match is poor,
 // ask Claude to analyse the mismatch and suggest refined concept descriptions or
@@ -1405,4 +1528,162 @@ No prose, no markdown, JSON only.`;
     console.warn('refineConceptsWithClaude error:', e.message);
     return [];
   }
+}
+
+// ── AI Borehole Gap Analysis ──────────────────────────────────────────────────
+// Analyses the built 3D model and suggests optimal new borehole locations for
+// maximum information gain. Considers concept influence, coverage density,
+// model certainty, and concept-geometry match.
+//
+// grid:         voxelGrid (nx, ny, cellSize, origin, certainty, conceptInfluence,
+//               coverageDensity, attributionGrid)
+// classifiedBH: array of borehole objects with x, y, groundLevel
+// geoUnits:     array of geological unit objects
+// conceptStore: ConceptStore with .concepts
+// geoCheck:     output of measureConceptGeometry (unit geometry match results)
+// apiKey, demoMode
+//
+// Returns [{x, y, reason, priority: 'high'|'medium', score}]
+export async function analyseBoreholeGaps(grid, classifiedBH, geoUnits, conceptStore, geoCheck, apiKey, demoMode) {
+  if (!grid) return [];
+  const { nx, ny, nz, cellSize: cs = 1, cellHeight: ch = 1, origin: O,
+          certainty, conceptInfluence, coverageDensity } = grid;
+
+  // ── Compute spatial statistics across the grid ────────────────────────────
+  // Downsample to a coarse horizontal grid (target ~8×8 cells) for analysis
+  const GRID_N = 8;
+  const stepX = Math.max(1, Math.floor(nx / GRID_N));
+  const stepY = Math.max(1, Math.floor(ny / GRID_N));
+  const cells = [];
+
+  for (let iy = 0; iy < ny; iy += stepY) {
+    for (let ix = 0; ix < nx; ix += stepX) {
+      // Average certainty + concept influence across the column
+      let sumCert = 0, sumCI = 0, sumCov = 0, cnt = 0;
+      for (let iz = 0; iz < nz; iz++) {
+        const flat = ix + iy * nx + iz * nx * ny;
+        if (certainty) sumCert += certainty[flat] ?? 0;
+        if (conceptInfluence) sumCI   += conceptInfluence[flat] ?? 0;
+        if (coverageDensity)  sumCov  += coverageDensity[flat] ?? 0;
+        cnt++;
+      }
+      const meanCert = cnt ? sumCert / cnt : 0.5;
+      const meanCI   = cnt ? sumCI / cnt   : 0;
+      const meanCov  = cnt ? sumCov / cnt  : 0.5;
+      const wx = O.x + (ix + 0.5) * cs;
+      const wy = O.z + (iy + 0.5) * cs;
+      // Score = high concept influence + low certainty + low coverage
+      const score = (meanCI * 0.4 + (1 - meanCert) * 0.35 + (1 - meanCov) * 0.25);
+      cells.push({ ix, iy, wx, wy, score, meanCert, meanCI, meanCov });
+    }
+  }
+
+  // Pick top cells, ensuring minimum spatial separation
+  cells.sort((a, b) => b.score - a.score);
+  const MIN_SEP_M = Math.max(10, Math.min(cs * stepX * 2, 30));
+  const topCells = [];
+  for (const c of cells) {
+    if (topCells.length >= 6) break;
+    if (topCells.every(t => Math.hypot(t.wx - c.wx, t.wy - c.wy) > MIN_SEP_M)) {
+      topCells.push(c);
+    }
+  }
+
+  if (!topCells.length) return [];
+
+  // ── Demo mode: return rule-based suggestions ──────────────────────────────
+  if (demoMode || !apiKey) {
+    return _demoBoreholeGaps(topCells, geoCheck, classifiedBH);
+  }
+
+  // ── Build context for Claude ──────────────────────────────────────────────
+  const bhList = classifiedBH.filter(b => !b.synthetic)
+    .map(b => `${b.id}: (${b.x.toFixed(0)}, ${b.y.toFixed(0)}) GL=${b.groundLevel?.toFixed(1) ?? '?'}m`)
+    .join('\n');
+
+  const conceptSummary = conceptStore?.concepts.length
+    ? conceptStore.concepts.map(c =>
+        `  "${c.description}" (conf=${c.confidence.toFixed(2)}, domain=${c.domain?.type ?? 'global'})`
+      ).join('\n')
+    : '  None';
+
+  const geoCheckSummary = geoCheck?.length
+    ? geoCheck.filter(r => r.conceptMatch < 0.9).map(r =>
+        `  ${r.unitCode}: concept-geometry match ${(r.conceptMatch * 100).toFixed(0)}% (E-W actual ×${r.ewRatio} vs predicted ×${r.predictedEW})`
+      ).join('\n')
+    : '  All units match concepts well';
+
+  const candidateStr = topCells.slice(0, 6).map((c, i) =>
+    `  [${i+1}] x=${c.wx.toFixed(0)}m, y=${c.wy.toFixed(0)}m — certainty=${(c.meanCert*100).toFixed(0)}%, concept_influence=${(c.meanCI*100).toFixed(0)}%, bh_coverage=${(c.meanCov*100).toFixed(0)}%`
+  ).join('\n');
+
+  const unitList = geoUnits.map(u => `${u.code} (${u.name ?? u.code})`).join(', ');
+
+  const prompt = `You are a geotechnical ground investigation planning expert. Based on the analysis below, recommend the best 3–5 new borehole locations to maximise information gain for the 3D geological model.
+
+EXISTING BOREHOLES (${classifiedBH.filter(b => !b.synthetic).length} total):
+${bhList}
+
+GEOLOGICAL UNITS: ${unitList}
+
+ACTIVE GEOLOGICAL CONCEPTS:
+${conceptSummary}
+
+CONCEPT-GEOMETRY MISMATCHES (units where model geometry doesn't match concept prediction):
+${geoCheckSummary}
+
+CANDIDATE NEW BOREHOLE LOCATIONS (ranked by info-gain score):
+${candidateStr}
+
+For each recommended borehole, explain:
+1. Which candidate location [number] to use (or adjust slightly)
+2. Why this location is most valuable (which concept, unit, or geometry it would resolve)
+3. What depth to investigate to (justify from stratigraphy)
+4. Priority: "high" if it resolves a concept mismatch or covers a data gap in a critical unit, "medium" otherwise
+
+Respond ONLY with JSON array:
+[{
+  "location_idx": 1,
+  "x": number,
+  "y": number,
+  "depth_m": number,
+  "priority": "high"|"medium",
+  "reason": "1-2 sentence explanation"
+}]
+No prose, no markdown, JSON only.`;
+
+  try {
+    const resp = await _claudeRequest([{ role: 'user', content: prompt }], apiKey, 'claude-haiku-4-5-20251001', 700);
+    const text = resp.content?.[0]?.text ?? '';
+    const arr  = JSON.parse(text.match(/\[[\s\S]*\]/)?.[0] ?? '[]');
+    if (!Array.isArray(arr)) return _demoBoreholeGaps(topCells, geoCheck, classifiedBH);
+    return arr
+      .filter(s => s.reason && s.x != null && s.y != null)
+      .map(s => ({
+        x:       parseFloat(s.x),
+        y:       parseFloat(s.y),
+        depth_m: parseFloat(s.depth_m) || 15,
+        priority: s.priority ?? 'medium',
+        reason:  s.reason,
+        score:   s.priority === 'high' ? 1 : 0.6,
+      }))
+      .slice(0, 6);
+  } catch (e) {
+    console.warn('analyseBoreholeGaps error:', e.message);
+    return _demoBoreholeGaps(topCells, geoCheck, classifiedBH);
+  }
+}
+
+function _demoBoreholeGaps(topCells, geoCheck, classifiedBH) {
+  const hasMismatch = geoCheck?.some(r => r.conceptMatch < 0.5);
+  return topCells.slice(0, 4).map((c, i) => ({
+    x:       c.wx,
+    y:       c.wy,
+    depth_m: 15,
+    priority: (i === 0 || (hasMismatch && i < 2)) ? 'high' : 'medium',
+    reason:  i === 0
+      ? `High concept influence (${(c.meanCI*100).toFixed(0)}%) with low model certainty (${(c.meanCert*100).toFixed(0)}%) — concept geometry predictions are unconstrained here.`
+      : `Low borehole coverage (${(c.meanCov*100).toFixed(0)}%) in a concept-active zone — new data would reduce extrapolation uncertainty.`,
+    score:   c.score,
+  }));
 }

@@ -36,7 +36,7 @@ import { parseSectionFromText, sectionToVirtualBoreholes,
 import { SectionSketch } from './section-sketch.js';
 import { FourierEncoder, measureConceptGeometry, analyzeBoreholeGeometry } from './geo-implicit.js';
 import { ConceptStore, CONCEPT_AXES } from './concept-store.js';
-import { encodeGeologicalConcept, refineConceptsWithClaude } from './claude-client.js';
+import { encodeGeologicalConcept, refineConceptsWithClaude, extractConceptsFromText, analyseBoreholeGaps } from './claude-client.js';
 
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
@@ -1068,6 +1068,11 @@ function initBuildModel() {
 
       // Model QC dashboard — auto-runs after every build
       _renderModelQC();
+      // Show borehole gap analysis panel (reset ready state)
+      const gapPanel = document.getElementById('borehole-gap-panel');
+      if (gapPanel) gapPanel.removeAttribute('hidden');
+      const gapResults = document.getElementById('borehole-gap-results');
+      if (gapResults) { gapResults.style.display = 'none'; gapResults.innerHTML = ''; }
 
       // Auto-save session after successful model build
       saveSession(AppState);
@@ -6635,6 +6640,90 @@ function initConceptPanel() {
     }
   });
 
+  // ── Collapsible: extract concepts from pasted text ────────────────────────
+  (() => {
+    const toggle  = document.getElementById('concept-extract-toggle');
+    const body    = document.getElementById('concept-extract-body');
+    const extBtn  = document.getElementById('btn-extract-concepts');
+    const extArea = document.getElementById('concept-extract-text');
+    const extOut  = document.getElementById('concept-extract-results');
+
+    toggle?.addEventListener('click', () => {
+      const hidden = body?.hasAttribute('hidden');
+      if (hidden) body?.removeAttribute('hidden'); else body?.setAttribute('hidden', '');
+      const arrow = toggle.querySelector('.collapse-arrow');
+      if (arrow) arrow.textContent = hidden ? '⌄' : '›';
+    });
+
+    extBtn?.addEventListener('click', async () => {
+      const txt = extArea?.value?.trim();
+      if (!txt) { log('Paste some geological text first.', 'warn'); return; }
+      extBtn.disabled   = true;
+      extBtn.textContent = '⟳ Extracting…';
+      if (extOut) { extOut.style.display = 'none'; extOut.innerHTML = ''; }
+
+      try {
+        const concepts = await extractConceptsFromText(
+          txt, AppState.geoUnits,
+          sessionStorage.getItem('anthropic_api_key') ?? '',
+          AppState.demoMode,
+        );
+        if (!concepts.length) { log('No geological concepts found in that text.', 'info'); return; }
+
+        if (extOut) {
+          extOut.style.display = 'block';
+          extOut.innerHTML = concepts.map((c, i) => `
+            <div style="border:1px solid var(--border);border-radius:4px;padding:5px 6px;margin-bottom:4px;font-size:10px">
+              <div style="font-weight:600;color:var(--text-primary);margin-bottom:2px">${escHtml(c.description)}</div>
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                <span style="font-size:9px;color:var(--text-dim)">Confidence: ${(c.confidence * 100).toFixed(0)}%</span>
+                ${c.unitAffinity?.length ? `<span style="font-size:9px;color:var(--accent)">${c.unitAffinity.join(', ')}</span>` : ''}
+              </div>
+              <button class="btn-ghost btn-sm" style="font-size:9px;padding:1px 6px" data-ext-idx="${i}">+ Add to concepts</button>
+            </div>
+          `).join('');
+
+          extOut.querySelectorAll('[data-ext-idx]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const c = concepts[parseInt(btn.dataset.extIdx)];
+              if (!c) return;
+              btn.disabled = true; btn.textContent = '⟳ Encoding…';
+              const apiKey2 = sessionStorage.getItem('anthropic_api_key') ?? '';
+              try {
+                const encodeResult = await encodeGeologicalConcept(
+                  c.description, apiKey2, AppState.demoMode,
+                  { siteContext: { units: AppState.geoUnits.map(u => ({ code: u.code, name: u.name })) },
+                    withRationale: false });
+                const emb = encodeResult instanceof Float32Array ? encodeResult : encodeResult.embedding;
+                if (!AppState.conceptStore) AppState.conceptStore = new ConceptStore();
+                AppState.conceptStore.add({
+                  description:  c.description,
+                  embedding:    emb,
+                  confidence:   c.confidence,
+                  domain:       { type: 'global' },
+                  unitAffinity: c.unitAffinity ?? [],
+                });
+                _renderConceptList();
+                _saveConceptStore();
+                log(`Concept added: "${c.description.slice(0, 60)}"`, 'ok');
+                btn.textContent = '✓ Added';
+              } catch (err) {
+                log(`Encode failed: ${err.message}`, 'error');
+                btn.disabled = false; btn.textContent = '+ Add to concepts';
+              }
+            });
+          });
+          log(`${concepts.length} concept(s) extracted from text`, 'ok');
+        }
+      } catch (err) {
+        log(`Text concept extraction failed: ${err.message}`, 'error');
+      } finally {
+        extBtn.disabled = false;
+        extBtn.textContent = '✦ Extract concepts from text';
+      }
+    });
+  })();
+
   encodeBtn?.addEventListener('click', async () => {
     const text = textarea?.value?.trim();
     if (!text) return;
@@ -8200,6 +8289,70 @@ function _renderModelQC() {
   content.innerHTML = html;
   panel.hidden = false;
 }
+
+// ── AI Borehole Gap Analysis ──────────────────────────────────────────────────
+(function _initBoreholeGapAnalysis() {
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('btn-borehole-gap-analysis')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-borehole-gap-analysis');
+      const out = document.getElementById('borehole-gap-results');
+      if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
+      btn.disabled = true; btn.textContent = '⟳ Analysing…';
+      if (out) { out.style.display = 'none'; out.innerHTML = ''; }
+      try {
+        const apiKey = sessionStorage.getItem('anthropic_api_key') ?? '';
+        const results = await analyseBoreholeGaps(
+          AppState.voxelGrid, AppState.classifiedBH, AppState.geoUnits,
+          AppState.conceptStore, AppState._lastGeoCheck ?? [], apiKey, !apiKey,
+        );
+        if (!results.length) { log('No borehole gap suggestions — model appears well-constrained.', 'info'); return; }
+        if (out) {
+          out.style.display = 'block';
+          out.innerHTML = results.map((r, i) => {
+            const col = r.priority === 'high' ? 'var(--red)' : '#d4a843';
+            return `<div style="border:1px solid var(--border);border-radius:4px;padding:5px 6px;margin-bottom:4px;font-size:10px">
+              <div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">
+                <span style="font-size:9px;font-weight:700;color:${col};text-transform:uppercase;letter-spacing:.5px">${r.priority}</span>
+                <span style="font-size:10px;font-weight:600;color:var(--text-primary)">BH location ${i + 1}</span>
+              </div>
+              <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-mid);margin-bottom:3px">
+                x=${r.x.toFixed(0)}m &nbsp; y=${r.y.toFixed(0)}m &nbsp; depth≥${r.depth_m.toFixed(0)}m
+              </div>
+              <div style="font-size:9px;color:var(--text-mid);line-height:1.4">${escHtml(r.reason)}</div>
+              <button class="btn-ghost btn-sm" style="font-size:9px;margin-top:4px" data-gap-i="${i}">
+                + Add as virtual BH
+              </button>
+            </div>`;
+          }).join('');
+          // Wire "Add as virtual BH" buttons
+          out.querySelectorAll('[data-gap-i]').forEach(btn2 => {
+            btn2.addEventListener('click', () => {
+              const r = results[parseInt(btn2.dataset.gapI)];
+              if (!r) return;
+              const gl = Math.max(...(AppState.classifiedBH?.map(b => b.groundLevel ?? 0) ?? [0]), 0);
+              const synth = {
+                id: `GAP${Date.now()}`, x: r.x, y: r.y, z: r.y,
+                groundLevel: gl, synthetic: true,
+                layers: [{ unitCode: AppState.geoUnits[0]?.code ?? 'UNKN', top: 0, base: r.depth_m, confidence: 0.3, description: 'Suggested investigation depth' }],
+                classified: true, isGapProbe: true,
+              };
+              if (!AppState.classifiedBH) AppState.classifiedBH = [];
+              AppState.classifiedBH.push(synth);
+              AppState.scene?.addBoreholeSticks?.([synth], AppState.geoUnits);
+              log(`Gap probe added at (${r.x.toFixed(0)}, ${r.y.toFixed(0)}) — rebuild model to incorporate.`, 'ok');
+              btn2.textContent = '✓ Added'; btn2.disabled = true;
+            });
+          });
+        }
+        log(`Borehole gap analysis: ${results.length} location(s) suggested.`, 'ok');
+      } catch (e) {
+        log(`Borehole gap analysis failed: ${e.message}`, 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = '✦ Suggest new borehole locations';
+      }
+    });
+  });
+})();
 
 // ── Concept geometry verification report ─────────────────────────────────────
 // Called after neural-implicit build when concepts are active.

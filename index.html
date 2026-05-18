@@ -547,6 +547,25 @@
           </label>
         </div>
 
+        <!-- Extract concepts from pasted text (SI reports, field notes, desk study) -->
+        <div class="collapsible-hdr" id="concept-extract-toggle" style="margin-top:10px">
+          <span>Extract from text <span class="badge-opt">paste SI report / field notes</span></span>
+          <span class="collapse-arrow">›</span>
+        </div>
+        <div id="concept-extract-body" class="collapsible-body" hidden>
+          <p class="hint" style="margin-bottom:4px;font-size:10px">
+            Paste any geological text — site investigation report, field notes, desk study — and
+            Claude will extract all conceptual statements about unit geometry and morphology.
+          </p>
+          <textarea id="concept-extract-text" rows="5"
+            placeholder="e.g. 'The alluvial gravel forms a laterally continuous sheet, thinning northward toward the valley margin. A palaeochannel trending approximately E–W is inferred from borehole evidence, with an irregular, incised base into chalk…'"
+            style="width:100%;box-sizing:border-box;font-size:10px;background:var(--bg-deep);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:5px;resize:vertical;line-height:1.4"></textarea>
+          <button id="btn-extract-concepts" class="btn btn-secondary btn-sm" style="width:100%;margin-top:4px;font-size:10px">
+            ✦ Extract concepts from text
+          </button>
+          <div id="concept-extract-results" style="display:none;margin-top:4px"></div>
+        </div>
+
         <!-- Auto-suggest concepts from borehole data -->
         <div style="margin-top:8px">
           <button id="btn-suggest-concepts" class="btn btn-secondary btn-sm" style="width:100%;font-size:10px" title="Analyse borehole patterns and suggest geological concepts">
@@ -1288,6 +1307,18 @@
       <div id="model-qc-panel" class="panel-section" hidden>
         <h3>Model Quality</h3>
         <div id="model-qc-content" style="font-size:10px"></div>
+      </div>
+
+      <!-- AI Borehole Gap Analysis -->
+      <div id="borehole-gap-panel" class="panel-section" hidden>
+        <h3>AI Borehole Planner <span class="badge-opt">where to drill next</span></h3>
+        <p class="hint" style="font-size:10px;margin-bottom:6px">
+          Identifies data-sparse, concept-active zones where a new borehole would most reduce model uncertainty.
+        </p>
+        <button id="btn-borehole-gap-analysis" class="btn btn-secondary btn-sm" style="width:100%;font-size:10px">
+          ✦ Suggest new borehole locations
+        </button>
+        <div id="borehole-gap-results" style="display:none;margin-top:6px"></div>
       </div>
 
       <div class="panel-section">
