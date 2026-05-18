@@ -8,7 +8,7 @@ import { buildVoxelGrid, buildVoxelGridMonteCarlo, buildIndicatorKriging } from 
 import { initScene } from './scene.js';
 import { initLayerControls } from './layer-controls.js';
 import { initExporter } from './exporter.js';
-import { parseConstraints, applyConstraints, constraintSummary } from './constraints.js';
+import { parseConstraints, applyConstraints, constraintSummary, inferStratigraphicOrder, applyStratigraphicOrder } from './constraints.js';
 import { compositeBH } from './semantic-engine.js';
 import { parseGeoMap } from './geo-map.js';
 import { FenceSection } from './fence-section.js';
@@ -3183,6 +3183,65 @@ function _initStratLockToggle() {
   });
 }
 
+function initStratOrderButtons() {
+  const inferBtn  = document.getElementById('btn-infer-strat-order');
+  const applyBtn  = document.getElementById('btn-apply-strat-order');
+  const confDiv   = document.getElementById('strat-confidence');
+
+  inferBtn?.addEventListener('click', () => {
+    const bhs = AppState.classifiedBH.filter(b => !b.synthetic);
+    if (!bhs.length || !AppState.geoUnits.length) {
+      log('Run AI analysis first.', 'warn'); return;
+    }
+    const result = inferStratigraphicOrder(bhs, AppState.geoUnits);
+    if (!result.length) return;
+
+    // Update strat order from inference
+    const orderedCodes = result.map(r => r.code);
+    AppState.stratOrder        = orderedCodes;
+    AppState._stratDisplayOrder = orderedCodes;
+    updateStratColumn();
+
+    // Show confidence
+    if (confDiv) {
+      confDiv.style.display = 'block';
+      confDiv.innerHTML = result.map(r => {
+        const pct  = Math.round(r.confidence * 100);
+        const col  = pct >= 80 ? 'var(--green)' : pct >= 50 ? '#c8a855' : '#d04040';
+        const bar  = '▓'.repeat(Math.round(pct / 10)) + '░'.repeat(10 - Math.round(pct / 10));
+        return `<div style="display:flex;align-items:center;gap:4px;margin-bottom:1px">
+          <span style="font-family:var(--font-mono);width:46px;color:var(--accent)">${r.code}</span>
+          <span style="font-family:var(--font-mono);font-size:8px;letter-spacing:-0.5px;color:${col}">${bar}</span>
+          <span style="color:${col};width:28px">${pct}%</span>
+        </div>`;
+      }).join('');
+    }
+
+    // Enable apply button
+    if (applyBtn) applyBtn.disabled = !AppState.voxelGrid;
+    log(`Stratigraphic order inferred: ${orderedCodes.join(' → ')} (youngest→oldest)`, 'ok');
+  });
+
+  applyBtn?.addEventListener('click', () => {
+    if (!AppState.voxelGrid) { log('Build the 3D model first.', 'warn'); return; }
+    const order = AppState.stratOrder?.length ? AppState.stratOrder
+                  : (AppState._stratDisplayOrder ?? AppState.geoUnits.map(u => u.code));
+    if (!order.length) { log('Set stratigraphic order first.', 'warn'); return; }
+
+    const modified = applyStratigraphicOrder(AppState.voxelGrid, order, AppState.geoUnits);
+    AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
+    updateVolumeStats?.();
+    updateUnitStats?.();
+    log(`Stratigraphic order enforced: ${modified.toLocaleString()} voxel(s) corrected.`,
+      modified > 0 ? 'ok' : 'info');
+  });
+
+  // Enable apply button after a model is built
+  window.addEventListener('geomodel:model-built', () => {
+    if (applyBtn && AppState.stratOrder?.length) applyBtn.disabled = false;
+  });
+}
+
 // ── Isopach map ──────────────────────────────────────────────────────────────
 function initIsopachMap() {
   AppState.isopachMap = new IsopachMap();
@@ -5355,6 +5414,7 @@ async function init() {
   initVBHButton();
   initIsopachMap();
   _initStratLockToggle();
+  initStratOrderButtons();
   _initGeoEventTimeline();
   initFenceSection();
   initScreenshot();

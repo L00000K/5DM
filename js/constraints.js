@@ -299,6 +299,127 @@ export function applyConstraints(grid, rules, geoUnits) {
   return applied;
 }
 
+// ── Stratigraphic sequence inference ─────────────────────────────────────────
+// Analyses borehole layer ordering to infer the most likely geological time
+// sequence (youngest → oldest). Returns ordered unit codes with confidence.
+export function inferStratigraphicOrder(boreholes, geoUnits) {
+  if (!geoUnits.length) return [];
+
+  const codes = geoUnits.map(u => u.code);
+  // above[A][B] = # of times unit A appears directly above unit B in a borehole
+  const above = {};
+  codes.forEach(a => { above[a] = {}; codes.forEach(b => { above[a][b] = 0; }); });
+
+  for (const bh of boreholes) {
+    const layers = (bh.layers ?? []).filter(l => l.unitCode && above[l.unitCode]);
+    for (let i = 0; i < layers.length - 1; i++) {
+      const upper = layers[i].unitCode;
+      const lower = layers[i + 1].unitCode;
+      if (upper !== lower) above[upper][lower]++;
+    }
+  }
+
+  // Pairwise dominance: if A is consistently above B, A is younger
+  const score = {};
+  codes.forEach(c => { score[c] = 0; });
+  for (const a of codes) {
+    for (const b of codes) {
+      if (a === b) continue;
+      const ab = above[a][b];
+      const ba = above[b][a];
+      const total = ab + ba;
+      if (total === 0) continue;
+      // fractional score: positive = a tends to be above b
+      const frac = ab / total;
+      score[a] += frac - 0.5;
+      score[b] -= frac - 0.5;
+    }
+  }
+
+  // Sort: highest score = youngest (nearest surface)
+  const ordered = codes.slice().sort((a, b) => score[b] - score[a]);
+
+  // Compute per-unit confidence: fraction of borehole observations consistent with order
+  const idxOf = {};
+  ordered.forEach((c, i) => { idxOf[c] = i; });
+
+  const perUnit = ordered.map(code => {
+    let consistent = 0, total = 0;
+    for (const bh of boreholes) {
+      const layers = (bh.layers ?? []).filter(l => l.unitCode && idxOf[l.unitCode] !== undefined);
+      for (let i = 0; i < layers.length - 1; i++) {
+        const ai = idxOf[layers[i].unitCode];
+        const bi = idxOf[layers[i + 1].unitCode];
+        if (layers[i].unitCode === code || layers[i + 1].unitCode === code) {
+          total++;
+          if (ai < bi) consistent++; // younger above older ✓
+        }
+      }
+    }
+    const confidence = total > 0 ? consistent / total : 0.5;
+    return { code, confidence, rank: idxOf[code] };
+  });
+
+  return perUnit; // [{code, confidence, rank}] youngest first
+}
+
+// ── Stratigraphic sequence enforcer ──────────────────────────────────────────
+// Scans each grid column from top (surface) to bottom.
+// If a voxel's unit is YOUNGER (lower rank index) than a unit already seen
+// deeper in the column, it is replaced with the deepest valid older unit.
+// orderedCodes: string[] youngest→oldest (index 0 = youngest)
+// geoUnits: the geo unit array (needed to map integer unit IDs → codes)
+// Returns: number of voxels modified.
+export function applyStratigraphicOrder(grid, orderedCodes, geoUnits) {
+  const { nx, ny, nz, unitIds } = grid;
+  if (!nx || !orderedCodes?.length || !geoUnits?.length) return 0;
+
+  const rankOf = {};
+  orderedCodes.forEach((c, i) => { rankOf[c] = i; });
+
+  // Map integer unit ID → stratigraphic rank
+  const idToRank = {};
+  for (const u of geoUnits) {
+    if (u.id != null) idToRank[u.id] = rankOf[u.code] ?? -1;
+  }
+
+  let modified = 0;
+  const n2 = nx * ny;
+
+  for (let iy = 0; iy < ny; iy++) {
+    for (let ix = 0; ix < nx; ix++) {
+      // Scan from top (iz = nz-1) to bottom (iz = 0)
+      let oldestRankSeen = -1;
+      let oldestIdSeen   = -1;
+
+      for (let iz = nz - 1; iz >= 0; iz--) {
+        const flat = ix + iy * nx + iz * n2;
+        const uid  = unitIds[flat];
+        const rank = idToRank[uid] ?? -1;
+
+        if (rank < 0) continue; // unknown unit — leave as-is
+
+        if (oldestRankSeen < 0) {
+          // First known unit encountered from top
+          oldestRankSeen = rank;
+          oldestIdSeen   = uid;
+        } else if (rank < oldestRankSeen) {
+          // This unit is YOUNGER than something below it — violates stratigraphy
+          // Replace with the oldest valid unit seen so far
+          unitIds[flat] = oldestIdSeen;
+          modified++;
+        } else {
+          // Older or same — valid, update oldest seen
+          oldestRankSeen = rank;
+          oldestIdSeen   = uid;
+        }
+      }
+    }
+  }
+
+  return modified;
+}
+
 export function constraintSummary(rules) {
   return rules.map(r => {
     if (r.type === 'note')      return { label: '📝 Note', text: r.raw, active: false };

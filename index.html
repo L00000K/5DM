@@ -1678,6 +1678,11 @@
         </div>
         <ol id="strat-order-list" class="strat-order-list"></ol>
         <p class="hint" id="strat-hint">Add units and build model to see stratigraphy</p>
+        <div style="display:flex;gap:4px;margin-top:4px">
+          <button id="btn-infer-strat-order" class="btn-secondary btn-sm" style="flex:1" title="Infer stratigraphic order from borehole data — ranks units by how often they appear above vs below each other">⇅ Infer from BHs</button>
+          <button id="btn-apply-strat-order" class="btn btn-sm" style="flex:1" title="Apply stratigraphic order as a constraint — corrects impossible unit intersections in the built model. Cannot undo without rebuilding." disabled>✓ Enforce Order</button>
+        </div>
+        <div id="strat-confidence" style="font-size:9px;color:var(--text-muted);margin-top:4px;display:none"></div>
       </div>
 
       <div class="panel-section">
