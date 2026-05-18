@@ -70,7 +70,7 @@ export class IsopachMap {
     // For unit-specific modes, require a valid unit selection
     const targetId = parseInt(this._select?.value ?? geoUnits[0]?.id ?? 0);
     const unit     = geoUnits.find(u => u.id === targetId);
-    if (!unit && ['thick', 'topZ', 'baseZ', 'depth-to-top'].includes(mode)) return;
+    if (!unit && ['thick', 'thick-p10', 'thick-p90', 'topZ', 'baseZ', 'depth-to-top'].includes(mode)) return;
 
     // Build unitById lookup for settle mode
     const unitById = {};
@@ -93,6 +93,26 @@ export class IsopachMap {
             if (unitIds[ix + iy * nx + iz * nx * ny] === targetId) cnt++;
           }
           v = cnt > 0 ? cnt * ch : NaN;
+        } else if (mode === 'thick-p10' || mode === 'thick-p90') {
+          // P10 = thickness exceeded with 90% probability (pessimistic/thin end)
+          // P90 = thickness exceeded with 10% probability (optimistic/thick end)
+          // Uses MC probability volume: count voxels where P(unit) >= threshold
+          const probVol = grid.probVolumes?.get(unit.code);
+          if (probVol) {
+            const threshold = mode === 'thick-p10' ? 0.90 : 0.10;
+            let cnt = 0;
+            for (let iz = 0; iz < nz; iz++) {
+              if (probVol[ix + iy * nx + iz * nx * ny] >= threshold) cnt++;
+            }
+            v = cnt > 0 ? cnt * ch : NaN;
+          } else {
+            // Fall back to P50 if no probability volumes
+            let cnt = 0;
+            for (let iz = 0; iz < nz; iz++) {
+              if (unitIds[ix + iy * nx + iz * nx * ny] === targetId) cnt++;
+            }
+            v = cnt > 0 ? cnt * ch : NaN;
+          }
         } else if (mode === 'topZ') {
           for (let iz = nz - 1; iz >= 0; iz--) {
             if (unitIds[ix + iy * nx + iz * nx * ny] === targetId) {
