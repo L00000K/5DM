@@ -7348,6 +7348,15 @@ export function getVoxelAttribution(worldX, worldY, worldZ, unitCode = null) {
     activeAxes:        concepts.activeAxes ?? [],
     trend:             { dz_dxN: trend.dz_dxN, dz_dyN: trend.dz_dyN },
     coverageDensity:   coverageDensityVal,
+    sharpnessT:        (() => {
+      if (!grid?.sharpnessT) return null;
+      const { nx, ny, nz, cellSize: cs, cellHeight: ch, origin: O } = grid;
+      const ix = Math.floor((worldX - O.x) / cs);
+      const iy = Math.floor((worldY - O.z) / cs);
+      const iz = Math.floor((worldZ - O.y) / ch);
+      if (ix < 0 || ix >= nx || iy < 0 || iy >= ny || iz < 0 || iz >= nz) return null;
+      return grid.sharpnessT[ix + iy * nx + iz * nx * ny];
+    })(),
   };
 }
 
@@ -7512,7 +7521,7 @@ function _computeAttribution(worldX, worldY, worldZ) {
 
 function _renderAttribution(attr, unitCode) {
   if (!attr) return '';
-  const { conceptWeights, bhWeights, tensor, semanticDominance, activeAxes, trend, coverageDensity } = attr;
+  const { conceptWeights, bhWeights, tensor, semanticDominance, activeAxes, trend, coverageDensity, sharpnessT } = attr;
 
   const semPct = (semanticDominance * 100).toFixed(0);
   const datPct = Math.max(0, 100 - semPct).toFixed(0);
@@ -7575,7 +7584,7 @@ function _renderAttribution(attr, unitCode) {
   if (az < 0.7) narrativeParts.push(`Sharp vertical contacts`);
   else if (az > 1.5) narrativeParts.push(`Gradational vertical contacts`);
   if (activeAxes?.some(a => a.name === 'channel_morphology' && a.value > 0.4)) narrativeParts.push('Channel geometry active');
-  if (activeAxes?.some(a => a.name === 'stepped_boundary' && a.value > 0.4)) narrativeParts.push('Stepped contact active');
+  if (activeAxes?.some(a => a.name === 'stepped_boundary' && a.value > 0.4)) narrativeParts.push(`Stepped contact active${sharpnessT != null && sharpnessT < 0.85 ? ` (sharpened T=${sharpnessT.toFixed(2)})` : ''}`);
   if (activeAxes?.some(a => a.name === 'erosional_contact' && a.value > 0.4)) narrativeParts.push('Erosional base predicted');
   const trendLines = [];
   if (trend && Math.abs(trend.dz_dxN) > 0.01) trendLines.push(`dips ${trend.dz_dxN > 0 ? 'E' : 'W'}`);
@@ -7608,6 +7617,7 @@ function _renderAttribution(attr, unitCode) {
       <div class="trace-section-hdr">Coordinate Warp</div>
       <div class="trace-warp">Major ×${(tensor.Amaj ?? Math.max(tensor.Ax, tensor.Ay)).toFixed(2)} at ${(tensor.thetaDeg ?? 0).toFixed(0)}° · Minor ×${(tensor.Amin ?? Math.min(tensor.Ax, tensor.Ay)).toFixed(2)} · Z ×${tensor.Az}</div>
       ${trend && (Math.abs(trend.dz_dxN) > 0.01 || Math.abs(trend.dz_dyN) > 0.01) ? `<div class="trace-warp" style="margin-top:2px;color:var(--text-mid)">Depth trend: E ${trend.dz_dxN >= 0 ? '↘' : '↗'} ${Math.abs(trend.dz_dxN).toFixed(3)} · N ${trend.dz_dyN >= 0 ? '↘' : '↗'} ${Math.abs(trend.dz_dyN).toFixed(3)}</div>` : ''}
+      ${sharpnessT != null && sharpnessT < 0.95 ? `<div class="trace-warp" style="margin-top:2px;color:#e8a020">Contact sharpness T=${sharpnessT.toFixed(2)}${sharpnessT < 0.5 ? ' (sharp/stepped boundary)' : ' (slightly sharpened)'}</div>` : ''}
     </div>`;
 }
 

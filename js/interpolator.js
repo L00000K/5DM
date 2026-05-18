@@ -645,6 +645,7 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
       blendRatios.set(inferred.blendRatios);
       const conceptInfluence = inferred.conceptInfluence ?? null;
       const probVolumes      = inferred.probVolumes ?? null;
+      const sharpnessT       = inferred.sharpnessT ?? null;
 
       // Oracle refinement: find uncertain clusters and pass to injected oracle fn
       const oracleFn = options.oracleRefineFn;
@@ -730,6 +731,7 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
         ...(conceptInfluence ? { conceptInfluence } : {}),
         ...(coverageDensity   ? { coverageDensity }  : {}),
         ...(probVolumes       ? { probVolumes }       : {}),
+        ...(sharpnessT        ? { sharpnessT }        : {}),
       };
     }
   }

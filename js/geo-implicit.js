@@ -1032,6 +1032,10 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore, options 
   const blendUnitIds     = new Uint8Array(total);
   const blendRatios      = new Float32Array(total);
   const conceptInfluence = new Float32Array(total);
+  // Per-voxel contact sharpness temperature (1=no sharpening, 0.3=stepped/fault sharp boundary).
+  // Derived from concept context axes stepped_boundary(18) and fault_controlled(7).
+  // Applied as power-law tempering: p_sharp[u] = p[u]^(1/T) / sum(p[u]^(1/T)).
+  const sharpnessT = new Float32Array(total).fill(1.0);
 
   // Accumulator for MC probability averaging — shape [total * nUnitsI].
   // When nMCPasses == 1 this is used once then discarded; the allocation is
@@ -1089,6 +1093,14 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore, options 
           // Only set structural outputs on first pass
           if (pass === 0) {
             conceptInfluence[idx] = ctx ? Math.min(1, ctx.totalWeight) : 0;
+            // Contact sharpness: axes 18=stepped_boundary, 7=fault_controlled
+            // T in [0.3, 1.0]: lower = sharper/more decisive unit boundary
+            if (ctx && ctx.totalWeight > 0.05) {
+              const stepped = Math.max(0, ctxVec[18] ?? 0);
+              const faulted = Math.max(0, ctxVec[7]  ?? 0);
+              const sharpness = Math.max(stepped, faulted);
+              sharpnessT[idx] = Math.max(0.3, 1 - 0.7 * sharpness);
+            }
           }
         }
       }
@@ -1101,17 +1113,27 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore, options 
 
   for (let idx = 0; idx < total; idx++) {
     const base = idx * nUnitsI;
+    const T = sharpnessT[idx]; // temperature: 1 = normal, 0.3 = very sharp
+    const exp = T < 0.99 ? 1 / T : 1; // power exponent for tempering
+
+    // Compute probabilities (average over passes), optionally apply power-law sharpening
+    const probs = new Float32Array(nUnitsI);
+    let pSum = 0;
+    for (let u = 0; u < nUnitsI; u++) {
+      const raw = probAcc[base + u] / nMCPasses;
+      probs[u] = exp !== 1 ? Math.pow(Math.max(1e-9, raw), exp) : raw;
+      pSum += probs[u];
+    }
+    if (pSum > 1e-9 && exp !== 1) for (let u = 0; u < nUnitsI; u++) probs[u] /= pSum;
+
     let b1 = 0, b2 = -1;
-    // Find top-2 averaged probabilities
-    let p1 = probAcc[base] / nMCPasses;
-    let p2 = 0;
+    let p1 = probs[0], p2 = 0;
     if (nUnitsI > 1) {
-      b2 = 1;
-      p2 = probAcc[base + 1] / nMCPasses;
+      b2 = 1; p2 = probs[1];
       if (p2 > p1) { b1 = 1; b2 = 0; const tmp = p1; p1 = p2; p2 = tmp; }
     }
     for (let u = 2; u < nUnitsI; u++) {
-      const p = probAcc[base + u] / nMCPasses;
+      const p = probs[u];
       if (p > p1) { b2 = b1; p2 = p1; b1 = u; p1 = p; }
       else if (p > p2) { b2 = u; p2 = p; }
     }
@@ -1120,19 +1142,18 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore, options 
     blendUnitIds[idx] = b2 >= 0 ? (codeToId[unitCodes[b2]] ?? 0) : 0;
     blendRatios[idx]  = p2;
 
-    // Certainty from MC: mean top-1 probability ± concept boost.
-    // With MC passes the mean top-1 is a true Bayesian predictive probability;
-    // variance across passes gives calibrated uncertainty.
+    // Certainty: mean top-1 probability ± concept boost.
     const conceptBoost = conceptInfluence[idx] > 0 ? Math.min(0.1, conceptInfluence[idx] * 0.08) : 0;
     certainty[idx] = Math.max(0.05, Math.min(1, 0.5 + p1 - p2 + conceptBoost));
 
-    // Fill probability volumes
+    // Fill probability volumes with UNSHARPENED probabilities (raw MC averages)
+    // so isosurfaces and uncertainty maps reflect the true learned distribution.
     for (let u = 0; u < nUnitsI; u++) {
       probVolumes.get(unitCodes[u])[idx] = probAcc[base + u] / nMCPasses;
     }
   }
 
-  return { unitIds, certainty, blendUnitIds, blendRatios, conceptInfluence, probVolumes };
+  return { unitIds, certainty, blendUnitIds, blendRatios, conceptInfluence, probVolumes, sharpnessT };
 }
 
 // ── Patch voxel grid with oracle probability distributions ───────────────────
