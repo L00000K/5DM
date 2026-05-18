@@ -116,14 +116,47 @@ export class ConceptStore {
    * @param {string[]}      [entry.unitAffinity]- unit codes this concept applies to ([] = all)
    * @returns {string} concept id
    */
-  add({ description, embedding, confidence = 0.7, domain = { type: 'global' }, unitAffinity = [] }) {
+  add({ description, embedding, confidence = 0.7, domain = { type: 'global' }, unitAffinity = [], temporalOrder = null }) {
     const id = `c${this._nextId++}`;
     this._concepts.push({
       id, description,
       embedding: embedding instanceof Float32Array ? embedding : new Float32Array(embedding),
       confidence, domain, unitAffinity,
+      temporalOrder, // integer rank: lower = older, higher = younger; null = unspecified
     });
     return id;
+  }
+
+  setTemporalOrder(id, rank) {
+    const c = this._concepts.find(c => c.id === id);
+    if (c) c.temporalOrder = (rank === null || rank === undefined) ? null : Number(rank);
+  }
+
+  /**
+   * Return all pairs (younger, older) of concepts with explicit temporalOrder set.
+   * Pairs are sorted so the younger concept (higher rank) comes first.
+   * Only includes pairs whose spatial domains overlap (or at least one is global).
+   */
+  temporallyOrderedPairs() {
+    const withOrder = this._concepts.filter(c => c.temporalOrder !== null && c.temporalOrder !== undefined);
+    if (withOrder.length < 2) return [];
+    const pairs = [];
+    for (let i = 0; i < withOrder.length; i++) {
+      for (let j = i + 1; j < withOrder.length; j++) {
+        const ca = withOrder[i], cb = withOrder[j];
+        if (ca.temporalOrder === cb.temporalOrder) continue; // same rank, skip
+        const [younger, older] = ca.temporalOrder > cb.temporalOrder ? [ca, cb] : [cb, ca];
+        // Check domain overlap (skip only if both are non-overlapping bbox domains)
+        const aGlobal = !ca.domain || ca.domain.type === 'global';
+        const bGlobal = !cb.domain || cb.domain.type === 'global';
+        if (!aGlobal && !bGlobal) {
+          const ad = ca.domain, bd = cb.domain;
+          if (ad.maxX < bd.minX || bd.maxX < ad.minX || ad.maxY < bd.minY || bd.maxY < ad.minY) continue;
+        }
+        pairs.push({ younger, older });
+      }
+    }
+    return pairs;
   }
 
   remove(id) {

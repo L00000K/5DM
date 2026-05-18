@@ -2235,6 +2235,23 @@ kbd {
 }
 .concept-conf-val { font-family: var(--font-mono); min-width: 26px; color: var(--accent); }
 
+/* Temporal ordering row */
+.concept-temporal-row {
+  display: flex; align-items: center; gap: 3px;
+  font-size: 9.5px; color: var(--text-dim); margin-top: 2px;
+}
+.concept-temporal-label { margin-right: 2px; }
+.concept-temporal-btn {
+  background: var(--bg-el); border: 1px solid var(--border); border-radius: 3px;
+  color: var(--text-mid); cursor: pointer; font-size: 11px; line-height: 1;
+  padding: 1px 5px; transition: background 0.15s;
+}
+.concept-temporal-btn:hover { background: var(--accent-glow); color: var(--accent); }
+.concept-temporal-val {
+  font-family: var(--font-mono); min-width: 18px; text-align: center;
+  color: var(--accent); font-size: 10px;
+}
+
 /* 32-axis sparkline — one thin bar per axis */
 .concept-axes {
   display: flex; gap: 1px; height: 16px; align-items: flex-end;

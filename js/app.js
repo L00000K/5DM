@@ -6868,6 +6868,45 @@ export function detectConceptConflicts() {
     }
   }
 
+  // ── 3. Temporal order conflicts ───────────────────────────────────────────────
+  // If two concepts both have temporalOrder AND unitAffinity, check whether the
+  // borehole data actually supports the declared order (younger unit appears above
+  // the older one in observed sections).
+  const temporalPairs = AppState.conceptStore?.temporallyOrderedPairs?.() ?? [];
+  for (const { younger, older } of temporalPairs) {
+    if (!younger.unitAffinity?.length || !older.unitAffinity?.length) continue;
+    // Gather observed vertical ordering from boreholes
+    const boreholes = AppState.classifiedBH ?? [];
+    let correctCount = 0, totalContacts = 0;
+    for (const bh of boreholes) {
+      const layers = bh.layers ?? [];
+      for (let i = 0; i < layers.length; i++) {
+        for (let j = i + 1; j < layers.length; j++) {
+          const la = layers[i], lb = layers[j]; // la is shallower (higher elevation)
+          const laIsYounger = younger.unitAffinity.includes(la.unitCode) && older.unitAffinity.includes(lb.unitCode);
+          const lbIsYounger = younger.unitAffinity.includes(lb.unitCode) && older.unitAffinity.includes(la.unitCode);
+          if (laIsYounger || lbIsYounger) {
+            totalContacts++;
+            if (laIsYounger) correctCount++; // younger above older = correct
+          }
+        }
+      }
+    }
+    if (totalContacts >= 3 && correctCount / totalContacts < 0.4) {
+      conflicts.push({
+        type: 'temporal', severity: 'error',
+        conceptIds: [younger.id, older.id],
+        description: `Temporal order conflict: "${younger.description.slice(0, 25)}" declared younger than "${older.description.slice(0, 25)}" but borehole data shows the opposite in ${totalContacts} observed contacts. Check your age rank assignments.`,
+      });
+    } else if (totalContacts >= 3 && correctCount / totalContacts < 0.6) {
+      conflicts.push({
+        type: 'temporal', severity: 'warning',
+        conceptIds: [younger.id, older.id],
+        description: `Temporal order uncertain: "${younger.description.slice(0, 25)}" vs "${older.description.slice(0, 25)}" — only ${Math.round(correctCount/totalContacts*100)}% of observed contacts agree with declared age rank.`,
+      });
+    }
+  }
+
   return conflicts;
 }
 
@@ -7035,6 +7074,16 @@ export function _renderConceptList() {
           ><span class="concept-conf-val">${confPct}%</span>
         </label>
       </div>
+      <div class="concept-temporal-row">
+        <span class="concept-temporal-label" title="Geological age rank — lower = older (deposited first). Used to inject training constraints so younger units appear above older ones in data-sparse areas.">Age rank:</span>
+        <button class="concept-temporal-btn" onclick="_conceptTemporalDec('${c.id}')" title="Older (decrease rank)">−</button>
+        <span class="concept-temporal-val" id="trank-${c.id}">${c.temporalOrder !== null && c.temporalOrder !== undefined ? c.temporalOrder : '—'}</span>
+        <button class="concept-temporal-btn" onclick="_conceptTemporalInc('${c.id}')" title="Younger (increase rank)">+</button>
+        <button class="concept-temporal-btn" onclick="_conceptTemporalClear('${c.id}')" title="Clear rank" style="font-size:9px;padding:0 3px">✕</button>
+        ${c.temporalOrder !== null && c.temporalOrder !== undefined
+          ? `<span style="font-size:9px;color:var(--text-dim);margin-left:3px">${c.temporalOrder === 0 ? '(oldest)' : ''}</span>`
+          : ''}
+      </div>
       <div class="concept-axes">${bars}</div>
       <canvas class="concept-radar-canvas" id="radar-${c.id}" width="200" height="200" style="display:none;margin:4px auto 0;border-radius:4px;background:#f3f5f8"></canvas>
     </div>`;
@@ -7190,6 +7239,45 @@ window._removeConcept = function(id) {
   _saveConceptStore();
   log(`Concept removed`, 'info');
 };
+
+window._conceptTemporalInc = function(id) {
+  const store = AppState.conceptStore;
+  if (!store) return;
+  const c = store.concepts.find(x => x.id === id);
+  if (!c) return;
+  const cur = c.temporalOrder ?? -1;
+  store.setTemporalOrder(id, cur + 1);
+  _updateConceptTemporalDisplay(id, store.concepts.find(x => x.id === id)?.temporalOrder);
+  _saveConceptStore();
+  _renderConceptConflicts();
+};
+
+window._conceptTemporalDec = function(id) {
+  const store = AppState.conceptStore;
+  if (!store) return;
+  const c = store.concepts.find(x => x.id === id);
+  if (!c) return;
+  const cur = c.temporalOrder ?? 1;
+  const newRank = Math.max(0, cur - 1);
+  store.setTemporalOrder(id, newRank);
+  _updateConceptTemporalDisplay(id, newRank);
+  _saveConceptStore();
+  _renderConceptConflicts();
+};
+
+window._conceptTemporalClear = function(id) {
+  const store = AppState.conceptStore;
+  if (!store) return;
+  store.setTemporalOrder(id, null);
+  _updateConceptTemporalDisplay(id, null);
+  _saveConceptStore();
+  _renderConceptConflicts();
+};
+
+function _updateConceptTemporalDisplay(id, rank) {
+  const el = document.getElementById(`trank-${id}`);
+  if (el) el.textContent = (rank !== null && rank !== undefined) ? rank : '—';
+}
 
 function _loadDemoConceptsIfEmpty() {
   if (!AppState.conceptStore.isEmpty) return;

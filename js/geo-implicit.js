@@ -826,6 +826,101 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
     }
   }
 
+  // ── Concept temporal ordering samples ──────────────────────────────────────
+  // For each pair of concepts where one is explicitly younger than the other,
+  // and both have unit affinities, inject synthetic samples to teach the network
+  // that the younger unit appears ABOVE the older unit in their shared domain.
+  // These use the same low-weight (0.2) guidance-only pattern as strat-order samples.
+  if (conceptStore && !conceptStore.isEmpty) {
+    const temporalPairs = conceptStore.temporallyOrderedPairs();
+    if (temporalPairs.length > 0) {
+      // Build unit elevation stats from real borehole data
+      const unitMeanElev = {}; // unitCode → mean midpoint elevation
+      const unitElevSamples = {};
+      for (const bh of boreholes) {
+        for (const layer of (bh.layers ?? [])) {
+          const mid = bh.groundLevel - (layer.top + layer.base) / 2;
+          if (!unitElevSamples[layer.unitCode]) unitElevSamples[layer.unitCode] = [];
+          unitElevSamples[layer.unitCode].push(mid);
+        }
+      }
+      for (const [code, elevs] of Object.entries(unitElevSamples)) {
+        unitMeanElev[code] = elevs.reduce((s, e) => s + e, 0) / elevs.length;
+      }
+
+      const midZ = (bounds.minZ + bounds.maxZ) / 2;
+      const spanZ = bounds.maxZ - bounds.minZ;
+      const jitterZ = spanZ * 0.07;
+      const N_TMP = 4; // samples per side
+
+      // Sampling positions spread across the shared domain
+      const tempXs = [
+        bounds.minX * 0.7 + bounds.maxX * 0.3,
+        (bounds.minX + bounds.maxX) / 2,
+        bounds.minX * 0.3 + bounds.maxX * 0.7,
+      ];
+      const tempYs = [
+        bounds.minY * 0.7 + bounds.maxY * 0.3,
+        (bounds.minY + bounds.maxY) / 2,
+        bounds.minY * 0.3 + bounds.maxY * 0.7,
+      ];
+
+      for (const { younger, older } of temporalPairs) {
+        // Determine which units are younger and older from unitAffinity
+        const youngerCodes = younger.unitAffinity?.length ? younger.unitAffinity : geoUnits.map(u => u.code);
+        const olderCodes   = older.unitAffinity?.length  ? older.unitAffinity   : geoUnits.map(u => u.code);
+
+        // Estimate contact Z: midpoint between mean elevations, or site mid if unknown
+        const youngerElev = youngerCodes.reduce((s, c) => s + (unitMeanElev[c] ?? midZ), 0) / youngerCodes.length;
+        const olderElev   = olderCodes.reduce((s, c) => s + (unitMeanElev[c] ?? midZ), 0) / olderCodes.length;
+        // If elevation data available, use midpoint; else use vertical thirds
+        const contactZ = Math.abs(youngerElev - olderElev) > 0.5
+          ? (youngerElev + olderElev) / 2
+          : bounds.minZ + spanZ * 0.6; // young = upper 40%, old = lower 60%
+
+        for (const sx of tempXs) {
+          for (const sy of tempYs) {
+            // Samples ABOVE contact → younger unit
+            for (const yCode of youngerCodes) {
+              const tiY = unitIdx[yCode];
+              if (tiY === undefined) continue;
+              for (let s = 1; s <= N_TMP; s++) {
+                const wz = contactZ + (s / N_TMP) * jitterZ;
+                if (wz > bounds.maxZ) continue;
+                const ctx    = conceptStore ? conceptStore.computeAt(sx, sy, wz, yCode) : null;
+                const ctxVec = ctx?.vec ?? zeroCtx;
+                const tensor = ctx?.tensor ?? gTensor;
+                const warped = warpPoint(sx, sy, wz, tensor);
+                const pos    = fourierEnc.encode(warped.x, warped.y, warped.z, warpedBounds);
+                const inp    = new Float32Array(nIn);
+                inp.set(pos); inp.set(ctxVec, fourierEnc.outDim);
+                samples.push({ inp, target: tiY, weight: 0.2 });
+              }
+            }
+            // Samples BELOW contact → older unit
+            for (const oCode of olderCodes) {
+              const tiO = unitIdx[oCode];
+              if (tiO === undefined) continue;
+              for (let s = 1; s <= N_TMP; s++) {
+                const wz = contactZ - (s / N_TMP) * jitterZ;
+                if (wz < bounds.minZ) continue;
+                const ctx    = conceptStore ? conceptStore.computeAt(sx, sy, wz, oCode) : null;
+                const ctxVec = ctx?.vec ?? zeroCtx;
+                const tensor = ctx?.tensor ?? gTensor;
+                const warped = warpPoint(sx, sy, wz, tensor);
+                const pos    = fourierEnc.encode(warped.x, warped.y, warped.z, warpedBounds);
+                const inp    = new Float32Array(nIn);
+                inp.set(pos); inp.set(ctxVec, fourierEnc.outDim);
+                samples.push({ inp, target: tiO, weight: 0.2 });
+              }
+            }
+          }
+        }
+      }
+      if (onProgress) onProgress(0, 0, { temporalPairs: temporalPairs.length });
+    }
+  }
+
   // Separate real and virtual samples for diagnostics and capping
   const realSamples    = samples.filter(s => s.weight > 0.35);
   const virtualSamples = samples.filter(s => s.weight <= 0.35);
