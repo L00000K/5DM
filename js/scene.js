@@ -45,12 +45,10 @@ class SceneManager {
     this._slicer = new SlicerTool(
       this._scene, this._camera, this._controls, this._renderer,
       planes => {
-        this._builder.setClippingPlanes(planes);
-        // Apply clipping to surface meshes too
-        this._surfaces.getMeshes().forEach(m => {
-          m.material.clippingPlanes = planes.length ? planes : null;
-          m.material.needsUpdate = true;
-        });
+        // Renderer-level clipping: works for all material types including custom
+        // ShaderMaterials. Per-material approach fails when NUM_CLIPPING_PLANES
+        // was baked in as 0 at first compile and needsUpdate doesn't recompile.
+        this._renderer.clippingPlanes = planes;
       }
     );
 
