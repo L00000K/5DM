@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-19 (batch 12 update — semantic concept embedding architecture)
+> Last updated: 2026-05-19 (batch 13 update)
 
 ---
 
@@ -259,7 +259,7 @@ inp = [Fourier(warped_pos)(39) | concept_ctx(32)]
 - [x] Interactive OrbitControls (rotate/pan/zoom)
 - [x] Camera presets (plan, section, isometric)
 - [x] Marching cubes isosurfaces — smooth 3D unit solids from binary scalar fields
-- [x] 3D borehole sticks with label sprites and SPT N bar charts
+- [x] 3D borehole sticks with label sprites and SPT N bar charts — shown immediately on data load, before model build
 - [x] Groundwater table surface — IDW-interpolated from BH water strike depths
 - [x] Topography mesh overlay
 
