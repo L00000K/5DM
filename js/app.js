@@ -767,7 +767,15 @@ async function loadDemoSite(demoName) {
     setEnabled('btn-parse-features', true);
     log(`${data.site?.name ?? demoName} — ${AppState.rawBoreholes.length} boreholes loaded.`, 'ok');
 
-    setTimeout(() => document.getElementById('btn-build-model').click(), 200);
+    // Wait for scene to be ready (initScene is async; scene may not exist yet on first load)
+    const triggerBuild = () => {
+      if (AppState.scene) {
+        document.getElementById('btn-build-model').click();
+      } else {
+        setTimeout(triggerBuild, 50);
+      }
+    };
+    setTimeout(triggerBuild, 200);
   } catch (err) {
     log(`Demo load failed: ${err.message}`, 'error');
     showWelcome();
@@ -1020,6 +1028,10 @@ function initBuildModel() {
 
       showBuildProgress(false);
       updateInfoPanel();
+      if (!AppState.scene) {
+        log('3D scene not ready — check WebGL support in your browser.', 'error');
+        return;
+      }
       AppState.scene.buildVoxels(AppState.voxelGrid, AppState.geoUnits, AppState.classifiedBH);
       AppState.scene.drawConceptDomains?.(AppState.conceptStore);
       updateVolumeStats();
@@ -5956,8 +5968,13 @@ async function init() {
     }
   });
 
-  const scene = await initScene('three-canvas');
-  AppState.scene = scene;
+  try {
+    const scene = await initScene('three-canvas');
+    AppState.scene = scene;
+  } catch (err) {
+    log(`3D scene failed to initialise: ${err.message}`, 'error');
+    console.error('initScene error:', err);
+  }
 
   initUploader({
     onParsed(boreholes) {
