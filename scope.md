@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-19 (batch 17 update)
+> Last updated: 2026-05-19 (batch 18 update)
 
 ---
 
@@ -144,7 +144,7 @@ Seven methods, all operating on the same voxel grid:
 | Neural Network | 2-layer MLP (3→32→nUnits), cosine-annealed SGD |
 | Universal Kriging | Polynomial drift removal (order 0/1/2) |
 | RBF (Multiquadric) | Smooth implicit surface fitting — φ(r)=√(1+(r/ε)²) per unit, solves Gram system |
-| Neural Implicit Field | F(x,y,z,concept)→P(unit₁…unitₙ); 4-layer MLP, Fourier encoding, FiLM concept conditioning, anisotropic coordinate warp, LLM Oracle |
+| Neural Implicit Field | F(x,y,z,concept)→P(unit₁…unitₙ); 4-layer MLP, Fourier encoding, FiLM concept conditioning, anisotropic coordinate warp, LLM Oracle. **GPU-accelerated** via TF.js WebGL: full-batch training + batched voxel inference (20–50× faster than JS). |
 
 **Advanced uncertainty:**
 - [x] **Monte Carlo boundary perturbation** — N IDW realisations with Gaussian-perturbed layer boundaries (σ=0.5m); certainty = fraction agreeing with majority vote
