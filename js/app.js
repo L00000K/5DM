@@ -124,6 +124,54 @@ function hideWelcome() {
   document.getElementById('welcome-overlay')?.classList.add('hidden');
 }
 
+// ── Panel resize handles ──────────────────────────────────────────────────────
+function initPanelResize() {
+  const root = document.documentElement;
+
+  const attach = (handleId, cssVar, sign) => {
+    const handle = document.getElementById(handleId);
+    if (!handle) return;
+
+    const startDrag = (startX) => {
+      const startW = parseInt(getComputedStyle(root).getPropertyValue(cssVar)) || 272;
+      handle.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+
+      const onMove = (x) => {
+        const newW = Math.max(180, Math.min(640, startW + sign * (x - startX)));
+        root.style.setProperty(cssVar, `${newW}px`);
+      };
+
+      const onEnd = () => {
+        handle.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup',   onMouseUp);
+        document.removeEventListener('touchmove', onTouchMove);
+        document.removeEventListener('touchend',  onTouchEnd);
+      };
+
+      const onMouseMove = e => onMove(e.clientX);
+      const onMouseUp   = () => onEnd();
+      const onTouchMove = e => onMove(e.touches[0].clientX);
+      const onTouchEnd  = () => onEnd();
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup',   onMouseUp);
+      document.addEventListener('touchmove', onTouchMove, { passive: true });
+      document.addEventListener('touchend',  onTouchEnd);
+    };
+
+    handle.addEventListener('mousedown',  e => { e.preventDefault(); startDrag(e.clientX); });
+    handle.addEventListener('touchstart', e => startDrag(e.touches[0].clientX), { passive: true });
+  };
+
+  attach('resize-left',  '--left-w',  +1);
+  attach('resize-right', '--right-w', -1);
+}
+
 // ── Tab switching ──────────────────────────────────────────────────────────────
 function initTabs() {
   document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -5705,6 +5753,7 @@ function tryInit(fn, name) {
 }
 
 async function init() {
+  tryInit(initPanelResize,        'initPanelResize');
   tryInit(initTabs,               'initTabs');
   tryInit(initCellSizeInputs,     'initCellSizeInputs');
   tryInit(initInterpolationSettings, 'initInterpolationSettings');

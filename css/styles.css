@@ -88,9 +88,23 @@ html, body {
 /* ── Main Layout ── */
 #app-main {
   display: grid;
-  grid-template-columns: var(--left-w) 1fr var(--right-w);
+  grid-template-columns: var(--left-w) 4px 1fr 4px var(--right-w);
   height: calc(100vh - var(--header-h));
   overflow: hidden;
+}
+
+/* ── Panel resize handles ── */
+.panel-resize-handle {
+  width: 4px;
+  background: var(--border);
+  cursor: col-resize;
+  z-index: 20;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+.panel-resize-handle:hover,
+.panel-resize-handle.dragging {
+  background: var(--accent);
 }
 
 /* ── Panel base ── */
@@ -2176,6 +2190,7 @@ kbd {
     overflow-y: auto;
   }
   #left-panel, #right-panel { height: auto; overflow: visible; }
+  .panel-resize-handle { display: none; }
   :root { --left-w: 100%; --right-w: 100%; }
 }
 
