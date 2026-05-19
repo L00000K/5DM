@@ -148,6 +148,8 @@ class GeoImplicitNet {
     this._params = [...this.W, ...this.Wg, ...this.Wb, ...this.b];
   }
 
+  getParams() { return this._params; }
+
   _rand(rows, cols, scale) {
     const a = new Float32Array(rows * cols);
     for (let i = 0; i < a.length; i++) a[i] = (Math.random() * 2 - 1) * scale;
@@ -364,6 +366,175 @@ class GeoImplicitNet {
 export function buildGeoContext(geoUnits, siteHistory, unitDescriptions) {
   console.warn('buildGeoContext is deprecated. Pass a ConceptStore to trainGeoImplicit instead.');
   return null;
+}
+
+// ── TF.js GPU-accelerated training ───────────────────────────────────────────
+// Replaces the manual sample-by-sample Adam loop with batched GPU tensor ops.
+// Runs full-batch gradient descent (all samples per epoch) via WebGL backend.
+// Weights are synced back to the JS net after training for JS inference compat.
+async function _trainWithTF(net, allSamples, opts, onProgress) {
+  const tf = window.tf;
+  const { epochs, lr, lrMin, l2, filmWarmupFrac } = opts;
+  const { nHidden, nIn, nOut, fourierDim } = net;
+  const CTX = 32;
+  const N   = allSamples.length;
+
+  // Pack all samples into flat typed arrays (created once, reused every epoch)
+  const inpArr = new Float32Array(N * nIn);
+  const tgtArr = new Int32Array(N);
+  const wtArr  = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    inpArr.set(allSamples[i].inp, i * nIn);
+    tgtArr[i] = allSamples[i].target;
+    wtArr[i]  = allSamples[i].weight ?? 1;
+  }
+
+  // Unique name suffix prevents variable registry collisions on repeated runs
+  const uid = Math.random().toString(36).slice(2, 7);
+  const nm  = s => `${s}_${uid}`;
+
+  // Create named tf.Variables from the net's initial JS weight arrays
+  const V = {
+    W0:  tf.variable(tf.tensor2d(net.W[0],  [nHidden, nIn]),     true, nm('W0')),
+    W1:  tf.variable(tf.tensor2d(net.W[1],  [nHidden, nHidden]), true, nm('W1')),
+    W2:  tf.variable(tf.tensor2d(net.W[2],  [nHidden, nHidden]), true, nm('W2')),
+    W3:  tf.variable(tf.tensor2d(net.W[3],  [nOut,    nHidden]), true, nm('W3')),
+    b0:  tf.variable(tf.tensor1d(net.b[0]),                      true, nm('b0')),
+    b1:  tf.variable(tf.tensor1d(net.b[1]),                      true, nm('b1')),
+    b2:  tf.variable(tf.tensor1d(net.b[2]),                      true, nm('b2')),
+    b3:  tf.variable(tf.tensor1d(net.b[3]),                      true, nm('b3')),
+    Wg0: tf.variable(tf.tensor2d(net.Wg[0], [nHidden, CTX]),     true, nm('Wg0')),
+    Wg1: tf.variable(tf.tensor2d(net.Wg[1], [nHidden, CTX]),     true, nm('Wg1')),
+    Wg2: tf.variable(tf.tensor2d(net.Wg[2], [nHidden, CTX]),     true, nm('Wg2')),
+    Wb0: tf.variable(tf.tensor2d(net.Wb[0], [nHidden, CTX]),     true, nm('Wb0')),
+    Wb1: tf.variable(tf.tensor2d(net.Wb[1], [nHidden, CTX]),     true, nm('Wb1')),
+    Wb2: tf.variable(tf.tensor2d(net.Wb[2], [nHidden, CTX]),     true, nm('Wb2')),
+  };
+  const allVars   = Object.values(V);
+  const filmNames = new Set([V.Wg0, V.Wg1, V.Wg2, V.Wb0, V.Wb1, V.Wb2].map(v => v.name));
+
+  // Persistent input tensors — created once, reused each epoch (no re-allocation)
+  const inpT = tf.tensor2d(inpArr, [N, nIn]);
+  const tgtT = tf.tensor1d(tgtArr, 'int32');
+  const wtT  = tf.tensor1d(wtArr);
+
+  const opt           = tf.train.adam(lr, 0.9, 0.999, 1e-8);
+  const warmupEps     = Math.max(1, Math.round(epochs * 0.05));
+  const filmWarmupEps = Math.max(1, Math.round(epochs * filmWarmupFrac));
+  const nOut_         = nOut; // local for closure
+
+  for (let ep = 0; ep < epochs; ep++) {
+    // LR schedule: linear warmup → cosine decay (mirrors the JS path)
+    const wf = ep < warmupEps ? (ep + 1) / warmupEps : 1;
+    const cf = ep < warmupEps ? 0 : (ep - warmupEps) / Math.max(1, epochs - warmupEps);
+    opt.learningRate = lrMin + 0.5 * (lr * wf - lrMin) * (1 + Math.cos(Math.PI * cf));
+
+    const filmScale = Math.min(1, ep / Math.max(1, filmWarmupEps));
+
+    // Full-batch forward pass + auto-diff backward via TF
+    const { value: lossT, grads } = tf.variableGrads(() => {
+      // [N, 32] concept context from the last CTX columns of each input
+      const ctx    = inpT.slice([0, fourierDim], [-1, CTX]);
+      // Layer 0 + FiLM 0
+      const H0     = inpT.matMul(V.W0.transpose()).add(V.b0).relu();
+      const H0f    = H0.mul(ctx.matMul(V.Wg0.transpose()).add(1)).add(ctx.matMul(V.Wb0.transpose()));
+      // Layer 1 + FiLM 1
+      const H1     = H0f.matMul(V.W1.transpose()).add(V.b1).relu();
+      const H1f    = H1.mul(ctx.matMul(V.Wg1.transpose()).add(1)).add(ctx.matMul(V.Wb1.transpose()));
+      // Layer 2 + skip from H0f + FiLM 2
+      const H2     = H1f.matMul(V.W2.transpose()).add(V.b2).add(H0f.mul(0.1)).relu();
+      const H2f    = H2.mul(ctx.matMul(V.Wg2.transpose()).add(1)).add(ctx.matMul(V.Wb2.transpose()));
+      // Output: weighted cross-entropy + L2 on main weights
+      const logits = H2f.matMul(V.W3.transpose()).add(V.b3);
+      const ce     = tf.oneHot(tgtT, nOut_).toFloat()
+                       .mul(tf.logSoftmax(logits)).sum(1).neg().mul(wtT).mean();
+      const l2L    = [V.W0, V.W1, V.W2, V.W3]
+                       .reduce((a, w) => a.add(w.square().sum()), tf.scalar(0)).mul(l2 / N);
+      return ce.add(l2L);
+    }, allVars);
+
+    // Scale FiLM gradients during warmup (mirrors JS filmGradScale logic)
+    if (filmScale < 1) {
+      for (const [name, grad] of Object.entries(grads)) {
+        if (filmNames.has(name)) {
+          const scaled = grad.mul(filmScale);
+          grad.dispose();
+          grads[name] = scaled;
+        }
+      }
+    }
+
+    opt.applyGradients(grads);
+
+    if (onProgress && ep % 20 === 0) {
+      const lv = (await lossT.data())[0];
+      onProgress(ep / epochs, lv, { epoch: ep, epochs, gpu: true });
+    }
+    lossT.dispose();
+    for (const g of Object.values(grads)) g.dispose();
+
+    // Yield to UI every 5 epochs so the progress bar updates
+    if (ep % 5 === 0) await new Promise(r => setTimeout(r, 0));
+  }
+
+  // Copy trained weights back to the JS net (for JS inference compatibility)
+  net.W[0].set(await V.W0.data()); net.W[1].set(await V.W1.data());
+  net.W[2].set(await V.W2.data()); net.W[3].set(await V.W3.data());
+  net.b[0].set(await V.b0.data()); net.b[1].set(await V.b1.data());
+  net.b[2].set(await V.b2.data()); net.b[3].set(await V.b3.data());
+  net.Wg[0].set(await V.Wg0.data()); net.Wg[1].set(await V.Wg1.data()); net.Wg[2].set(await V.Wg2.data());
+  net.Wb[0].set(await V.Wb0.data()); net.Wb[1].set(await V.Wb1.data()); net.Wb[2].set(await V.Wb2.data());
+
+  // Free all GPU memory
+  allVars.forEach(v => v.dispose());
+  inpT.dispose(); tgtT.dispose(); wtT.dispose();
+  opt.dispose();
+}
+
+// ── TF.js GPU-accelerated batched inference ───────────────────────────────────
+// Runs all voxel forward passes in one GPU call (chunked to avoid OOM).
+// Returns Float32Array [total * nOut] of softmax probabilities.
+function _inferBatchTF(net, inpFlat, total, nIn, fourierDim, CHUNK = 8192) {
+  const tf = window.tf;
+  const { nHidden, nOut } = net;
+  const CTX = 32;
+
+  // Constant tensors for weights — not variables, no gradient tracking
+  const W  = net.W.map((w, i) => tf.tensor2d(w, [i === 3 ? nOut : nHidden, i === 0 ? nIn : nHidden]));
+  const b  = net.b.map(bv => tf.tensor1d(bv));
+  const Wg = net.Wg.map(w => tf.tensor2d(w, [nHidden, CTX]));
+  const Wb = net.Wb.map(w => tf.tensor2d(w, [nHidden, CTX]));
+  // Pre-transpose all weight matrices once — reused across chunks
+  const Wt  = W.map(w => w.transpose());
+  const Wgt = Wg.map(w => w.transpose()); // [CTX, nHidden]
+  const Wbt = Wb.map(w => w.transpose());
+
+  const outFlat = new Float32Array(total * nOut);
+
+  for (let start = 0; start < total; start += CHUNK) {
+    const count = Math.min(CHUNK, total - start);
+    const chunk = inpFlat.subarray(start * nIn, (start + count) * nIn);
+
+    // tf.tidy disposes all intermediate tensors except the returned one
+    const probT = tf.tidy(() => {
+      const inp  = tf.tensor2d(chunk, [count, nIn]);
+      const ctx  = inp.slice([0, fourierDim], [-1, CTX]);
+      const H0   = inp.matMul(Wt[0]).add(b[0]).relu();
+      const H0f  = H0.mul(ctx.matMul(Wgt[0]).add(1)).add(ctx.matMul(Wbt[0]));
+      const H1   = H0f.matMul(Wt[1]).add(b[1]).relu();
+      const H1f  = H1.mul(ctx.matMul(Wgt[1]).add(1)).add(ctx.matMul(Wbt[1]));
+      const H2   = H1f.matMul(Wt[2]).add(b[2]).add(H0f.mul(0.1)).relu();
+      const H2f  = H2.mul(ctx.matMul(Wgt[2]).add(1)).add(ctx.matMul(Wbt[2]));
+      return tf.softmax(H2f.matMul(Wt[3]).add(b[3]));
+    });
+
+    outFlat.set(probT.dataSync(), start * nOut);
+    probT.dispose();
+  }
+
+  // Free all GPU memory held by weight tensors
+  [...W, ...b, ...Wg, ...Wb, ...Wt, ...Wgt, ...Wbt].forEach(t => t.dispose());
+  return outFlat;
 }
 
 // ── Train the neural implicit geological field ───────────────────────────────
@@ -1062,55 +1233,53 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
   }
   if (onProgress) onProgress(0, 0, { nSamples: allSamples.length, nReal: nRealSamples, nVirtual: nVirtualSamples });
 
-  const net = new GeoImplicitNet(nIn, 80, nUnits, fourierEnc.outDim);
-  const opt = new AdamOpt(net._params, lr);
+  const net         = new GeoImplicitNet(nIn, 80, nUnits, fourierEnc.outDim);
+  const FILM_WARMUP = 0.25;
+  const hasTF       = typeof window !== 'undefined' && !!window.tf;
 
-  // FiLM warmup: for the first FILM_WARMUP fraction of training, scale the FiLM
-  // gradient contribution down so the positional network learns the borehole distribution
-  // first, then FiLM takes over to shape geometry toward the conceptual model.
-  // We scale GRADIENTS (not weights) so Adam momentum doesn't destroy trained values.
-  const FILM_WARMUP    = 0.25; // fraction of epochs for FiLM ramp
-  const filmParamStart = 4;    // _params[4..9] are Wg0,Wg1,Wg2,Wb0,Wb1,Wb2
-  const filmParamEnd   = 10;
+  if (hasTF) {
+    // ── GPU path: TF.js WebGL full-batch Adam ──────────────────────────────
+    if (onProgress) onProgress(0, 0, { nSamples: allSamples.length, gpu: true, nReal: nRealSamples, nVirtual: nVirtualSamples });
+    await _trainWithTF(net, allSamples, { epochs, lr, lrMin, l2, filmWarmupFrac: FILM_WARMUP }, onProgress);
+  } else {
+    // ── CPU fallback: original sample-by-sample Adam ───────────────────────
+    const opt          = new AdamOpt(net._params, lr);
+    const filmParamStart = 4;
+    const filmParamEnd   = 10;
 
-  for (let ep = 0; ep < epochs; ep++) {
-    // LR schedule: linear warmup for first 5%, then cosine decay.
-    // Hold LR high during FiLM warmup so positional MLP trains fast before FiLM kicks in.
-    const warmupEps  = Math.max(1, Math.round(epochs * 0.05));
-    const lrWarmup   = ep < warmupEps ? (lr * (ep + 1) / warmupEps) : lr;
-    const cosPhase   = ep < warmupEps ? 0 : (ep - warmupEps) / (epochs - warmupEps);
-    opt.setLr(lrMin + 0.5 * (lrWarmup - lrMin) * (1 + Math.cos(Math.PI * cosPhase)));
+    for (let ep = 0; ep < epochs; ep++) {
+      const warmupEps  = Math.max(1, Math.round(epochs * 0.05));
+      const lrWarmup   = ep < warmupEps ? (lr * (ep + 1) / warmupEps) : lr;
+      const cosPhase   = ep < warmupEps ? 0 : (ep - warmupEps) / (epochs - warmupEps);
+      opt.setLr(lrMin + 0.5 * (lrWarmup - lrMin) * (1 + Math.cos(Math.PI * cosPhase)));
 
-    // filmGradScale: 0→1 over first 25% of epochs; full gradient after that
-    const filmGradScale = Math.min(1, ep / Math.max(1, FILM_WARMUP * epochs));
-    // FiLM dropout: higher early so positional features don't over-rely on concept context
-    const filmDropout = filmGradScale < 0.5 ? 0.3 : 0.1;
+      const filmGradScale = Math.min(1, ep / Math.max(1, FILM_WARMUP * epochs));
+      const filmDropout   = filmGradScale < 0.5 ? 0.3 : 0.1;
 
-    // Fisher-Yates shuffle
-    for (let i = allSamples.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [allSamples[i], allSamples[j]] = [allSamples[j], allSamples[i]];
-    }
-
-    let totalLoss = 0;
-    for (const s of allSamples) {
-      const act  = net.forward(s.inp, filmDropout);
-      const loss = -Math.log(Math.max(act.probs[s.target], 1e-9));
-      totalLoss += s.weight * loss;
-      const grads = net.backward(s.inp, act, s.target, l2, s.weight);
-      // Scale FiLM gradients during warmup — they train, just more slowly
-      if (filmGradScale < 1) {
-        for (let pi = filmParamStart; pi < filmParamEnd; pi++) {
-          const g = grads[pi];
-          for (let i = 0; i < g.length; i++) g[i] *= filmGradScale;
-        }
+      for (let i = allSamples.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allSamples[i], allSamples[j]] = [allSamples[j], allSamples[i]];
       }
-      opt.step(grads);
-    }
 
-    if (onProgress && ep % 20 === 0) {
-      onProgress(ep / epochs, totalLoss / allSamples.length, { epoch: ep, epochs });
-      await new Promise(r => setTimeout(r, 0));
+      let totalLoss = 0;
+      for (const s of allSamples) {
+        const act   = net.forward(s.inp, filmDropout);
+        const loss  = -Math.log(Math.max(act.probs[s.target], 1e-9));
+        totalLoss  += s.weight * loss;
+        const grads = net.backward(s.inp, act, s.target, l2, s.weight);
+        if (filmGradScale < 1) {
+          for (let pi = filmParamStart; pi < filmParamEnd; pi++) {
+            const g = grads[pi];
+            for (let i = 0; i < g.length; i++) g[i] *= filmGradScale;
+          }
+        }
+        opt.step(grads);
+      }
+
+      if (onProgress && ep % 20 === 0) {
+        onProgress(ep / epochs, totalLoss / allSamples.length, { epoch: ep, epochs });
+        await new Promise(r => setTimeout(r, 0));
+      }
     }
   }
 
@@ -1232,8 +1401,13 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore, options 
   const hasVerticalDomains = conceptStore?._concepts?.some(c => c.domain?.minZ !== undefined) ?? false;
   const colCtxCache = new Map();
 
-  for (let pass = 0; pass < nMCPasses; pass++) {
-    const drop = nMCPasses > 1 ? mcDropout : 0;
+  const hasTFInfer = typeof window !== 'undefined' && !!window.tf && nMCPasses === 1;
+
+  if (hasTFInfer) {
+    // ── GPU-accelerated batched inference ──────────────────────────────────────
+    // Pre-compute all voxel input vectors in JS, then run one batched GPU forward pass.
+    // Fallback: JS per-voxel loop used for MC passes (nMCPasses > 1).
+    const allInps = new Float32Array(total * nIn);
 
     for (let iz = nz - 1; iz >= 0; iz--) {
       const worldZ = origin.y + iz * cellHeight + cellHeight * 0.5;
@@ -1243,7 +1417,6 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore, options 
           const worldX = origin.x + ix * cellSize + cellSize * 0.5;
           const idx    = ix + iy * nx + iz * nx * ny;
 
-          // Concept context — cached per column (or per voxel when vertical domains active)
           const colKey = hasVerticalDomains ? ix + iy * nx + iz * nx * ny : ix * ny + iy;
           let ctx = colCtxCache.get(colKey);
           if (ctx === undefined) {
@@ -1254,9 +1427,8 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore, options 
           const tensor = ctx?.tensor ?? gTensor;
 
           const warpedInf = warpPoint(worldX, worldY, worldZ, tensor);
-          const wx  = warpedInf.x;
-          const wy  = warpedInf.y;
-          let   wz  = warpedInf.z;
+          const wx = warpedInf.x, wy = warpedInf.y;
+          let   wz = warpedInf.z;
           const iTrend = ctx?.trend;
           if (iTrend && (Math.abs(iTrend.dz_dxN) > 0.005 || Math.abs(iTrend.dz_dyN) > 0.005)) {
             const xN = 2 * (wx - useBounds.minX) / Math.max(1e-6, useBounds.maxX - useBounds.minX) - 1;
@@ -1264,33 +1436,100 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore, options 
             wz += iTrend.dz_dxN * xN + iTrend.dz_dyN * yN;
           }
           const pos = fourierEnc.encode(wx, wy, wz, useBounds);
+          allInps.set(pos,    idx * nIn);
+          allInps.set(ctxVec, idx * nIn + fourierEnc.outDim);
 
-          const inp = new Float32Array(nIn);
-          inp.set(pos);
-          inp.set(ctxVec, fourierEnc.outDim);
+          conceptInfluence[idx] = ctx ? Math.min(1, ctx.totalWeight) : 0;
+          if (ctx && ctx.totalWeight > 0.05) {
+            const stepped = Math.max(0, ctxVec[18] ?? 0);
+            const faulted = Math.max(0, ctxVec[7]  ?? 0);
+            sharpnessT[idx] = Math.max(0.3, 1 - 0.7 * Math.max(stepped, faulted));
+          }
+        }
+      }
+    }
 
-          const probs = net.forward(inp, drop).probs;
-          const base  = idx * nUnitsI;
-          // Apply concept unit-affinity soft boosts: concepts specifying unitAffinity
-          // give those units a gentle probability boost in their spatial domain.
-          if (conceptStore && !conceptStore.isEmpty) {
+    // Single batched GPU forward pass over all voxels
+    const allProbs  = _inferBatchTF(net, allInps, total, nIn, fourierEnc.outDim);
+    const hasBoosts = conceptStore && !conceptStore.isEmpty;
+
+    for (let iz = 0; iz < nz; iz++) {
+      for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+          const idx  = ix + iy * nx + iz * nx * ny;
+          const base = idx * nUnitsI;
+          if (hasBoosts) {
+            const worldX = origin.x + ix * cellSize + cellSize * 0.5;
+            const worldY = origin.z + iy * cellSize + cellSize * 0.5;
+            const worldZ = origin.y + iz * cellHeight + cellHeight * 0.5;
             const boosts = conceptStore.computeAffinityBoostsAt(worldX, worldY, worldZ, unitCodes);
             let bSum = 0;
-            for (let u = 0; u < nUnitsI; u++) { probs[u] *= boosts[u]; bSum += probs[u]; }
-            if (bSum > 1e-9) for (let u = 0; u < nUnitsI; u++) probs[u] /= bSum;
+            for (let u = 0; u < nUnitsI; u++) {
+              probAcc[base + u] = allProbs[base + u] * boosts[u];
+              bSum += probAcc[base + u];
+            }
+            if (bSum > 1e-9) for (let u = 0; u < nUnitsI; u++) probAcc[base + u] /= bSum;
+          } else {
+            for (let u = 0; u < nUnitsI; u++) probAcc[base + u] = allProbs[base + u];
           }
-          for (let u = 0; u < nUnitsI; u++) probAcc[base + u] += probs[u];
+        }
+      }
+    }
+  } else {
+    // ── JS per-voxel inference (also handles MC dropout passes) ───────────────
+    for (let pass = 0; pass < nMCPasses; pass++) {
+      const drop = nMCPasses > 1 ? mcDropout : 0;
 
-          // Only set structural outputs on first pass
-          if (pass === 0) {
-            conceptInfluence[idx] = ctx ? Math.min(1, ctx.totalWeight) : 0;
-            // Contact sharpness: axes 18=stepped_boundary, 7=fault_controlled
-            // T in [0.3, 1.0]: lower = sharper/more decisive unit boundary
-            if (ctx && ctx.totalWeight > 0.05) {
-              const stepped = Math.max(0, ctxVec[18] ?? 0);
-              const faulted = Math.max(0, ctxVec[7]  ?? 0);
-              const sharpness = Math.max(stepped, faulted);
-              sharpnessT[idx] = Math.max(0.3, 1 - 0.7 * sharpness);
+      for (let iz = nz - 1; iz >= 0; iz--) {
+        const worldZ = origin.y + iz * cellHeight + cellHeight * 0.5;
+        for (let iy = 0; iy < ny; iy++) {
+          const worldY = origin.z + iy * cellSize + cellSize * 0.5;
+          for (let ix = 0; ix < nx; ix++) {
+            const worldX = origin.x + ix * cellSize + cellSize * 0.5;
+            const idx    = ix + iy * nx + iz * nx * ny;
+
+            const colKey = hasVerticalDomains ? ix + iy * nx + iz * nx * ny : ix * ny + iy;
+            let ctx = colCtxCache.get(colKey);
+            if (ctx === undefined) {
+              ctx = conceptStore ? conceptStore.computeAt(worldX, worldY, worldZ) : null;
+              colCtxCache.set(colKey, ctx);
+            }
+            const ctxVec = ctx?.vec ?? zeroCtx;
+            const tensor = ctx?.tensor ?? gTensor;
+
+            const warpedInf = warpPoint(worldX, worldY, worldZ, tensor);
+            const wx  = warpedInf.x;
+            const wy  = warpedInf.y;
+            let   wz  = warpedInf.z;
+            const iTrend = ctx?.trend;
+            if (iTrend && (Math.abs(iTrend.dz_dxN) > 0.005 || Math.abs(iTrend.dz_dyN) > 0.005)) {
+              const xN = 2 * (wx - useBounds.minX) / Math.max(1e-6, useBounds.maxX - useBounds.minX) - 1;
+              const yN = 2 * (wy - useBounds.minY) / Math.max(1e-6, useBounds.maxY - useBounds.minY) - 1;
+              wz += iTrend.dz_dxN * xN + iTrend.dz_dyN * yN;
+            }
+            const pos = fourierEnc.encode(wx, wy, wz, useBounds);
+
+            const inp = new Float32Array(nIn);
+            inp.set(pos);
+            inp.set(ctxVec, fourierEnc.outDim);
+
+            const probs = net.forward(inp, drop).probs;
+            const base  = idx * nUnitsI;
+            if (conceptStore && !conceptStore.isEmpty) {
+              const boosts = conceptStore.computeAffinityBoostsAt(worldX, worldY, worldZ, unitCodes);
+              let bSum = 0;
+              for (let u = 0; u < nUnitsI; u++) { probs[u] *= boosts[u]; bSum += probs[u]; }
+              if (bSum > 1e-9) for (let u = 0; u < nUnitsI; u++) probs[u] /= bSum;
+            }
+            for (let u = 0; u < nUnitsI; u++) probAcc[base + u] += probs[u];
+
+            if (pass === 0) {
+              conceptInfluence[idx] = ctx ? Math.min(1, ctx.totalWeight) : 0;
+              if (ctx && ctx.totalWeight > 0.05) {
+                const stepped = Math.max(0, ctxVec[18] ?? 0);
+                const faulted = Math.max(0, ctxVec[7]  ?? 0);
+                sharpnessT[idx] = Math.max(0.3, 1 - 0.7 * Math.max(stepped, faulted));
+              }
             }
           }
         }
