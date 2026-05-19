@@ -138,15 +138,79 @@ export class FenceSection {
     this._visible  = false;
     this._lastArgs = null;
 
+    // Pan / zoom state — applied as CSS transform on the canvas wrapper
+    this._zoom = 1;
+    this._panX = 0;
+    this._panY = 0;
+
     this._closeBtn?.addEventListener('click',  () => this.hide());
     this._exportBtn?.addEventListener('click', () => this._exportPNG());
 
     window.addEventListener('keydown', e => {
       if (e.key === 'Escape' && this._visible) this.hide();
+      if (e.key === '0' && e.ctrlKey && this._visible) { this._resetView(); e.preventDefault(); }
     });
+
+    this._initPanZoom();
 
     const ro = new ResizeObserver(() => { if (this._visible) this._redraw(); });
     if (this._panel) ro.observe(this._panel);
+  }
+
+  _initPanZoom() {
+    const wrap = this._canvas?.parentElement;
+    if (!wrap) return;
+
+    // Mouse wheel → zoom centered on cursor
+    wrap.addEventListener('wheel', e => {
+      if (!this._visible) return;
+      e.preventDefault();
+      const rect  = wrap.getBoundingClientRect();
+      const cx    = e.clientX - rect.left;
+      const cy    = e.clientY - rect.top;
+      const delta = e.deltaY > 0 ? 0.85 : 1.18;
+      const newZ  = Math.max(0.25, Math.min(8, this._zoom * delta));
+      // Zoom toward cursor
+      this._panX = cx - (cx - this._panX) * (newZ / this._zoom);
+      this._panY = cy - (cy - this._panY) * (newZ / this._zoom);
+      this._zoom = newZ;
+      this._applyTransform();
+    }, { passive: false });
+
+    // Middle-mouse or alt+drag → pan
+    let dragging = false, lastX = 0, lastY = 0;
+    wrap.addEventListener('mousedown', e => {
+      if (e.button === 1 || (e.button === 0 && e.altKey)) {
+        e.preventDefault();
+        dragging = true; lastX = e.clientX; lastY = e.clientY;
+        wrap.style.cursor = 'grabbing';
+      }
+    });
+    window.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      this._panX += e.clientX - lastX;
+      this._panY += e.clientY - lastY;
+      lastX = e.clientX; lastY = e.clientY;
+      this._applyTransform();
+    });
+    window.addEventListener('mouseup', e => {
+      if (dragging) { dragging = false; wrap.style.cursor = ''; }
+    });
+
+    // Double-click → reset
+    wrap.addEventListener('dblclick', () => this._resetView());
+  }
+
+  _applyTransform() {
+    if (!this._canvas) return;
+    // Apply to the canvas itself — the wrap's overflow:hidden clips zoomed content cleanly
+    this._canvas.style.transform       = `translate(${this._panX}px, ${this._panY}px) scale(${this._zoom})`;
+    this._canvas.style.transformOrigin = '0 0';
+  }
+
+  _resetView() {
+    this._zoom = 1; this._panX = 0; this._panY = 0;
+    this._applyTransform();
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -174,6 +238,7 @@ export class FenceSection {
     const args = this._lastArgs;
     if (!args || !this._canvas || !this._ctx) return;
 
+    const showSurfaces = document.getElementById('fence-show-surfaces')?.checked ?? true;
     const showUnc      = document.getElementById('fence-show-uncertainty')?.checked ?? false;
     const showCov      = document.getElementById('fence-show-coverage')?.checked ?? false;
     const showPatterns = document.getElementById('fence-show-patterns')?.checked ?? false;
@@ -374,21 +439,19 @@ export class FenceSection {
         }
       }
 
-      ctx.strokeStyle = 'rgba(20,30,45,0.55)';
-      ctx.lineWidth   = 0.75;
+      // Subtle base contact lines (always drawn)
+      ctx.strokeStyle = 'rgba(20,30,45,0.35)';
+      ctx.lineWidth   = 0.5;
       for (const [iz, cols] of contactY) {
         const yPx = PAD_T + drawH - ((iz * ch) / worldH) * drawH;
-        // Draw a connected segment for each run of consecutive columns
         let runStart = null;
         for (let k = 0; k <= cols.length; k++) {
           const ci = cols[k];
           if (ci === undefined || (k > 0 && ci !== cols[k - 1] + 1)) {
-            // End of run — draw it
             if (runStart !== null) {
-              const x0 = PAD_L + runStart * colPx;
-              const x1 = PAD_L + (cols[k - 1] + 1) * colPx;
               ctx.beginPath();
-              ctx.moveTo(x0, yPx); ctx.lineTo(x1, yPx);
+              ctx.moveTo(PAD_L + runStart * colPx, yPx);
+              ctx.lineTo(PAD_L + (cols[k - 1] + 1) * colPx, yPx);
               ctx.stroke();
             }
             runStart = ci ?? null;
@@ -396,6 +459,66 @@ export class FenceSection {
             runStart = ci;
           }
         }
+      }
+
+      // Coloured, labelled surface lines — the TOP of each unit across the section
+      if (showSurfaces) {
+        // For each unit, collect the y-pixel of its topmost voxel at each column
+        const unitTopPx = new Map(); // unitId → Float32Array(N_COLS) of yPx (NaN = absent)
+        for (const unit of geoUnits) unitTopPx.set(unit.id, new Float32Array(N_COLS).fill(NaN));
+
+        for (let ci = 0; ci < N_COLS; ci++) {
+          const t  = (ci / (N_COLS - 1)) - 0.5;
+          const wx = sx0 + along.x * t * worldW;
+          const wz = sz0 + along.z * t * worldW;
+          const ix = Math.floor((wx - O.x) / cs);
+          const iy = Math.floor((wz - O.z) / cs);
+          if (ix < 0 || ix >= nx || iy < 0 || iy >= ny) continue;
+          // scan from top down to find each unit's topmost cell
+          const seen = new Set();
+          for (let iz = nz - 1; iz >= 0; iz--) {
+            const uid = unitIds[ix + iy * nx + iz * nx * ny];
+            if (uid && !seen.has(uid)) {
+              seen.add(uid);
+              unitTopPx.get(uid)?.[ci !== undefined ? ci : 0];
+              const arr = unitTopPx.get(uid);
+              if (arr) arr[ci] = PAD_T + drawH - ((iz * ch + ch) / worldH) * drawH;
+            }
+          }
+        }
+
+        ctx.save();
+        ctx.lineWidth = 2;
+        ctx.font = '9px Inter, sans-serif';
+        for (const unit of geoUnits) {
+          const tops = unitTopPx.get(unit.id);
+          if (!tops) continue;
+          ctx.strokeStyle = unit.color;
+          ctx.fillStyle   = unit.color;
+          ctx.beginPath();
+          let drawing = false;
+          for (let ci = 0; ci < N_COLS; ci++) {
+            if (isNaN(tops[ci])) { drawing = false; continue; }
+            if (!drawing) { ctx.moveTo(PAD_L + ci * colPx, tops[ci]); drawing = true; }
+            else          { ctx.lineTo(PAD_L + ci * colPx, tops[ci]); }
+          }
+          ctx.stroke();
+          // Label: find middle non-NaN column
+          const validCols = [];
+          for (let ci = 0; ci < N_COLS; ci++) if (!isNaN(tops[ci])) validCols.push(ci);
+          if (validCols.length > 4) {
+            const mid = validCols[Math.floor(validCols.length * 0.55)];
+            ctx.fillStyle = '#fff';
+            const lbl = unit.code;
+            const tw  = ctx.measureText(lbl).width;
+            ctx.fillRect(PAD_L + mid * colPx - tw * 0.5 - 2, tops[mid] - 12, tw + 4, 12);
+            ctx.fillStyle = unit.color;
+            ctx.textAlign = 'center';
+            ctx.fillText(lbl, PAD_L + mid * colPx, tops[mid] - 2);
+            ctx.textAlign = 'left';
+          }
+        }
+        ctx.restore();
       }
     }
 

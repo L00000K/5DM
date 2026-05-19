@@ -278,6 +278,11 @@ class SceneManager {
     });
   }
 
+  // ── Geology on/off toggle ─────────────────────────────────────────────────
+  setGeologyVisible(visible) {
+    this._builder.group.visible = visible;
+  }
+
   // ── Unit visibility ───────────────────────────────────────────────────────
   setUnitVisibility(code, visible) {
     this._builder.setUnitVisibility(code, visible);

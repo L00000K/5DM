@@ -1,0 +1,108 @@
+{
+  "site": {
+    "name": "Channel Concept Test — 2 Boreholes",
+    "description": "Minimal two-borehole site designed to demonstrate how the Neural Implicit method uses semantic concept embeddings to shape geology. BH-01 (south) encounters thick sand/gravel, BH-02 (north) encounters thin sand/gravel. With the pre-loaded 'Palaeochannel E-W' concept, the neural field warps coordinates so the sand body is elongated E-W — perpendicular to the N-S borehole pair. Without the concept, interpolation produces a simple N-S gradient. Select 'Neural Implicit' method and click 'Build 3D Model' to observe the effect.",
+    "constraints": "Sand/gravel palaeochannel axis runs E-W through BH-01\nClay is the background matrix material above bedrock"
+  },
+  "geological_units": [
+    {
+      "id": 1,
+      "code": "TS",
+      "name": "Topsoil",
+      "color": "#7a5c38",
+      "description": "Brown silty topsoil with rootlets. Variable organic content."
+    },
+    {
+      "id": 2,
+      "code": "SG",
+      "name": "Sand and Gravel",
+      "color": "#D4A843",
+      "description": "Dense sub-rounded flint gravel in sandy matrix. Holocene alluvial channel fill. Drainage is good. SPT N 25-50."
+    },
+    {
+      "id": 3,
+      "code": "CL",
+      "name": "Stiff Clay",
+      "color": "#4a6fa5",
+      "description": "Stiff to very stiff grey-brown fissured clay. High plasticity. Cu 80-160 kPa. Founding stratum for most structures."
+    }
+  ],
+  "boreholes": [
+    {
+      "id": "BH-01",
+      "x": 100,
+      "y": 50,
+      "ground_level": 5.0,
+      "depth": 15.0,
+      "notes": "Channel axis — thick sand/gravel",
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 0.5,
+          "unit_code": "TS",
+          "description": "Brown silty TOPSOIL with rootlets.",
+          "certainty": 0.95
+        },
+        {
+          "top": 0.5,
+          "base": 7.0,
+          "unit_code": "SG",
+          "description": "Dense sub-rounded flint GRAVEL in coarse sandy matrix. Saturated below 2.3m. SPT N = 38.",
+          "certainty": 0.92
+        },
+        {
+          "top": 7.0,
+          "base": 15.0,
+          "unit_code": "CL",
+          "description": "Stiff to very stiff grey-brown fissured CLAY. High plasticity (LL=68, PL=28). Cu 110-160 kPa.",
+          "certainty": 0.94
+        }
+      ]
+    },
+    {
+      "id": "BH-02",
+      "x": 100,
+      "y": 150,
+      "ground_level": 5.0,
+      "depth": 15.0,
+      "notes": "Channel margin — thin sand/gravel",
+      "layers": [
+        {
+          "top": 0.0,
+          "base": 0.4,
+          "unit_code": "TS",
+          "description": "Brown silty TOPSOIL.",
+          "certainty": 0.95
+        },
+        {
+          "top": 0.4,
+          "base": 2.2,
+          "unit_code": "SG",
+          "description": "Medium dense SAND and GRAVEL. Sparse gravel, dominantly coarse sand matrix. Channel margin facies.",
+          "certainty": 0.88
+        },
+        {
+          "top": 2.2,
+          "base": 15.0,
+          "unit_code": "CL",
+          "description": "Stiff to very stiff grey-brown fissured CLAY. Cu 90-140 kPa.",
+          "certainty": 0.93
+        }
+      ]
+    }
+  ],
+  "interpMethod": "neural-implicit",
+  "concepts": [
+    {
+      "description": "Palaeochannel trending E-W — concave-up erosional trough filled with sand and gravel, greatest thickness at BH-01 representing the channel axis, thinning northward to BH-02 at the channel margin",
+      "embedding": [
+        -0.8,  0.2,  0.3,  0.9, -0.7,  1.0, -0.9,  0.0,
+         0.9,  0.4,  0.0,  0.0,  0.6,  0.6,  0.0,  0.0,
+         0.0,  0.0,  0.0,  0.6,  0.3,  0.0,  0.5,  0.8,
+         0.0, -0.4,  0.7,  0.9,  0.5,  0.8,  0.0,  0.3
+      ],
+      "confidence": 0.82,
+      "domain": { "type": "global" }
+    }
+  ]
+}

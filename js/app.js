@@ -798,6 +798,14 @@ async function loadDemoSite(demoName) {
       setTimeout(() => { _renderConceptList?.(); _updateConceptInfluenceBar?.(); }, 50);
     }
 
+    // Apply interpMethod from demo JSON if specified
+    if (data.interpMethod) {
+      AppState.interpMethod = data.interpMethod;
+      document.querySelectorAll('input[name="interp-method"]').forEach(r => {
+        r.checked = (r.value === data.interpMethod);
+      });
+    }
+
     updateLegend();
     updateInfoPanel();
     updateBHTable();
@@ -3424,7 +3432,7 @@ function initFenceSection() {
   });
 
   // Redraw when overlay toggles change
-  ['fence-show-uncertainty', 'fence-show-coverage', 'fence-show-patterns', 'fence-show-ribbons', 'fence-show-concepts'].forEach(id => {
+  ['fence-show-surfaces', 'fence-show-uncertainty', 'fence-show-coverage', 'fence-show-patterns', 'fence-show-ribbons', 'fence-show-concepts'].forEach(id => {
     document.getElementById(id)?.addEventListener('change', () => {
       if (AppState.fenceSection?.visible) AppState.fenceSection._redraw();
     });
@@ -5481,6 +5489,20 @@ function initViewModeButtons() {
       if (AppState.scene) AppState.scene.setViewMode(btn.dataset.mode);
     });
   });
+
+  // Geology visibility toggle — turns voxel fill on/off without changing view mode
+  const geoBtn = document.getElementById('btn-toggle-geology');
+  if (geoBtn) {
+    let geoVisible = true;
+    geoBtn.addEventListener('click', () => {
+      if (!AppState.scene) return;
+      geoVisible = !geoVisible;
+      AppState.scene.setGeologyVisible(geoVisible);
+      geoBtn.textContent = geoVisible ? '👁 Geology' : '🚫 Geology';
+      geoBtn.style.opacity = geoVisible ? '' : '0.6';
+      log(`Voxel geology ${geoVisible ? 'shown' : 'hidden'}.`, 'info');
+    });
+  }
 }
 
 // ── Virtual BH button ──────────────────────────────────────────────────────────
@@ -6723,6 +6745,10 @@ function _initConceptLibrary() {
 }
 
 function _updateConceptInfluenceBar() {
+  // Show/hide the "use Neural Implicit" method hint based on whether concepts are active
+  const hint = document.getElementById('concept-method-hint');
+  if (hint) hint.style.display = (AppState.conceptStore && !AppState.conceptStore.isEmpty) ? 'block' : 'none';
+
   const el = document.getElementById('concept-global-tensor');
   if (!el || !AppState.conceptStore) return;
   const t = AppState.conceptStore.globalTensor();
@@ -7060,6 +7086,8 @@ function initConceptPanel() {
     });
   }
 
+  // Initialize label from slider value and keep in sync
+  if (confidence && confLabel) confLabel.textContent = parseFloat(confidence.value).toFixed(2);
   confidence?.addEventListener('input', () => {
     if (confLabel) confLabel.textContent = parseFloat(confidence.value).toFixed(2);
   });
@@ -7387,10 +7415,12 @@ function initConceptPanel() {
 
   encodeBtn?.addEventListener('click', async () => {
     const text = textarea?.value?.trim();
-    if (!text) return;
+    if (!text) { log('Enter a geological concept description first.', 'warn'); return; }
 
+    if (!AppState.conceptStore) AppState.conceptStore = new ConceptStore();
     encodeBtn.disabled   = true;
     encodeBtn.textContent = '⟳ Encoding…';
+    log(`Encoding concept: "${text.slice(0, 60)}"…`, 'info');
     const warnEl = document.getElementById('concept-encode-warnings');
     if (warnEl) { warnEl.style.display = 'none'; warnEl.innerHTML = ''; }
     try {
@@ -7493,6 +7523,8 @@ function initConceptPanel() {
       AppState.conceptStore.add({ description: text, embedding: emb, confidence: conf, domain, unitAffinity, parentId });
       _renderConceptList();
       _saveConceptStore();
+      // Scroll the concept list into view so user sees the new entry
+      document.getElementById('concept-list')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
       // Show AI rationale if returned (API mode only)
       if (encodeRationale && warnEl) {
