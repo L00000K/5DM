@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-19 (batch 15 update)
+> Last updated: 2026-05-19 (batch 16 update)
 
 ---
 
@@ -257,6 +257,7 @@ inp = [Fourier(warped_pos)(39) | concept_ctx(32)]
 - [x] X/Y/Z orthogonal clipping planes (Leapfrog-style slicer) — voxels use custom world-space `uClipPlanes[4]`/`uNumClipPlanes` uniforms (bypasses compile-time `NUM_CLIPPING_PLANES` baking); standard materials (surfaces, BH sticks) use `renderer.clippingPlanes`
 - [x] Vertical exaggeration control
 - [x] Interactive OrbitControls (rotate/pan/zoom)
+- [x] Draggable resize handles for left and right panels — updates `--left-w`/`--right-w` CSS variables; touch-drag supported; hidden on mobile
 - [x] Camera presets (plan, section, isometric)
 - [x] Marching cubes isosurfaces — smooth 3D unit solids from binary scalar fields
 - [x] 3D borehole sticks with label sprites and SPT N bar charts — shown immediately on data load, before model build
