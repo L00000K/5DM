@@ -1693,7 +1693,6 @@ function initUnitEditor() {
     if (resultEl) resultEl.textContent = `${count} layer(s) reclassified`;
     log(`Reclassified ${count} layer(s): ${fromCode} → ${toCode}`, count > 0 ? 'ok' : 'warn');
   });
-}
 
   // Auto-correlate unit descriptions via AI
   document.getElementById('btn-auto-correlate')?.addEventListener('click', async () => {
