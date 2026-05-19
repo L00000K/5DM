@@ -767,9 +767,10 @@ async function loadDemoSite(demoName) {
     setEnabled('btn-parse-features', true);
     log(`${data.site?.name ?? demoName} — ${AppState.rawBoreholes.length} boreholes loaded.`, 'ok');
 
-    // Wait for scene to be ready (initScene is async; scene may not exist yet on first load)
+    // Show boreholes immediately in 3D, before model is built
     const triggerBuild = () => {
       if (AppState.scene) {
+        AppState.scene.showBoreholes(AppState.classifiedBH, AppState.geoUnits);
         document.getElementById('btn-build-model').click();
       } else {
         setTimeout(triggerBuild, 50);
@@ -846,6 +847,7 @@ function initRunAI() {
       AppState.bhLogView?.draw(classified.filter(b => !b.synthetic), units, AppState.voxelGrid);
       if (!document.getElementById('log-sub-spt')?.hidden) drawSPTProfile();
       log(`Analysis complete — ${units.length} units classified.`, 'ok');
+      if (AppState.scene) AppState.scene.showBoreholes(classified, units);
       // Auto-fit variogram so kriging has sensible initial params
       _renderVariogram(classified);
       setEnabled('btn-build-model', true);
@@ -5986,6 +5988,9 @@ async function init() {
       if (boreholes.some(b => b.classified)) setEnabled('btn-build-model', true);
       hideWelcome();
       log(`Parsed ${boreholes.length} boreholes.`, 'ok');
+      if (AppState.scene && AppState.classifiedBH.length) {
+        AppState.scene.showBoreholes(AppState.classifiedBH, AppState.geoUnits);
+      }
     },
   });
 

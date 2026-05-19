@@ -615,6 +615,37 @@ class SceneManager {
     if (this._bhSticks) this._bhSticks.visible = visible;
   }
 
+  // Show boreholes in 3D immediately on data load, before a model is built
+  showBoreholes(classifiedBH, geoUnits) {
+    if (!classifiedBH?.length) return;
+    this.addBoreholeSticks(classifiedBH, geoUnits);
+
+    // Fit camera to borehole extents
+    const bhs = classifiedBH.filter(b => !b.synthetic);
+    if (!bhs.length) return;
+    const xs = bhs.map(b => b.x);
+    const ys = bhs.map(b => b.y);
+    const tops = bhs.map(b => b.groundLevel ?? 0);
+    const bots = bhs.map(b => (b.groundLevel ?? 0) - (b.depth ?? 10));
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const minE = Math.min(...bots), maxE = Math.max(...tops);
+
+    const cx = (minX + maxX) / 2;
+    const cy = (minE + maxE) / 2;
+    const cz = (minY + maxY) / 2;
+    const size = Math.max(maxX - minX, maxY - minY, maxE - minE, 20);
+
+    this._grid.position.y = minE - 1;
+    this._grid.scale.setScalar(Math.max(maxX - minX, maxY - minY, 100) / 500);
+    this._axes.position.set(minX - 20, minE, minY - 20);
+
+    this._controls.target.set(cx, cy, cz);
+    this._camera.position.set(cx + size * 0.9, cy + size * 0.55, cz + size * 0.9);
+    this._camera.lookAt(cx, cy, cz);
+    this._controls.update();
+  }
+
   // ── Interpolated GWT surface ─────────────────────────────────────────────
   // boreholes: array with .gwtDepth (m) and .groundLevel (mAOD), .x, .y (m)
   // grid: voxel grid for bounding box / cell size
