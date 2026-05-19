@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-19 (batch 18 update)
+> Last updated: 2026-05-19 (batch 19 — UI redesign: 3-tab left panel + layer TOC)
 
 ---
 
@@ -443,6 +443,36 @@ This is the first tool to separate these three sources of uncertainty in a groun
 - [ ] **Variogram from concept axes** — derive anisotropy parameters (range, sill, nugget) directly from concept embedding without fitting to sparse BH data
 - [ ] **UK formation library** — pre-encoded embeddings for BGS named formations (London Clay, Chalk, River Terrace Deposits, Mercia Mudstone, etc.)
 - [ ] **Concept gradient field visualisation** — 3D arrows showing the direction in which each concept's influence increases most steeply
+
+### 6.1.1 Batch 19 — UI Redesign (2026-05-19)
+**Slicer exit bug fix:** The Draw Line overlay canvas was set to `pointer-events: all` which intercepted clicks on the panel's ✕ close button. Fixed by:
+- Adding `SlicerTool._cancelDraw()` class method — resets overlay pointer-events, cursor, hidden state, clears canvas, re-enables OrbitControls
+- Refactored `startDraw()` local `cleanup` closure to call `this._cancelDraw()` rather than inline
+- Added ESC key handler in `_initKeyboard()` that calls `_cancelDraw()` then hides the slicer panel
+
+**UI wholesale redesign:**
+Left panel reduced from 7 flat tabs (Data, Text, Section, Analysis, Concepts, Constraints, Properties) to **3 structured tabs**:
+
+| Tab | Contents |
+|---|---|
+| **Data** | Sub-tabs: Uploads (AGS/CSV), Table (BH data grid), Logs (BH/CPT log viewer), Props (engineering properties) |
+| **Knowledge** | Structural orientation, section input (draw + text), geological features, semantic AI, conceptual model (concepts), geological rules |
+| **Build** | Grid settings, interpolation method + parameters, anisotropy, action buttons (AI classify / Build), MC settings, analysis (charts, volume, log) |
+
+Sub-tab system: distinct CSS classes (`dsub-btn`, `dsub-content`) separate from the main `tab-btn`/`tab-content` system — avoids the global tab-switcher interfering with nested tabs.
+
+Right panel converted from settings-only to **layer-based Table of Contents**:
+- Nested TOC groups: Geological Model (Voxels / Surfaces / Uncertainty), Analysis (Plan View / Cross-Section / Isopach / Stratigraphy), Data (Boreholes / Topography / Groundwater)
+- Each layer row: eye toggle, label, launch button (→ opens the corresponding analysis panel)
+- Compact certainty threshold + global opacity sliders below TOC
+- Unit legend beneath sliders
+- Analysis panels (plan view, fence, isopach, strat correlation) remain as right-panel overlays launched from TOC
+
+JS wiring added:
+- `switchDsub(name)` — mirrors `switchTab()` for the sub-tab system
+- `_initTocButtons()` — wires eye toggles (proxy-click existing buttons), launch buttons, colour mode sync, surface opacity sync, uncertainty threshold sync, `geomodel:built` event enables analysis launch buttons
+- Updated `switchTab()` call-sites: `'analysis'` → `'build'`, `'concepts'` → `'knowledge'`
+- Updated `.tab-btn` selectors to `.dsub-btn` for log/props sub-tabs
 
 ### 6.2 Medium-term
 - [ ] **Conditional simulation** — stochastic realisations of the model respecting variogram statistics

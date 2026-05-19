@@ -177,6 +177,20 @@ function initTabs() {
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
+  // Data sub-tabs
+  document.querySelectorAll('.dsub-btn').forEach(btn => {
+    btn.addEventListener('click', () => switchDsub(btn.dataset.dsub));
+  });
+  // TOC group collapse
+  document.querySelectorAll('.toc-group-hdr').forEach(hdr => {
+    hdr.addEventListener('click', () => {
+      hdr.classList.toggle('collapsed');
+      const body = document.getElementById('toc-group-' + hdr.dataset.tocGroup);
+      if (body) body.classList.toggle('hidden');
+    });
+  });
+  // TOC layer buttons
+  _initTocButtons();
 }
 
 function switchTab(tabName) {
@@ -184,6 +198,91 @@ function switchTab(tabName) {
     b.classList.toggle('active', b.dataset.tab === tabName));
   document.querySelectorAll('.tab-content').forEach(c =>
     c.classList.toggle('active', c.id === `tab-${tabName}`));
+}
+
+function switchDsub(dsubName) {
+  document.querySelectorAll('.dsub-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.dsub === dsubName));
+  document.querySelectorAll('.dsub-content').forEach(c =>
+    c.classList.toggle('active', c.id === `dsub-${dsubName}`));
+}
+
+function _initTocButtons() {
+  // TOC eye buttons — voxels
+  document.getElementById('toc-eye-voxels')?.addEventListener('click', function() {
+    this.classList.toggle('active');
+    document.getElementById('btn-toggle-geology')?.click();
+  });
+  // TOC eye buttons — surfaces
+  document.getElementById('toc-eye-surfaces')?.addEventListener('click', function() {
+    this.classList.toggle('active');
+    const btn = document.querySelector('.view-mode-btn[data-mode="surfaces"]');
+    btn?.click();
+  });
+  // TOC eye button — boreholes
+  document.getElementById('toc-eye-boreholes')?.addEventListener('click', function() {
+    this.classList.toggle('active');
+    const cb = document.getElementById('show-bh-sticks');
+    if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
+  });
+  // TOC eye button — topo
+  document.getElementById('toc-eye-topo')?.addEventListener('click', function() {
+    this.classList.toggle('active');
+    const cb = document.getElementById('show-topo');
+    if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
+  });
+  // TOC eye button — GWT
+  document.getElementById('toc-eye-gwt')?.addEventListener('click', function() {
+    this.classList.toggle('active');
+  });
+  // TOC GWT elevation input — sync with main gwt-elevation input
+  const tocGwt = document.getElementById('toc-gwt-elev');
+  const mainGwt = document.getElementById('gwt-elevation');
+  if (tocGwt && mainGwt) {
+    tocGwt.addEventListener('input', () => {
+      mainGwt.value = tocGwt.value;
+      mainGwt.dispatchEvent(new Event('input'));
+    });
+  }
+  // TOC launch buttons
+  document.getElementById('toc-launch-planview')?.addEventListener('click', () => {
+    document.getElementById('btn-plan-view')?.click();
+  });
+  document.getElementById('toc-launch-fence')?.addEventListener('click', () => {
+    document.getElementById('btn-open-slicer')?.click();
+  });
+  document.getElementById('toc-launch-isopach')?.addEventListener('click', () => {
+    document.getElementById('btn-isopach')?.click();
+  });
+  document.getElementById('toc-launch-stratcorr')?.addEventListener('click', () => {
+    document.getElementById('btn-strat-corr')?.click();
+  });
+  // TOC color mode — sync with param-select
+  document.getElementById('toc-color-mode')?.addEventListener('change', function() {
+    const ps = document.getElementById('param-select');
+    const applyBtn = document.getElementById('btn-param-apply');
+    if (this.value === 'unit') {
+      document.getElementById('btn-param-reset')?.click();
+    } else if (ps && applyBtn) {
+      ps.value = this.value;
+      applyBtn.click();
+    }
+  });
+  // TOC surface opacity — sync with surface-opacity slider
+  document.getElementById('toc-surface-opacity')?.addEventListener('input', function() {
+    const so = document.getElementById('surface-opacity');
+    if (so) { so.value = this.value; so.dispatchEvent(new Event('input')); }
+  });
+  // TOC uncertainty threshold — sync with uncertainty-threshold slider
+  document.getElementById('toc-uncertainty-threshold')?.addEventListener('input', function() {
+    const ut = document.getElementById('uncertainty-threshold');
+    if (ut) { ut.value = this.value; ut.dispatchEvent(new Event('input')); }
+  });
+  // Enable TOC launch buttons when model is built
+  document.addEventListener('geomodel:built', () => {
+    ['toc-launch-planview','toc-launch-fence','toc-launch-isopach','toc-launch-stratcorr']
+      .forEach(id => { const el = document.getElementById(id); if (el) el.disabled = false; });
+  });
 }
 
 // ── Cell size inputs ───────────────────────────────────────────────────────────
@@ -882,7 +981,7 @@ function renderConstraintSummary(items) {
 function initRunAI() {
   document.getElementById('btn-run-ai')?.addEventListener('click', async () => {
     if (!AppState.rawBoreholes.length) { log('No borehole data loaded.', 'warn'); return; }
-    switchTab('analysis');
+    switchTab('build');
     setEnabled('btn-run-ai', false);
     document.getElementById('analysis-log').innerHTML = '';
     try {
@@ -1126,7 +1225,7 @@ function initBuildModel() {
       setEnabled('btn-slope-stability', true);
       window.dispatchEvent(new CustomEvent('geomodel:model-built'));
       _initCertaintyHistUnit();
-      if (!document.getElementById('tab-analysis')?.hidden) drawCertaintyHistogram();
+      if (!document.getElementById('tab-build')?.classList.contains('active') === false) drawCertaintyHistogram();
       // Refresh BH log view predictions now that model is available
       {
         const bhs = AppState.classifiedBH.filter(b => !b.synthetic);
@@ -1229,7 +1328,7 @@ function initInterpretGeology() {
 
     btn.disabled = true;
     log('Requesting geological interpretation from Claude…', 'info');
-    switchTab('analysis');
+    switchTab('build');
 
     try {
       const result = await interpretGeology(
@@ -2308,8 +2407,8 @@ function initSPTProfile() {
 function initBHLogView() {
   AppState.bhLogView = new BHLogView();
 
-  // Redraw when user switches to the Logs tab and data is available
-  document.querySelectorAll('.tab-btn[data-tab="logs"]').forEach(btn => {
+  // Redraw when user switches to the Logs sub-tab and data is available
+  document.querySelectorAll('.dsub-btn[data-dsub="logs"]').forEach(btn => {
     btn.addEventListener('click', () => {
       const bhs = AppState.classifiedBH.filter(b => !b.synthetic);
       if (bhs.length && AppState.geoUnits.length) {
@@ -2573,7 +2672,7 @@ function initStratCorrelation() {
 function initPropertiesTab() {
   const refresh = () => renderPropertiesTable(AppState.geoUnits, () => updateLegend());
 
-  document.querySelectorAll('.tab-btn[data-tab="properties"]').forEach(btn => {
+  document.querySelectorAll('.dsub-btn[data-dsub="props"]').forEach(btn => {
     btn.addEventListener('click', refresh);
   });
 
@@ -2877,9 +2976,9 @@ function drawCertaintyHistogram() {
   ctx.fillText(`n=${vals.length.toLocaleString()} voxels`, PAD_L + 2, 7);
 }
 
-// Show certainty histogram when switching to Analysis tab
+// Show certainty histogram when switching to Build tab (which now hosts the analysis log)
 document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('.tab-btn[data-tab="analysis"]').forEach(btn => {
+  document.querySelectorAll('.tab-btn[data-tab="build"]').forEach(btn => {
     btn.addEventListener('click', () => {
       if (AppState.voxelGrid) { _initCertaintyHistUnit(); drawCertaintyHistogram(); }
     });
@@ -4676,7 +4775,7 @@ function initOrientationImport() {
     AppState.conceptStore.add({ description: desc, embedding: emb, confidence: conf, domain: { type: 'global' } });
     _renderConceptList();
     _saveConceptStore();
-    switchTab('concepts');
+    switchTab('knowledge');
     log(`Structural orientation encoded as concept: ${desc.slice(0, 80)}`, 'ok');
     document.getElementById('orientation-result').textContent =
       `✓ Encoded as concept: "${desc.slice(0, 60)}…"`;

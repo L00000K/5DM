@@ -41,16 +41,21 @@
     <aside id="left-panel">
       <div class="panel-tabs" role="tablist">
         <button class="tab-btn active" data-tab="data" role="tab">Data</button>
-        <button class="tab-btn" data-tab="concepts" role="tab" title="Geological Conceptual Model">Concepts</button>
-        <button class="tab-btn" data-tab="constraints" role="tab">Rules</button>
-        <button class="tab-btn" data-tab="analysis" role="tab">Log</button>
-        <button class="tab-btn" data-tab="bhdata" role="tab">Table</button>
-        <button class="tab-btn" data-tab="properties" role="tab">Props</button>
-        <button class="tab-btn" data-tab="logs" role="tab">Logs</button>
+        <button class="tab-btn" data-tab="knowledge" role="tab">Knowledge</button>
+        <button class="tab-btn" data-tab="build" role="tab">Build</button>
       </div>
 
-      <!-- DATA TAB -->
+      <!-- DATA TAB — uploads, table, logs, properties -->
       <div class="tab-content active" id="tab-data" role="tabpanel">
+        <div class="dsub-tabs">
+          <button class="dsub-btn active" data-dsub="uploads">Uploads</button>
+          <button class="dsub-btn" data-dsub="table">Table</button>
+          <button class="dsub-btn" data-dsub="logs">Logs</button>
+          <button class="dsub-btn" data-dsub="props">Props</button>
+        </div>
+
+        <div class="dsub-content active" id="dsub-uploads">
+
 
         <div class="drop-zone" id="drop-bh" tabindex="0" role="button" aria-label="Drop borehole files here">
           <div class="drop-icon">⬇</div>
@@ -183,182 +188,179 @@
           </button>
         </div>
 
-        <!-- Grid settings -->
-        <div class="settings-divider">Grid Settings</div>
-        <div class="field-group">
-          <label>Cell Size <span class="unit-hint">(metres)</span></label>
-          <div class="cell-size-row">
-            <div class="cell-size-field">
-              <span class="cell-size-lbl">X</span>
-              <input type="number" id="cell-size-x" value="1" min="0.1" max="50" step="0.5" class="cell-size-input">
+        
+        </div>
+
+        <div class="dsub-content" id="dsub-table">
+
+        <div style="display:flex;gap:4px;padding:5px 8px 0;flex-wrap:wrap">
+          <button class="bhdata-sub-tab active" data-bhd-tab="raw" style="font-size:10px">Layer Data</button>
+          <button class="bhdata-sub-tab" data-bhd-tab="tops" style="font-size:10px">Formation Tops</button>
+          <button class="bhdata-sub-tab" data-bhd-tab="deviation" style="font-size:10px">Deviation</button>
+        </div>
+        <div id="bhd-sub-raw">
+          <div id="bh-data-table-wrap" class="bh-table-wrap">
+            <p class="hint" style="padding:8px">Load borehole data to see table.</p>
+          </div>
+        </div>
+        <div id="bhd-sub-tops" hidden>
+          <p class="hint" style="padding:6px 8px 2px;font-size:10px">Depth to top of each unit per borehole. — = unit absent.</p>
+          <div style="padding:3px 8px;display:flex;gap:6px;align-items:center">
+            <label style="font-size:10px;color:var(--text-mid)">
+              <input type="checkbox" id="tops-show-elev"> Elevation (mAOD)
+            </label>
+            <button id="btn-tops-export" class="btn-secondary btn-sm" style="font-size:9px;padding:1px 6px" disabled>⬇ CSV</button>
+          </div>
+          <div id="formation-tops-wrap" style="overflow:auto;max-height:380px;padding:0 4px 8px">
+            <p class="hint" style="padding:8px">Load classified borehole data to see formation top matrix.</p>
+          </div>
+        </div>
+        <div id="bhd-sub-deviation" hidden>
+          <p class="hint" style="padding:6px 8px 2px;font-size:10px">Minimum curvature deviation surveys. Import CSV (Depth, Inclination, Azimuth) per borehole. Vertical boreholes need no survey.</p>
+          <div style="padding:4px 8px 6px">
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+              <select id="dev-bh-select" class="param-input" style="flex:1;font-size:10px">
+                <option value="">— Select borehole —</option>
+              </select>
+              <label class="btn-secondary btn-sm" style="cursor:pointer;font-size:9px;padding:2px 8px">
+                📂 Load CSV
+                <input type="file" id="dev-csv-input" accept=".csv,.txt" hidden>
+              </label>
+              <button id="btn-dev-clear" class="btn-ghost btn-sm" style="font-size:9px" title="Remove survey from selected borehole">✕</button>
             </div>
-            <div class="cell-size-field">
-              <span class="cell-size-lbl">Y</span>
-              <input type="number" id="cell-size-y" value="1" min="0.1" max="50" step="0.5" class="cell-size-input">
+            <div style="font-size:10px;color:var(--text-mid);margin-bottom:4px">CSV format: <span style="font-family:monospace">depth, inclination, azimuth</span> (header optional)</div>
+            <div id="dev-survey-table-wrap" style="overflow:auto;max-height:280px"></div>
+            <div id="dev-summary" style="font-size:10px;color:var(--text-dim);margin-top:4px"></div>
+          </div>
+        </div>
+      
+        </div>
+
+        <div class="dsub-content" id="dsub-logs">
+
+        <div style="display:flex;gap:4px;padding:6px 8px;border-bottom:1px solid var(--border);flex-wrap:wrap">
+          <button class="log-sub-tab active" data-log-tab="bh">BH Logs</button>
+          <button class="log-sub-tab" data-log-tab="cpt">CPT Profiles</button>
+          <button class="log-sub-tab" data-log-tab="spt">SPT Profile</button>
+          <button class="log-sub-tab" data-log-tab="depthplot">Depth Plot</button>
+        </div>
+
+        <div id="log-sub-bh">
+          <p class="hint" style="padding:6px 8px 2px">Graphical log strips with geological units and SPT N values.</p>
+          <div style="padding:4px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <label style="font-size:11px;color:var(--text-mid)">Scale (px/m):
+              <input type="range" id="bh-log-scale" min="8" max="60" value="20" step="2" style="width:80px;vertical-align:middle">
+              <span id="bh-log-scale-lbl" style="font-size:11px;color:var(--text-mid)">20</span>
+            </label>
+            <button id="btn-bh-log-export" class="btn-secondary btn-sm" disabled>⬇ SVG</button>
+          </div>
+          <div id="bh-log-wrap" style="overflow:auto;max-height:420px;padding:0 4px 8px">
+            <svg id="bh-log-svg" xmlns="http://www.w3.org/2000/svg" style="display:block"></svg>
+            <p id="bh-log-hint" class="hint" style="padding:8px">Load classified borehole data to see log strips.</p>
+          </div>
+        </div>
+
+        <!-- SPT depth envelope profile -->
+        <div id="log-sub-spt" hidden>
+          <p class="hint" style="padding:6px 8px 2px">Composite SPT N-value profile: all BHs overlaid with min/mean/max envelope.</p>
+          <div style="padding:4px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <label style="font-size:11px;color:var(--text-mid)">
+              <input type="checkbox" id="spt-show-bhs" checked> Individual BHs
+            </label>
+            <label style="font-size:11px;color:var(--text-mid)">
+              <input type="checkbox" id="spt-show-units"> Unit bands
+            </label>
+            <label style="font-size:11px;color:var(--text-mid)">Bin (m):
+              <select id="spt-bin-size" style="font-size:11px">
+                <option value="0.5">0.5</option>
+                <option value="1" selected>1</option>
+                <option value="2">2</option>
+              </select>
+            </label>
+            <button id="btn-spt-export" class="btn-secondary btn-sm" disabled>⬇ PNG</button>
+          </div>
+          <div id="spt-profile-wrap" style="padding:0 4px 8px">
+            <canvas id="spt-profile-canvas" style="display:block;max-width:100%"></canvas>
+            <p id="spt-profile-hint" class="hint" style="padding:8px">Load classified borehole data with SPT N values to see the profile.</p>
+          </div>
+        </div>
+
+        <!-- Multi-BH parameter depth plot -->
+        <div id="log-sub-depthplot" hidden>
+          <p class="hint" style="padding:6px 8px 2px">Overlay any measured parameter vs depth for multiple boreholes. Each BH plotted as a colored line.</p>
+          <div style="padding:4px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <label style="font-size:11px;color:var(--text-mid)">Parameter:
+              <select id="depthplot-param" style="font-size:11px;background:var(--bg-deep);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px">
+                <option value="N_spt">SPT N</option>
+                <option value="cu">Cu (kPa)</option>
+                <option value="phi">φ′ (°)</option>
+                <option value="E">E (MPa)</option>
+                <option value="gamma">γ (kN/m³)</option>
+              </select>
+            </label>
+            <label style="font-size:11px;color:var(--text-mid)">
+              <input type="checkbox" id="depthplot-unit-bands" checked> Unit colour bands
+            </label>
+            <button id="btn-depthplot-draw" class="btn-secondary btn-sm" disabled>Draw</button>
+          </div>
+          <div id="depthplot-wrap" style="padding:0 4px 8px">
+            <canvas id="depthplot-canvas" style="display:block;width:100%;border:1px solid var(--border);border-radius:4px;background:#fff;margin-top:4px"></canvas>
+            <div id="depthplot-legend" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;padding:0 4px;font-size:9px"></div>
+            <p id="depthplot-hint" class="hint" style="padding:8px">Load borehole data and select a parameter above.</p>
+          </div>
+        </div>
+
+        <div id="log-sub-cpt" hidden>
+          <p class="hint" style="padding:6px 8px 2px">CPT qc and fs profiles with Robertson SBT classification.</p>
+          <div style="padding:4px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <label style="font-size:11px;color:var(--text-mid)">Scale (px/m):
+              <input type="range" id="cpt-log-scale" min="8" max="60" value="20" step="2" style="width:80px;vertical-align:middle">
+              <span id="cpt-log-scale-lbl" style="font-size:11px;color:var(--text-mid)">20</span>
+            </label>
+            <button id="btn-cpt-log-export" class="btn-secondary btn-sm" disabled>⬇ SVG</button>
+          </div>
+          <div id="cpt-log-wrap" style="overflow:auto;max-height:420px;padding:0 4px 8px">
+            <svg id="cpt-log-svg" xmlns="http://www.w3.org/2000/svg" style="display:block"></svg>
+            <p id="cpt-log-hint" class="hint" style="padding:8px">Load CPT data (in Data tab) to see profiles.</p>
+          </div>
+        </div>
+      
+        </div>
+
+        <div class="dsub-content" id="dsub-props">
+
+        <p class="hint" style="padding:8px 8px 4px">Edit geotechnical parameters per unit. Double-click unit names in the legend to rename.</p>
+        <div id="props-table-wrap" class="props-table-wrap">
+          <p class="hint" style="padding:8px">Load borehole data to see unit properties.</p>
+        </div>
+        <div class="panel-actions" style="padding:8px 8px 0;gap:6px;flex-wrap:wrap">
+          <button id="btn-auto-params" class="btn-secondary btn-sm" disabled title="Use Claude (or demo heuristics) to fill in missing geotechnical parameters for each unit">🧠 Auto Params</button>
+          <button id="btn-bs5930-colors" class="btn-secondary btn-sm">⬡ BS5930 Colours</button>
+          <button id="btn-export-props" class="btn-secondary btn-sm" disabled>⬇ Props CSV</button>
+          <button id="btn-formation-stats" class="btn-secondary btn-sm" disabled title="Show depth and thickness statistics per geological unit">📊 Formation Stats</button>
+        </div>
+
+        <!-- Formation statistics panel — hidden until requested -->
+        <div id="formation-stats-panel" style="display:none;padding:6px 8px 0">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+            <span style="font-size:10px;font-weight:600;color:var(--text-mid)">Formation Statistics</span>
+            <div style="display:flex;gap:4px">
+              <select id="fstat-metric" style="font-size:10px;background:var(--bg-deep);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px">
+                <option value="thickness">Thickness</option>
+                <option value="depth">Depth to top</option>
+                <option value="volume">Model volume</option>
+              </select>
+              <button id="btn-fstat-export" class="btn-secondary btn-sm" style="font-size:9px;padding:1px 6px">⬇ CSV</button>
             </div>
-            <div class="cell-size-field">
-              <span class="cell-size-lbl">Z</span>
-              <input type="number" id="cell-size-z" value="0.25" min="0.05" max="20" step="0.05" class="cell-size-input">
-            </div>
           </div>
-          <p class="hint">X/Y horizontal · Z vertical</p>
+          <canvas id="fstat-canvas" style="display:block;max-width:100%;border:1px solid var(--border);border-radius:4px;background:#f8fafb"></canvas>
         </div>
+      
+        </div>
+      </div>
 
-        <div class="field-group">
-          <label for="k-neighbors">K Neighbours</label>
-          <div class="range-row">
-            <input type="range" id="k-neighbors" min="2" max="10" value="5" step="1">
-            <span id="k-neighbors-val" class="range-readout">5</span>
-          </div>
-          <p class="hint">BHs used per voxel — higher = smoother</p>
-        </div>
-
-        <div class="field-group">
-          <label for="idw-power">IDW Power</label>
-          <div class="range-row">
-            <input type="range" id="idw-power" min="0.5" max="5" value="2" step="0.5">
-            <span id="idw-power-val" class="range-readout">2.0</span>
-          </div>
-          <p class="hint">Higher = sharper contacts</p>
-        </div>
-
-        <div class="settings-divider">Interpolation Method</div>
-        <div class="field-group">
-          <div class="method-options">
-            <label class="method-option">
-              <input type="radio" name="interp-method" value="idw" checked>
-              <span class="method-label">IDW</span>
-              <span class="method-desc">K-nearest inverse distance weighting</span>
-            </label>
-            <label class="method-option">
-              <input type="radio" name="interp-method" value="kriging">
-              <span class="method-label">Kriging</span>
-              <span class="method-desc">Ordinary Kriging — geostatistical unbiased estimator</span>
-            </label>
-            <label class="method-option">
-              <input type="radio" name="interp-method" value="gp">
-              <span class="method-label">Gaussian Process</span>
-              <span class="method-desc">Probabilistic ML — RBF kernel, variance-based uncertainty</span>
-            </label>
-            <label class="method-option">
-              <input type="radio" name="interp-method" value="nn">
-              <span class="method-label">Neural Network</span>
-              <span class="method-desc">MLP — learns non-linear spatial patterns</span>
-            </label>
-            <label class="method-option">
-              <input type="radio" name="interp-method" value="uk">
-              <span class="method-label">Universal Kriging</span>
-              <span class="method-desc">Kriging with polynomial drift — models regional dip/tilt</span>
-            </label>
-            <label class="method-option">
-              <input type="radio" name="interp-method" value="rbf">
-              <span class="method-label">RBF (Multiquadric)</span>
-              <span class="method-desc">Smooth implicit surface fitting — similar to Leapfrog's implicit engine</span>
-            </label>
-            <label class="method-option">
-              <input type="radio" name="interp-method" value="neural-implicit">
-              <span class="method-label">Neural Implicit Field ✦ AI</span>
-              <span class="method-desc">Learns F(x,y,z,text)→unit from BH data; Claude refines uncertain zones</span>
-            </label>
-            <label class="method-option">
-              <input type="radio" name="interp-method" value="indicator-kriging">
-              <span class="method-label">Indicator Kriging</span>
-              <span class="method-desc">Per-unit probability volumes P(unit) — Leapfrog-style uncertainty quantification</span>
-            </label>
-          </div>
-        </div>
-
-        <div id="ni-panel" style="display:none;margin-top:6px">
-          <div class="settings-divider">Neural Implicit Settings</div>
-          <div class="field-group">
-            <label for="ni-epochs">Training Epochs</label>
-            <input type="number" id="ni-epochs" class="input-sm" min="50" max="2000" step="50" value="600">
-          </div>
-          <label class="checkbox-row" style="margin-top:6px;gap:8px;align-items:center;cursor:pointer" title="After initial inference, fine-tune the network on virtual samples in concept-driven uncertain zones. Improves geometry in areas with semantic constraints but no boreholes.">
-            <input type="checkbox" id="ni-concept-refinement" checked>
-            <span style="font-size:11px">Concept refinement pass<br><span style="color:var(--text-muted);font-size:10px">80-epoch fine-tune on uncertain concept-driven regions</span></span>
-          </label>
-          <label class="checkbox-row" style="margin-top:6px;gap:8px;align-items:center;cursor:pointer">
-            <input type="checkbox" id="ni-oracle-toggle">
-            <span style="font-size:11px">Enable LLM Oracle (requires API key)<br><span style="color:var(--text-muted);font-size:10px">Claude reasons about uncertain voxel clusters after training</span></span>
-          </label>
-          <p class="hint" style="margin-top:5px">Geological text descriptions are embedded as keyword vectors and condition the network prior — the same location predicts differently under "palaeochannel" vs "uniform clay".</p>
-        </div>
-
-        <div id="uk-trend-panel" style="display:none;margin-top:6px">
-          <div class="settings-divider">Trend Surface Order</div>
-          <select id="uk-trend-order" class="isopach-select" style="width:100%">
-            <option value="0">Order 0 — constant (≡ Ordinary Kriging)</option>
-            <option value="1" selected>Order 1 — linear (regional dip / tilt)</option>
-            <option value="2">Order 2 — quadratic (bowl / fold structure)</option>
-          </select>
-          <p class="hint" style="margin-top:4px">Higher order captures larger-scale trends but needs more boreholes to be stable.</p>
-        </div>
-
-        <div id="variogram-panel" style="display:none;margin-top:6px">
-          <div class="settings-divider">Variogram Fitting</div>
-          <canvas id="variogram-canvas" width="240" height="100" style="width:100%;max-height:100px;background:var(--bg-surface);border-radius:var(--radius)"></canvas>
-          <p class="hint" style="font-size:10px;margin-top:3px">Blue dots = empirical γ(h). Orange dashed = fitted spherical model. Auto-fitted on data load; override below.</p>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;margin-top:5px">
-            <div>
-              <div style="font-size:9px;color:var(--text-dim);text-align:center;margin-bottom:2px">Nugget C₀</div>
-              <input type="number" id="var-nugget" class="cell-size-input" step="0.01" min="0" max="1" placeholder="auto" style="width:100%;text-align:center">
-            </div>
-            <div>
-              <div style="font-size:9px;color:var(--text-dim);text-align:center;margin-bottom:2px">Sill C₀+C₁</div>
-              <input type="number" id="var-sill" class="cell-size-input" step="0.01" min="0" max="2" placeholder="auto" style="width:100%;text-align:center">
-            </div>
-            <div>
-              <div style="font-size:9px;color:var(--text-dim);text-align:center;margin-bottom:2px">Range (m)</div>
-              <input type="number" id="var-range" class="cell-size-input" step="1" min="1" placeholder="auto" style="width:100%;text-align:center">
-            </div>
-          </div>
-          <div style="display:flex;gap:4px;margin-top:4px">
-            <button id="btn-var-apply" class="btn-secondary btn-sm" style="flex:1">Apply Manual</button>
-            <button id="btn-var-refit" class="btn-ghost btn-sm" style="flex:1">Auto-Refit</button>
-          </div>
-          <div id="var-model-info" style="font-size:9px;color:var(--text-dim);margin-top:3px;text-align:center"></div>
-        </div>
-
-        <div class="settings-divider">Search Anisotropy</div>
-        <div class="field-group">
-          <label for="aniso-azimuth">Strike Azimuth (°N)</label>
-          <input type="number" id="aniso-azimuth" class="input-sm" min="0" max="359" step="5" value="0"
-            style="width:70px">
-          <p class="hint">Geological strike direction — search ellipse aligns along this bearing.</p>
-        </div>
-        <div class="field-group">
-          <label for="aniso-ratio">Anisotropy Ratio</label>
-          <div class="range-row">
-            <input type="range" id="aniso-ratio" min="1" max="10" value="1" step="0.5">
-            <span id="aniso-ratio-val" class="range-readout">1.0</span>
-          </div>
-          <p class="hint">1 = isotropic. 5 = search 5× farther along strike than across.</p>
-        </div>
-
-        <div class="settings-divider">Drillhole Compositing</div>
-        <label class="checkbox-row" style="gap:8px;align-items:center;cursor:pointer;margin-bottom:4px">
-          <input type="checkbox" id="composite-enabled">
-          <span style="font-size:11px">Enable compositing before model build<br><span style="color:var(--text-muted);font-size:10px">Regularises BH logs to uniform depth intervals; reduces noise from thin layers</span></span>
-        </label>
-        <div class="field-group" id="composite-interval-wrap" style="display:none">
-          <label for="composite-interval">Composite interval (m)</label>
-          <input type="number" id="composite-interval" class="input-sm" min="0.1" max="10" step="0.1" value="1.0" style="width:70px">
-        </div>
-
-        <div class="settings-divider">Semantic Knowledge</div>
-        <div class="field-group">
-          <p class="hint" style="margin-bottom:4px">AI analyses the classified dataset and embeds geological knowledge (unit depth profiles, transition probabilities, synthetic anchors) into the interpolation.</p>
-          <button id="btn-semantic-model" class="btn-secondary btn-sm" disabled style="width:100%">Generate Semantic Model</button>
-        </div>
-        <div class="field-group">
-          <label for="semantic-weight">Semantic weight</label>
-          <div class="range-row">
-            <input type="range" id="semantic-weight" min="0" max="100" value="30" step="5">
-            <span id="semantic-weight-val" class="range-readout">30%</span>
-          </div>
-          <p class="hint">0% = pure spatial interpolation. 100% = full semantic guidance.</p>
-        </div>
+      <!-- KNOWLEDGE TAB — section input, semantic info, concepts, rules -->
+      <div class="tab-content" id="tab-knowledge" role="tabpanel">
 
         <div class="settings-divider">Structural Orientation Data</div>
         <div class="field-group">
@@ -375,28 +377,18 @@
         <div class="settings-divider">Geological Section Input ✦ AI</div>
         <div class="field-group">
           <p class="hint" style="margin-bottom:6px;font-size:10px">Describe or sketch a cross-section to constrain the 3D model. Observations become dense virtual boreholes <em>and</em> section-local semantic context for the neural implicit field.</p>
-
-          <!-- Sub-tabs: Describe / Sketch -->
           <div style="display:flex;gap:0;margin-bottom:8px;border-bottom:1px solid var(--border)">
             <button class="section-tab-btn active" data-stab="describe"
-              style="flex:1;padding:4px 8px;font-size:10px;background:none;border:none;border-bottom:2px solid var(--accent);color:var(--accent);cursor:pointer">
-              ✍ Describe
-            </button>
+              style="flex:1;padding:4px 8px;font-size:10px;background:none;border:none;border-bottom:2px solid var(--accent);color:var(--accent);cursor:pointer">✍ Describe</button>
             <button class="section-tab-btn" data-stab="sketch"
-              style="flex:1;padding:4px 8px;font-size:10px;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-mid);cursor:pointer">
-              ✏ Sketch
-            </button>
+              style="flex:1;padding:4px 8px;font-size:10px;background:none;border:none;border-bottom:2px solid transparent;color:var(--text-mid);cursor:pointer">✏ Sketch</button>
           </div>
-
-          <!-- Fence selector (shared) -->
           <label style="font-size:10px;color:var(--text-mid);display:block;margin-bottom:4px">
             Fence line
             <select id="section-fence-select" class="isopach-select" style="width:100%;margin-top:2px">
               <option value="">— draw a fence section first —</option>
             </select>
           </label>
-
-          <!-- Describe tab -->
           <div id="section-tab-describe">
             <textarea id="input-section-desc" rows="7"
               style="width:100%;font-size:11px;background:var(--bg-panel);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;padding:6px;resize:vertical;font-family:inherit"
@@ -407,8 +399,6 @@
             </button>
             <div id="section-parse-result" class="hint" style="margin-top:4px;font-size:10px"></div>
           </div>
-
-          <!-- Sketch tab -->
           <div id="section-tab-sketch" hidden>
             <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:6px;margin-bottom:4px">
               Draw unit:
@@ -423,9 +413,7 @@
               <button id="btn-sketch-undo" class="btn-secondary btn-sm" style="flex:1" disabled>↩ Undo</button>
               <button id="btn-sketch-clear" class="btn-secondary btn-sm" style="flex:1" disabled>✕ Clear</button>
               <button id="btn-sketch-inject" class="btn-secondary btn-sm"
-                style="flex:1;background:linear-gradient(135deg,var(--accent-cyan) 0%,#2a6aad 100%);color:#fff;border:none" disabled>
-                ↑ Inject
-              </button>
+                style="flex:1;background:linear-gradient(135deg,var(--accent-cyan) 0%,#2a6aad 100%);color:#fff;border:none" disabled>↑ Inject</button>
             </div>
           </div>
         </div>
@@ -447,16 +435,15 @@
           <button id="btn-add-desc" class="btn-secondary btn-sm">+ Add Description</button>
         </div>
         <div id="desc-list" class="desc-list"></div>
-
         <div class="field-group">
           <label for="input-site-history">Site History</label>
           <textarea id="input-site-history" rows="3"
             placeholder="Historical land use, known hazards, previous structures, local geology..."></textarea>
         </div>
-      </div>
 
-      <!-- CONCEPTS TAB — Geological Conceptual Model Embeddings -->
-      <div class="tab-content" id="tab-concepts" role="tabpanel">
+        <div class="settings-divider">Conceptual Model ✦ AI</div>
+        <div class="settings-divider">Conceptual Model ✴ AI</div>
+
         <div class="concept-panel-header">
           <div class="concept-panel-title">Conceptual Model</div>
           <p class="hint" style="margin-bottom:8px">Describe geological concepts in plain language.
@@ -855,10 +842,10 @@
           <div class="trace-title">Voxel Attribution</div>
           <div id="trace-content"></div>
         </div>
-      </div>
+      
 
-      <!-- CONSTRAINTS TAB -->
-      <div class="tab-content" id="tab-constraints" role="tabpanel">
+        <div class="settings-divider">Geological Rules &amp; Constraints</div>
+
         <div class="field-group">
           <label>Geological Constraints</label>
           <textarea id="constraints-text" rows="9"
@@ -895,10 +882,207 @@
           <div class="example-rule" data-rule="Sand dips 5 degrees north">Sand dips 5° north</div>
           <div class="example-rule" data-rule="Fault zone at easting 350m">Fault zone at easting 350m</div>
         </div>
+      
       </div>
 
-      <!-- ANALYSIS TAB -->
-      <div class="tab-content" id="tab-analysis" role="tabpanel">
+      <!-- BUILD TAB — grid, method, build, analysis -->
+      <div class="tab-content" id="tab-build" role="tabpanel">
+
+        <div class="settings-divider">Grid Settings</div>
+        <div class="field-group">
+          <label>Cell Size <span class="unit-hint">(metres)</span></label>
+          <div class="cell-size-row">
+            <div class="cell-size-field">
+              <span class="cell-size-lbl">X</span>
+              <input type="number" id="cell-size-x" value="1" min="0.1" max="50" step="0.5" class="cell-size-input">
+            </div>
+            <div class="cell-size-field">
+              <span class="cell-size-lbl">Y</span>
+              <input type="number" id="cell-size-y" value="1" min="0.1" max="50" step="0.5" class="cell-size-input">
+            </div>
+            <div class="cell-size-field">
+              <span class="cell-size-lbl">Z</span>
+              <input type="number" id="cell-size-z" value="0.25" min="0.05" max="20" step="0.05" class="cell-size-input">
+            </div>
+          </div>
+          <p class="hint">X/Y horizontal · Z vertical</p>
+        </div>
+
+        <div class="field-group">
+          <label for="k-neighbors">K Neighbours</label>
+          <div class="range-row">
+            <input type="range" id="k-neighbors" min="2" max="10" value="5" step="1">
+            <span id="k-neighbors-val" class="range-readout">5</span>
+          </div>
+          <p class="hint">BHs used per voxel — higher = smoother</p>
+        </div>
+
+        <div class="field-group">
+          <label for="idw-power">IDW Power</label>
+          <div class="range-row">
+            <input type="range" id="idw-power" min="0.5" max="5" value="2" step="0.5">
+            <span id="idw-power-val" class="range-readout">2.0</span>
+          </div>
+          <p class="hint">Higher = sharper contacts</p>
+        </div>
+
+        <div class="settings-divider">Interpolation Method</div>
+        <div class="field-group">
+          <div class="method-options">
+            <label class="method-option">
+              <input type="radio" name="interp-method" value="idw" checked>
+              <span class="method-label">IDW</span>
+              <span class="method-desc">K-nearest inverse distance weighting</span>
+            </label>
+            <label class="method-option">
+              <input type="radio" name="interp-method" value="kriging">
+              <span class="method-label">Kriging</span>
+              <span class="method-desc">Ordinary Kriging — geostatistical unbiased estimator</span>
+            </label>
+            <label class="method-option">
+              <input type="radio" name="interp-method" value="gp">
+              <span class="method-label">Gaussian Process</span>
+              <span class="method-desc">Probabilistic ML — RBF kernel, variance-based uncertainty</span>
+            </label>
+            <label class="method-option">
+              <input type="radio" name="interp-method" value="nn">
+              <span class="method-label">Neural Network</span>
+              <span class="method-desc">MLP — learns non-linear spatial patterns</span>
+            </label>
+            <label class="method-option">
+              <input type="radio" name="interp-method" value="uk">
+              <span class="method-label">Universal Kriging</span>
+              <span class="method-desc">Kriging with polynomial drift — models regional dip/tilt</span>
+            </label>
+            <label class="method-option">
+              <input type="radio" name="interp-method" value="rbf">
+              <span class="method-label">RBF (Multiquadric)</span>
+              <span class="method-desc">Smooth implicit surface fitting — similar to Leapfrog's implicit engine</span>
+            </label>
+            <label class="method-option">
+              <input type="radio" name="interp-method" value="neural-implicit">
+              <span class="method-label">Neural Implicit Field ✦ AI</span>
+              <span class="method-desc">Learns F(x,y,z,text)→unit from BH data; Claude refines uncertain zones</span>
+            </label>
+            <label class="method-option">
+              <input type="radio" name="interp-method" value="indicator-kriging">
+              <span class="method-label">Indicator Kriging</span>
+              <span class="method-desc">Per-unit probability volumes P(unit) — Leapfrog-style uncertainty quantification</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="ni-panel" style="display:none;margin-top:6px">
+          <div class="settings-divider">Neural Implicit Settings</div>
+          <div class="field-group">
+            <label for="ni-epochs">Training Epochs</label>
+            <input type="number" id="ni-epochs" class="input-sm" min="50" max="2000" step="50" value="600">
+          </div>
+          <label class="checkbox-row" style="margin-top:6px;gap:8px;align-items:center;cursor:pointer" title="After initial inference, fine-tune the network on virtual samples in concept-driven uncertain zones. Improves geometry in areas with semantic constraints but no boreholes.">
+            <input type="checkbox" id="ni-concept-refinement" checked>
+            <span style="font-size:11px">Concept refinement pass<br><span style="color:var(--text-muted);font-size:10px">80-epoch fine-tune on uncertain concept-driven regions</span></span>
+          </label>
+          <label class="checkbox-row" style="margin-top:6px;gap:8px;align-items:center;cursor:pointer">
+            <input type="checkbox" id="ni-oracle-toggle">
+            <span style="font-size:11px">Enable LLM Oracle (requires API key)<br><span style="color:var(--text-muted);font-size:10px">Claude reasons about uncertain voxel clusters after training</span></span>
+          </label>
+          <p class="hint" style="margin-top:5px">Geological text descriptions are embedded as keyword vectors and condition the network prior — the same location predicts differently under "palaeochannel" vs "uniform clay".</p>
+        </div>
+
+        <div id="uk-trend-panel" style="display:none;margin-top:6px">
+          <div class="settings-divider">Trend Surface Order</div>
+          <select id="uk-trend-order" class="isopach-select" style="width:100%">
+            <option value="0">Order 0 — constant (≡ Ordinary Kriging)</option>
+            <option value="1" selected>Order 1 — linear (regional dip / tilt)</option>
+            <option value="2">Order 2 — quadratic (bowl / fold structure)</option>
+          </select>
+          <p class="hint" style="margin-top:4px">Higher order captures larger-scale trends but needs more boreholes to be stable.</p>
+        </div>
+
+        <div id="variogram-panel" style="display:none;margin-top:6px">
+          <div class="settings-divider">Variogram Fitting</div>
+          <canvas id="variogram-canvas" width="240" height="100" style="width:100%;max-height:100px;background:var(--bg-surface);border-radius:var(--radius)"></canvas>
+          <p class="hint" style="font-size:10px;margin-top:3px">Blue dots = empirical γ(h). Orange dashed = fitted spherical model. Auto-fitted on data load; override below.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;margin-top:5px">
+            <div>
+              <div style="font-size:9px;color:var(--text-dim);text-align:center;margin-bottom:2px">Nugget C₀</div>
+              <input type="number" id="var-nugget" class="cell-size-input" step="0.01" min="0" max="1" placeholder="auto" style="width:100%;text-align:center">
+            </div>
+            <div>
+              <div style="font-size:9px;color:var(--text-dim);text-align:center;margin-bottom:2px">Sill C₀+C₁</div>
+              <input type="number" id="var-sill" class="cell-size-input" step="0.01" min="0" max="2" placeholder="auto" style="width:100%;text-align:center">
+            </div>
+            <div>
+              <div style="font-size:9px;color:var(--text-dim);text-align:center;margin-bottom:2px">Range (m)</div>
+              <input type="number" id="var-range" class="cell-size-input" step="1" min="1" placeholder="auto" style="width:100%;text-align:center">
+            </div>
+          </div>
+          <div style="display:flex;gap:4px;margin-top:4px">
+            <button id="btn-var-apply" class="btn-secondary btn-sm" style="flex:1">Apply Manual</button>
+            <button id="btn-var-refit" class="btn-ghost btn-sm" style="flex:1">Auto-Refit</button>
+          </div>
+          <div id="var-model-info" style="font-size:9px;color:var(--text-dim);margin-top:3px;text-align:center"></div>
+        </div>
+
+        <div class="settings-divider">Search Anisotropy</div>
+        <div class="field-group">
+          <label for="aniso-azimuth">Strike Azimuth (°N)</label>
+          <input type="number" id="aniso-azimuth" class="input-sm" min="0" max="359" step="5" value="0"
+            style="width:70px">
+          <p class="hint">Geological strike direction — search ellipse aligns along this bearing.</p>
+        </div>
+        <div class="field-group">
+          <label for="aniso-ratio">Anisotropy Ratio</label>
+          <div class="range-row">
+            <input type="range" id="aniso-ratio" min="1" max="10" value="1" step="0.5">
+            <span id="aniso-ratio-val" class="range-readout">1.0</span>
+          </div>
+          <p class="hint">1 = isotropic. 5 = search 5× farther along strike than across.</p>
+        </div>
+
+        <div class="settings-divider">Drillhole Compositing</div>
+        <label class="checkbox-row" style="gap:8px;align-items:center;cursor:pointer;margin-bottom:4px">
+          <input type="checkbox" id="composite-enabled">
+          <span style="font-size:11px">Enable compositing before model build<br><span style="color:var(--text-muted);font-size:10px">Regularises BH logs to uniform depth intervals; reduces noise from thin layers</span></span>
+        </label>
+        <div class="field-group" id="composite-interval-wrap" style="display:none">
+          <label for="composite-interval">Composite interval (m)</label>
+          <input type="number" id="composite-interval" class="input-sm" min="0.1" max="10" step="0.1" value="1.0" style="width:70px">
+        </div>
+
+        <div class="settings-divider">Semantic Knowledge</div>
+        <div class="field-group">
+          <p class="hint" style="margin-bottom:4px">AI analyses the classified dataset and embeds geological knowledge (unit depth profiles, transition probabilities, synthetic anchors) into the interpolation.</p>
+          <button id="btn-semantic-model" class="btn-secondary btn-sm" disabled style="width:100%">Generate Semantic Model</button>
+        </div>
+        <div class="field-group">
+          <label for="semantic-weight">Semantic weight</label>
+          <div class="range-row">
+            <input type="range" id="semantic-weight" min="0" max="100" value="30" step="5">
+            <span id="semantic-weight-val" class="range-readout">30%</span>
+          </div>
+          <p class="hint">0% = pure spatial interpolation. 100% = full semantic guidance.</p>
+        </div>
+
+      <!-- Action buttons -->
+      <div class="panel-actions">
+        <button id="btn-run-ai" class="btn-primary" disabled>Run AI Analysis →</button>
+        <button id="btn-interpret-geology" class="btn-secondary" disabled title="Use Claude to interpret site geology, generate constraints and hazard flags">🧠 Interpret Geology</button>
+        <button id="btn-edit-units" class="btn-secondary" title="Add or edit geological unit definitions">✎ Edit Units</button>
+        <button id="btn-build-model" class="btn-primary" disabled>Build 3D Model →</button>
+        <div id="concept-method-hint" style="display:none;font-size:9.5px;color:var(--accent);background:rgba(26,111,165,0.08);border-left:2px solid var(--accent);padding:3px 6px;border-radius:0 3px 3px 0;margin-top:2px">✦ Concepts active — select <b>Neural Implicit</b> method to apply them geometrically</div>
+        <label class="checkbox-row" style="margin-top:4px;gap:8px;align-items:center;cursor:pointer;font-size:10px;color:var(--text-mid)">
+          <input type="checkbox" id="mc-enabled">
+          <span>Monte Carlo (N=<input type="number" id="mc-n" value="20" min="5" max="100" step="5" style="width:44px;background:none;border:none;border-bottom:1px solid var(--border);color:var(--text-main);font-size:10px"> realisations) — boundary perturbation uncertainty</span>
+        </label>
+        <label class="checkbox-row" style="margin-top:4px;gap:8px;align-items:center;cursor:pointer;font-size:10px;color:var(--text-mid)" title="After building, scan each vertical column for stratigraphic inversions (younger unit below older unit) and replace them with the expected older unit. Uses the stratigraphic order defined in the Analysis panel.">
+          <input type="checkbox" id="correct-inversions" checked>
+          <span>Correct stratigraphic inversions</span>
+        </label>
+      </div>
+
+      <div class="settings-divider">Analysis</div>
+
         <div id="bh-chart-wrap" class="bh-chart-wrap" hidden>
           <canvas id="bh-chart-canvas" class="bh-chart-canvas"></canvas>
         </div>
@@ -993,192 +1177,11 @@
         <div id="analysis-log" class="analysis-log">
           <div class="log-entry log-info">Run AI Analysis to see results here.</div>
         </div>
-      </div>
 
-      <!-- BH DATA TAB -->
-      <div class="tab-content" id="tab-bhdata" role="tabpanel">
-        <div style="display:flex;gap:4px;padding:5px 8px 0;flex-wrap:wrap">
-          <button class="bhdata-sub-tab active" data-bhd-tab="raw" style="font-size:10px">Layer Data</button>
-          <button class="bhdata-sub-tab" data-bhd-tab="tops" style="font-size:10px">Formation Tops</button>
-          <button class="bhdata-sub-tab" data-bhd-tab="deviation" style="font-size:10px">Deviation</button>
+        <div id="status-log" class="status-log" aria-live="polite">
+          <div class="log-entry log-info">Ready — drop files or load a sample site.</div>
         </div>
-        <div id="bhd-sub-raw">
-          <div id="bh-data-table-wrap" class="bh-table-wrap">
-            <p class="hint" style="padding:8px">Load borehole data to see table.</p>
-          </div>
-        </div>
-        <div id="bhd-sub-tops" hidden>
-          <p class="hint" style="padding:6px 8px 2px;font-size:10px">Depth to top of each unit per borehole. — = unit absent.</p>
-          <div style="padding:3px 8px;display:flex;gap:6px;align-items:center">
-            <label style="font-size:10px;color:var(--text-mid)">
-              <input type="checkbox" id="tops-show-elev"> Elevation (mAOD)
-            </label>
-            <button id="btn-tops-export" class="btn-secondary btn-sm" style="font-size:9px;padding:1px 6px" disabled>⬇ CSV</button>
-          </div>
-          <div id="formation-tops-wrap" style="overflow:auto;max-height:380px;padding:0 4px 8px">
-            <p class="hint" style="padding:8px">Load classified borehole data to see formation top matrix.</p>
-          </div>
-        </div>
-        <div id="bhd-sub-deviation" hidden>
-          <p class="hint" style="padding:6px 8px 2px;font-size:10px">Minimum curvature deviation surveys. Import CSV (Depth, Inclination, Azimuth) per borehole. Vertical boreholes need no survey.</p>
-          <div style="padding:4px 8px 6px">
-            <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-              <select id="dev-bh-select" class="param-input" style="flex:1;font-size:10px">
-                <option value="">— Select borehole —</option>
-              </select>
-              <label class="btn-secondary btn-sm" style="cursor:pointer;font-size:9px;padding:2px 8px">
-                📂 Load CSV
-                <input type="file" id="dev-csv-input" accept=".csv,.txt" hidden>
-              </label>
-              <button id="btn-dev-clear" class="btn-ghost btn-sm" style="font-size:9px" title="Remove survey from selected borehole">✕</button>
-            </div>
-            <div style="font-size:10px;color:var(--text-mid);margin-bottom:4px">CSV format: <span style="font-family:monospace">depth, inclination, azimuth</span> (header optional)</div>
-            <div id="dev-survey-table-wrap" style="overflow:auto;max-height:280px"></div>
-            <div id="dev-summary" style="font-size:10px;color:var(--text-dim);margin-top:4px"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- PROPERTIES TAB -->
-      <div class="tab-content" id="tab-properties" role="tabpanel">
-        <p class="hint" style="padding:8px 8px 4px">Edit geotechnical parameters per unit. Double-click unit names in the legend to rename.</p>
-        <div id="props-table-wrap" class="props-table-wrap">
-          <p class="hint" style="padding:8px">Load borehole data to see unit properties.</p>
-        </div>
-        <div class="panel-actions" style="padding:8px 8px 0;gap:6px;flex-wrap:wrap">
-          <button id="btn-auto-params" class="btn-secondary btn-sm" disabled title="Use Claude (or demo heuristics) to fill in missing geotechnical parameters for each unit">🧠 Auto Params</button>
-          <button id="btn-bs5930-colors" class="btn-secondary btn-sm">⬡ BS5930 Colours</button>
-          <button id="btn-export-props" class="btn-secondary btn-sm" disabled>⬇ Props CSV</button>
-          <button id="btn-formation-stats" class="btn-secondary btn-sm" disabled title="Show depth and thickness statistics per geological unit">📊 Formation Stats</button>
-        </div>
-
-        <!-- Formation statistics panel — hidden until requested -->
-        <div id="formation-stats-panel" style="display:none;padding:6px 8px 0">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-            <span style="font-size:10px;font-weight:600;color:var(--text-mid)">Formation Statistics</span>
-            <div style="display:flex;gap:4px">
-              <select id="fstat-metric" style="font-size:10px;background:var(--bg-deep);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px">
-                <option value="thickness">Thickness</option>
-                <option value="depth">Depth to top</option>
-                <option value="volume">Model volume</option>
-              </select>
-              <button id="btn-fstat-export" class="btn-secondary btn-sm" style="font-size:9px;padding:1px 6px">⬇ CSV</button>
-            </div>
-          </div>
-          <canvas id="fstat-canvas" style="display:block;max-width:100%;border:1px solid var(--border);border-radius:4px;background:#f8fafb"></canvas>
-        </div>
-      </div>
-
-      <!-- BH LOG STRIPS TAB -->
-      <div class="tab-content" id="tab-logs" role="tabpanel">
-        <div style="display:flex;gap:4px;padding:6px 8px;border-bottom:1px solid var(--border);flex-wrap:wrap">
-          <button class="log-sub-tab active" data-log-tab="bh">BH Logs</button>
-          <button class="log-sub-tab" data-log-tab="cpt">CPT Profiles</button>
-          <button class="log-sub-tab" data-log-tab="spt">SPT Profile</button>
-          <button class="log-sub-tab" data-log-tab="depthplot">Depth Plot</button>
-        </div>
-
-        <div id="log-sub-bh">
-          <p class="hint" style="padding:6px 8px 2px">Graphical log strips with geological units and SPT N values.</p>
-          <div style="padding:4px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <label style="font-size:11px;color:var(--text-mid)">Scale (px/m):
-              <input type="range" id="bh-log-scale" min="8" max="60" value="20" step="2" style="width:80px;vertical-align:middle">
-              <span id="bh-log-scale-lbl" style="font-size:11px;color:var(--text-mid)">20</span>
-            </label>
-            <button id="btn-bh-log-export" class="btn-secondary btn-sm" disabled>⬇ SVG</button>
-          </div>
-          <div id="bh-log-wrap" style="overflow:auto;max-height:420px;padding:0 4px 8px">
-            <svg id="bh-log-svg" xmlns="http://www.w3.org/2000/svg" style="display:block"></svg>
-            <p id="bh-log-hint" class="hint" style="padding:8px">Load classified borehole data to see log strips.</p>
-          </div>
-        </div>
-
-        <!-- SPT depth envelope profile -->
-        <div id="log-sub-spt" hidden>
-          <p class="hint" style="padding:6px 8px 2px">Composite SPT N-value profile: all BHs overlaid with min/mean/max envelope.</p>
-          <div style="padding:4px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <label style="font-size:11px;color:var(--text-mid)">
-              <input type="checkbox" id="spt-show-bhs" checked> Individual BHs
-            </label>
-            <label style="font-size:11px;color:var(--text-mid)">
-              <input type="checkbox" id="spt-show-units"> Unit bands
-            </label>
-            <label style="font-size:11px;color:var(--text-mid)">Bin (m):
-              <select id="spt-bin-size" style="font-size:11px">
-                <option value="0.5">0.5</option>
-                <option value="1" selected>1</option>
-                <option value="2">2</option>
-              </select>
-            </label>
-            <button id="btn-spt-export" class="btn-secondary btn-sm" disabled>⬇ PNG</button>
-          </div>
-          <div id="spt-profile-wrap" style="padding:0 4px 8px">
-            <canvas id="spt-profile-canvas" style="display:block;max-width:100%"></canvas>
-            <p id="spt-profile-hint" class="hint" style="padding:8px">Load classified borehole data with SPT N values to see the profile.</p>
-          </div>
-        </div>
-
-        <!-- Multi-BH parameter depth plot -->
-        <div id="log-sub-depthplot" hidden>
-          <p class="hint" style="padding:6px 8px 2px">Overlay any measured parameter vs depth for multiple boreholes. Each BH plotted as a colored line.</p>
-          <div style="padding:4px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <label style="font-size:11px;color:var(--text-mid)">Parameter:
-              <select id="depthplot-param" style="font-size:11px;background:var(--bg-deep);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px">
-                <option value="N_spt">SPT N</option>
-                <option value="cu">Cu (kPa)</option>
-                <option value="phi">φ′ (°)</option>
-                <option value="E">E (MPa)</option>
-                <option value="gamma">γ (kN/m³)</option>
-              </select>
-            </label>
-            <label style="font-size:11px;color:var(--text-mid)">
-              <input type="checkbox" id="depthplot-unit-bands" checked> Unit colour bands
-            </label>
-            <button id="btn-depthplot-draw" class="btn-secondary btn-sm" disabled>Draw</button>
-          </div>
-          <div id="depthplot-wrap" style="padding:0 4px 8px">
-            <canvas id="depthplot-canvas" style="display:block;width:100%;border:1px solid var(--border);border-radius:4px;background:#fff;margin-top:4px"></canvas>
-            <div id="depthplot-legend" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;padding:0 4px;font-size:9px"></div>
-            <p id="depthplot-hint" class="hint" style="padding:8px">Load borehole data and select a parameter above.</p>
-          </div>
-        </div>
-
-        <div id="log-sub-cpt" hidden>
-          <p class="hint" style="padding:6px 8px 2px">CPT qc and fs profiles with Robertson SBT classification.</p>
-          <div style="padding:4px 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <label style="font-size:11px;color:var(--text-mid)">Scale (px/m):
-              <input type="range" id="cpt-log-scale" min="8" max="60" value="20" step="2" style="width:80px;vertical-align:middle">
-              <span id="cpt-log-scale-lbl" style="font-size:11px;color:var(--text-mid)">20</span>
-            </label>
-            <button id="btn-cpt-log-export" class="btn-secondary btn-sm" disabled>⬇ SVG</button>
-          </div>
-          <div id="cpt-log-wrap" style="overflow:auto;max-height:420px;padding:0 4px 8px">
-            <svg id="cpt-log-svg" xmlns="http://www.w3.org/2000/svg" style="display:block"></svg>
-            <p id="cpt-log-hint" class="hint" style="padding:8px">Load CPT data (in Data tab) to see profiles.</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Action buttons -->
-      <div class="panel-actions">
-        <button id="btn-run-ai" class="btn-primary" disabled>Run AI Analysis →</button>
-        <button id="btn-interpret-geology" class="btn-secondary" disabled title="Use Claude to interpret site geology, generate constraints and hazard flags">🧠 Interpret Geology</button>
-        <button id="btn-edit-units" class="btn-secondary" title="Add or edit geological unit definitions">✎ Edit Units</button>
-        <button id="btn-build-model" class="btn-primary" disabled>Build 3D Model →</button>
-        <div id="concept-method-hint" style="display:none;font-size:9.5px;color:var(--accent);background:rgba(26,111,165,0.08);border-left:2px solid var(--accent);padding:3px 6px;border-radius:0 3px 3px 0;margin-top:2px">✦ Concepts active — select <b>Neural Implicit</b> method to apply them geometrically</div>
-        <label class="checkbox-row" style="margin-top:4px;gap:8px;align-items:center;cursor:pointer;font-size:10px;color:var(--text-mid)">
-          <input type="checkbox" id="mc-enabled">
-          <span>Monte Carlo (N=<input type="number" id="mc-n" value="20" min="5" max="100" step="5" style="width:44px;background:none;border:none;border-bottom:1px solid var(--border);color:var(--text-main);font-size:10px"> realisations) — boundary perturbation uncertainty</span>
-        </label>
-        <label class="checkbox-row" style="margin-top:4px;gap:8px;align-items:center;cursor:pointer;font-size:10px;color:var(--text-mid)" title="After building, scan each vertical column for stratigraphic inversions (younger unit below older unit) and replace them with the expected older unit. Uses the stratigraphic order defined in the Analysis panel.">
-          <input type="checkbox" id="correct-inversions" checked>
-          <span>Correct stratigraphic inversions</span>
-        </label>
-      </div>
-
-      <div id="status-log" class="status-log" aria-live="polite">
-        <div class="log-entry log-info">Ready — drop files or load a sample site.</div>
-      </div>
+      </div><!-- /tab-build -->
     </aside>
 
     <div class="panel-resize-handle" id="resize-left" title="Drag to resize"></div>
@@ -1484,8 +1487,117 @@
 
     <div class="panel-resize-handle" id="resize-right" title="Drag to resize"></div>
 
-    <!-- ── RIGHT PANEL: Legend & View ── -->
+    <!-- ── RIGHT PANEL: Layer TOC & Legend ── -->
     <aside id="right-panel">
+
+      <!-- ── LAYER TABLE OF CONTENTS ── -->
+      <div id="layer-toc" class="layer-toc">
+        <div class="toc-header">
+          <span class="toc-title">Layers</span>
+        </div>
+
+        <!-- Geological Model group -->
+        <div class="toc-group">
+          <div class="toc-group-hdr" data-toc-group="geomodel">
+            <span class="toc-group-arrow">▾</span>
+            <span>Geological Model</span>
+          </div>
+          <div class="toc-group-body" id="toc-group-geomodel">
+            <div class="toc-item" id="toc-voxels">
+              <button class="toc-eye active" id="toc-eye-voxels" title="Toggle voxels">👁</button>
+              <span class="toc-item-label">Voxels</span>
+              <select class="toc-color-mode" id="toc-color-mode" title="Colour mode">
+                <option value="unit">Geology</option>
+                <option value="certainty">Certainty</option>
+                <option value="entropy">Entropy</option>
+                <option value="cu">Cu</option>
+                <option value="N_spt">SPT N</option>
+              </select>
+            </div>
+            <div class="toc-item" id="toc-surfaces">
+              <button class="toc-eye active" id="toc-eye-surfaces" title="Toggle surfaces">👁</button>
+              <span class="toc-item-label">Surfaces</span>
+              <input type="range" id="toc-surface-opacity" class="toc-opacity" min="0" max="100" value="55" title="Surface opacity">
+            </div>
+            <div class="toc-item" id="toc-uncertainty-layer">
+              <button class="toc-eye" id="toc-eye-uncertainty" title="Toggle uncertainty surface">👁</button>
+              <span class="toc-item-label">Uncertainty</span>
+              <input type="range" id="toc-uncertainty-threshold" class="toc-opacity" min="10" max="90" value="60" title="Entropy threshold">
+            </div>
+          </div>
+        </div>
+
+        <!-- Analysis group -->
+        <div class="toc-group">
+          <div class="toc-group-hdr" data-toc-group="analysis">
+            <span class="toc-group-arrow">▾</span>
+            <span>Analysis</span>
+          </div>
+          <div class="toc-group-body" id="toc-group-analysis">
+            <div class="toc-item toc-action-item" id="toc-planview">
+              <button class="toc-launch" id="toc-launch-planview" disabled title="Open Plan View">⊟</button>
+              <span class="toc-item-label">Plan View</span>
+            </div>
+            <div class="toc-item toc-action-item" id="toc-fence">
+              <button class="toc-launch" id="toc-launch-fence" disabled title="Open Cross-Section / Fence">⊞</button>
+              <span class="toc-item-label">Cross-Section</span>
+            </div>
+            <div class="toc-item toc-action-item" id="toc-isopach">
+              <button class="toc-launch" id="toc-launch-isopach" disabled title="Open Isopach / Map View">⊠</button>
+              <span class="toc-item-label">Isopach Map</span>
+            </div>
+            <div class="toc-item toc-action-item" id="toc-stratcorr">
+              <button class="toc-launch" id="toc-launch-stratcorr" disabled title="Stratigraphic Correlation">⊟</button>
+              <span class="toc-item-label">Stratigraphy</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Data group -->
+        <div class="toc-group">
+          <div class="toc-group-hdr" data-toc-group="datalay">
+            <span class="toc-group-arrow">▾</span>
+            <span>Data</span>
+          </div>
+          <div class="toc-group-body" id="toc-group-datalay">
+            <div class="toc-item" id="toc-boreholes">
+              <button class="toc-eye active" id="toc-eye-boreholes" title="Toggle borehole sticks">👁</button>
+              <span class="toc-item-label">Boreholes</span>
+            </div>
+            <div class="toc-item" id="toc-topo-layer">
+              <button class="toc-eye active" id="toc-eye-topo" title="Toggle topography surface">👁</button>
+              <span class="toc-item-label">Topography</span>
+            </div>
+            <div class="toc-item" id="toc-gwt-layer">
+              <button class="toc-eye" id="toc-eye-gwt" title="Toggle groundwater table">👁</button>
+              <span class="toc-item-label">Groundwater</span>
+              <input type="number" id="toc-gwt-elev" class="toc-gwt-input" placeholder="mAOD" step="0.5" title="GWT elevation (mAOD)">
+            </div>
+          </div>
+        </div>
+      </div><!-- /layer-toc -->
+
+      <!-- Certainty filter (always visible) -->
+      <div class="panel-section toc-controls-section">
+        <div class="toc-control-row">
+          <label style="font-size:10px;color:var(--text-mid);white-space:nowrap">Certainty ≥</label>
+          <input type="range" id="certainty-threshold" min="0" max="95" value="0" step="5" style="flex:1">
+          <span id="certainty-val" class="range-readout" style="width:28px">0%</span>
+        </div>
+        <div class="toc-control-row" style="margin-top:4px">
+          <label style="font-size:10px;color:var(--text-mid);white-space:nowrap">Opacity</label>
+          <input type="range" id="global-alpha" min="0" max="100" value="100" style="flex:1">
+          <span id="global-alpha-val" class="range-readout" style="width:28px">100%</span>
+        </div>
+      </div>
+
+      <!-- Unit Legend -->
+      <div class="panel-section">
+        <h3>Unit Legend</h3>
+        <div id="unit-legend" class="unit-legend">
+          <p class="hint">Units appear after model is built</p>
+        </div>
+      </div>
 
       <!-- Model QC Dashboard — auto-populated after every build -->
       <div id="model-qc-panel" class="panel-section" hidden>
@@ -1503,22 +1615,6 @@
           ✦ Suggest new borehole locations
         </button>
         <div id="borehole-gap-results" style="display:none;margin-top:6px"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Unit Legend</h3>
-        <div id="unit-legend" class="unit-legend">
-          <p class="hint">Units appear after model is built</p>
-        </div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Certainty Filter</h3>
-        <div class="range-row">
-          <input type="range" id="certainty-threshold" min="0" max="95" value="0" step="5">
-          <span id="certainty-val" class="range-readout">0%</span>
-        </div>
-        <p class="hint">Hide voxels below this certainty</p>
       </div>
 
       <div class="panel-section">
@@ -1616,14 +1712,6 @@
 
       <div class="panel-section">
         <h3>View Options</h3>
-
-        <div class="field-group">
-          <label>Overall Opacity</label>
-          <div class="range-row">
-            <input type="range" id="global-alpha" min="0" max="100" value="100">
-            <span id="global-alpha-val" class="range-readout">100%</span>
-          </div>
-        </div>
 
         <label class="inline-check">
           <input type="checkbox" id="transp-enable">
@@ -2088,7 +2176,7 @@
         </div>
         <button id="btn-export-geojson-tops" class="btn-secondary" disabled title="Export formation top elevations as GeoJSON FeatureCollection with unit code and depth-to-top attributes">⬇ Formation Tops GeoJSON</button>
         <div class="settings-divider">Unit Properties</div>
-        <button id="btn-export-props" class="btn-secondary" disabled>⬇ Unit Properties CSV</button>
+        <button id="btn-export-props-rp" class="btn-secondary" disabled>⬇ Unit Properties CSV</button>
         <div class="settings-divider">Coordinate Tools</div>
         <p class="hint" style="font-size:10px;margin-bottom:6px">Convert between British National Grid (OSGB36) and WGS84 lat/lon. Accuracy ~1 m using Helmert 7-parameter transformation.</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
