@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-19 (batch 16 update)
+> Last updated: 2026-05-19 (batch 17 update)
 
 ---
 
@@ -258,6 +258,9 @@ inp = [Fourier(warped_pos)(39) | concept_ctx(32)]
 - [x] Vertical exaggeration control
 - [x] Interactive OrbitControls (rotate/pan/zoom)
 - [x] Draggable resize handles for left and right panels — updates `--left-w`/`--right-w` CSS variables; touch-drag supported; hidden on mobile
+- [x] **Geology on/off toggle** — hides/shows voxel InstancedMesh group without clearing the model; button text + opacity feedback
+- [x] **Fence section pan/zoom** — wheel zoom centred on cursor; alt+drag or middle-drag pans; double-click resets to 1:1; CSS transform on canvas element
+- [x] **Formation surface lines on fence section** — coloured lines per unit tracing the topmost voxel of each unit column-by-column; labelled with unit code; toggled by Surfaces checkbox
 - [x] Camera presets (plan, section, isometric)
 - [x] Marching cubes isosurfaces — smooth 3D unit solids from binary scalar fields
 - [x] 3D borehole sticks with label sprites and SPT N bar charts — shown immediately on data load, before model build
@@ -326,7 +329,7 @@ inp = [Fourier(warped_pos)(39) | concept_ctx(32)]
 - [x] Session save/restore — sessionStorage (not localStorage)
 - [x] Cross-validation — leave-one-out BH test, logs confusion matrix and mean accuracy
 - [x] Empirical variogram — computed from BH data, displayed when Kriging/UK active
-- [x] 4 sample datasets — Riverside Development, A99 Highway Widening, Former Gasworks (urban), Tidal Gateway Wharf (coastal)
+- [x] 5 sample datasets — Riverside Development, A99 Highway Widening, Former Gasworks (urban), Tidal Gateway Wharf (coastal), Channel Concept Test (2-borehole palaeochannel E-W concept demo)
 
 ---
 
