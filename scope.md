@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-19 (batch 13 update)
+> Last updated: 2026-05-19 (batch 14 update)
 
 ---
 
@@ -254,7 +254,7 @@ inp = [Fourier(warped_pos)(39) | concept_ctx(32)]
 - [x] Certainty threshold slider — hides voxels below confidence level
 - [x] Transparency mode — overall and per-unit opacity
 - [x] Colour-fade mode — uncertain voxels fade toward grey
-- [x] X/Y/Z orthogonal clipping planes (Leapfrog-style slicer)
+- [x] X/Y/Z orthogonal clipping planes (Leapfrog-style slicer) — renderer-level clipping (`renderer.clippingPlanes`) ensures custom ShaderMaterials are correctly clipped regardless of compile-time `NUM_CLIPPING_PLANES`
 - [x] Vertical exaggeration control
 - [x] Interactive OrbitControls (rotate/pan/zoom)
 - [x] Camera presets (plan, section, isometric)
