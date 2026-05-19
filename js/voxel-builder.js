@@ -2,8 +2,9 @@ import * as THREE from 'three';
 import { voxelIndex } from './interpolator.js';
 
 // ── Shared ShaderMaterial: per-instance colour + alpha, Lambert lighting ──────
-// Three.js does NOT auto-inject clipping plane chunks into raw ShaderMaterial;
-// they must be included explicitly. mvPosition is required by the vertex chunk.
+// Clipping is handled via custom world-space uniforms rather than Three.js's
+// compile-time NUM_CLIPPING_PLANES mechanism, which gets baked as 0 at first
+// compile and cannot be reliably changed later without a full shader recompile.
 const VERT = `
   attribute vec3  voxelColor;
   attribute float voxelAlpha;
@@ -12,8 +13,7 @@ const VERT = `
   varying   float vAlph;
   varying   float vCert;
   varying   vec3  vNorm;
-
-  #include <clipping_planes_pars_vertex>
+  varying   vec3  vWorldPos;
 
   void main() {
     vCol  = voxelColor;
@@ -21,31 +21,37 @@ const VERT = `
     vCert = voxelCert;
 
     #ifdef USE_INSTANCING
-      vec4 mvPosition = modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+      vec4 worldPos4 = modelMatrix * instanceMatrix * vec4(position, 1.0);
+      vec4 mvPosition = viewMatrix * worldPos4;
       vNorm = normalMatrix * normal;
     #else
-      vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+      vec4 worldPos4 = modelMatrix * vec4(position, 1.0);
+      vec4 mvPosition = viewMatrix * worldPos4;
       vNorm = normalMatrix * normal;
     #endif
+    vWorldPos = worldPos4.xyz;
     gl_Position = projectionMatrix * mvPosition;
-
-    #include <clipping_planes_vertex>
   }
 `;
 
 const FRAG = `
   uniform float uColorFade;
   uniform float uGlobalAlpha;
+  // Custom world-space clip planes: xyz=normal, w=constant (dot(normal,pos)+w<0 → discard)
+  uniform vec4  uClipPlanes[4];
+  uniform int   uNumClipPlanes;
 
   varying vec3  vCol;
   varying float vAlph;
   varying float vCert;
   varying vec3  vNorm;
-
-  #include <clipping_planes_pars_fragment>
+  varying vec3  vWorldPos;
 
   void main() {
-    #include <clipping_planes_fragment>
+    for (int i = 0; i < 4; i++) {
+      if (i >= uNumClipPlanes) break;
+      if (dot(vWorldPos, uClipPlanes[i].xyz) + uClipPlanes[i].w < 0.0) discard;
+    }
 
     if (vAlph < 0.01) discard;
 
@@ -72,10 +78,11 @@ function makeMaterial() {
     transparent:    false,
     depthWrite:     true,
     side:           THREE.FrontSide,
-    clippingPlanes: [],      // pre-declare so NUM_CLIPPING_PLANES is injectable on first recompile
     uniforms: {
-      uColorFade:   { value: 0.0 },
-      uGlobalAlpha: { value: 1.0 },
+      uColorFade:     { value: 0.0 },
+      uGlobalAlpha:   { value: 1.0 },
+      uClipPlanes:    { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
+      uNumClipPlanes: { value: 0 },
     },
   });
 }
@@ -702,9 +709,16 @@ export class VoxelBuilder {
   }
 
   setClippingPlanes(planes) {
+    const vecs = [];
+    for (let i = 0; i < 4; i++) {
+      const p = planes[i];
+      vecs.push(p
+        ? new THREE.Vector4(p.normal.x, p.normal.y, p.normal.z, p.constant)
+        : new THREE.Vector4());
+    }
     for (const mesh of Object.values(this.meshes)) {
-      mesh.material.clippingPlanes = planes.length ? planes : null;
-      mesh.material.needsUpdate = true;
+      mesh.material.uniforms.uClipPlanes.value    = vecs;
+      mesh.material.uniforms.uNumClipPlanes.value = Math.min(planes.length, 4);
     }
   }
 

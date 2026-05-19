@@ -45,10 +45,11 @@ class SceneManager {
     this._slicer = new SlicerTool(
       this._scene, this._camera, this._controls, this._renderer,
       planes => {
-        // Renderer-level clipping: works for all material types including custom
-        // ShaderMaterials. Per-material approach fails when NUM_CLIPPING_PLANES
-        // was baked in as 0 at first compile and needsUpdate doesn't recompile.
+        // renderer.clippingPlanes clips standard materials (surfaces, BH sticks).
+        // Voxel ShaderMaterial uses custom world-space uniforms (uClipPlanes/
+        // uNumClipPlanes) to avoid compile-time NUM_CLIPPING_PLANES = 0 baking.
         this._renderer.clippingPlanes = planes;
+        this._builder.setClippingPlanes(planes);
       }
     );
 
