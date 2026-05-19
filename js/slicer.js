@@ -71,12 +71,17 @@ export class SlicerTool {
     if (pSlider) { pSlider.min = -maxSlide; pSlider.max = maxSlide; pSlider.value = 0; }
   }
 
-  // ── Keyboard: D = top-down toggle, Ctrl+scroll = slide ───────────────────
+  // ── Keyboard: D = top-down toggle, Ctrl+scroll = slide, Esc = cancel/close ──
   _initKeyboard() {
     window.addEventListener('keydown', e => {
       const tag = e.target?.tagName?.toLowerCase();
       if (tag === 'input' || tag === 'textarea') return;
       if (e.key === 'd' || e.key === 'D') this._toggleTopDown();
+      if (e.key === 'Escape') {
+        this._cancelDraw();
+        document.getElementById('slicer-panel').hidden = true;
+        if (this._topDownMode) this._toggleTopDown();
+      }
     });
 
     this._canvas.addEventListener('wheel', e => {
@@ -111,6 +116,17 @@ export class SlicerTool {
       this._controls.update();
       this._topDownMode = true;
     }
+  }
+
+  // ── Cancel draw mode (called by ESC or programmatic close) ───────────────
+  _cancelDraw() {
+    if (!this._overlay) return;
+    this._overlay.style.pointerEvents = 'none';
+    this._overlay.style.cursor = 'default';
+    this._overlay.hidden = true;
+    this._controls.enabled = true;
+    const ctx = this._overlay.getContext('2d');
+    ctx.clearRect(0, 0, this._overlay.width, this._overlay.height);
   }
 
   // ── Draw-line mode ────────────────────────────────────────────────────────
@@ -163,13 +179,7 @@ export class SlicerTool {
       this._overlay.removeEventListener('mousedown', onDown);
       this._overlay.removeEventListener('mousemove', onMove);
       this._overlay.removeEventListener('mouseup',   onUp);
-      this._overlay.style.pointerEvents = 'none';
-      this._overlay.style.cursor = 'default';
-      this._controls.enabled = true;
-      setTimeout(() => {
-        ctx.clearRect(0, 0, this._overlay.width, this._overlay.height);
-        this._overlay.hidden = true;
-      }, 700);
+      this._cancelDraw();
     };
     this._overlay.addEventListener('mousedown', onDown);
     this._overlay.addEventListener('mousemove', onMove);
