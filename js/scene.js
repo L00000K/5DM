@@ -170,6 +170,9 @@ class SceneManager {
     this._surfaces.build(grid, geoUnits);
     this._applyViewMode();
 
+    // Re-apply any active slicer planes to the freshly-built meshes
+    this._slicer.reapply();
+
     if (classifiedBH?.length) {
       this._bhData = classifiedBH.filter(b => !b.synthetic);
       this.addBoreholeSticks(classifiedBH, geoUnits);

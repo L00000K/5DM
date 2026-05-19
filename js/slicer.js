@@ -276,6 +276,11 @@ export class SlicerTool {
     this._scene.add(group);
   }
 
+  // Re-emit planes to freshly-built meshes (call after model rebuild)
+  reapply() {
+    if (this._hasSlice) this._updatePlanes();
+  }
+
   // ── Clear all clipping ────────────────────────────────────────────────────
   clear() {
     this._hasSlice = false;

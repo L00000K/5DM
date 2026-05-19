@@ -72,6 +72,7 @@ function makeMaterial() {
     transparent:    false,
     depthWrite:     true,
     side:           THREE.FrontSide,
+    clippingPlanes: [],      // pre-declare so NUM_CLIPPING_PLANES is injectable on first recompile
     uniforms: {
       uColorFade:   { value: 0.0 },
       uGlobalAlpha: { value: 1.0 },
