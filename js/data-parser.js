@@ -229,15 +229,15 @@ export function parseCSV(text) {
   const header = rows[0].split(sep).map(h => h.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_'));
 
   const ALIASES = {
-    id:          ['bh_id','hole_id','borehole_id','id','name','location'],
-    x:           ['x','easting','x_m','local_x','coord_x'],
-    y:           ['y','northing','y_m','local_y','coord_y'],
-    gl:          ['ground_level','gl','ground_level_maod','reduced_level','rl','elevation'],
-    depth:       ['total_depth','depth','final_depth','end_depth','bh_depth'],
-    top:         ['depth_from','top','from_m','depth_top','start_depth','from'],
-    base:        ['depth_to','base','to_m','depth_base','end_depth_m','to'],
-    description: ['description','desc','geology','lithology','log','material','unit_desc'],
-    unit_code:   ['unit_code','unitcode','code','legend','geol_unit','unit'],
+    id:          ['bh_id','hole_id','borehole_id','id','name','location','loca_id'],
+    x:           ['x','easting','x_m','local_x','coord_x','loca_nate'],
+    y:           ['y','northing','y_m','local_y','coord_y','loca_natn'],
+    gl:          ['ground_level','gl','ground_level_maod','reduced_level','rl','elevation','loca_gl'],
+    depth:       ['total_depth','depth','final_depth','end_depth','bh_depth','loca_fdep'],
+    top:         ['depth_from','top','from_m','depth_top','start_depth','from','geol_top'],
+    base:        ['depth_to','base','to_m','depth_base','end_depth_m','to','geol_base'],
+    description: ['description','desc','geology','lithology','log','material','unit_desc','geol_desc'],
+    unit_code:   ['unit_code','unitcode','code','legend','geol_unit','unit','geol_leg','geol_geol'],
     certainty:   ['certainty','confidence','cert'],
     gwt_depth:   ['gwt_depth','gwt','water_depth','water_level','swl','standing_water_level','wstb_dpth'],
   };
@@ -290,6 +290,58 @@ export function parseCSV(text) {
   return bhs;
 }
 
+// ── Open Ground / AGS-column CSV table detection ──────────────────────────────
+// Returns the AGS group name ('LOCA','GEOL','ISPT','WSTB','CPTG','TRAN') when a
+// CSV header row contains AGS-style column names.  Returns null for plain CSVs
+// and for flat combined exports (LOCA + GEOL cols in one file — handled by parseCSV).
+function _detectTableType(headers) {
+  const h = new Set(headers.map(c => c.toUpperCase().trim()));
+  const hasLocaCoords = h.has('LOCA_NATE') || h.has('LOCA_NATN');
+  const hasGeolDepths = h.has('GEOL_TOP')  || h.has('GEOL_BASE');
+  if (hasLocaCoords && hasGeolDepths) return null; // flat combined → use parseCSV
+  if (hasGeolDepths || h.has('GEOL_DESC'))                     return 'GEOL';
+  if (hasLocaCoords || h.has('LOCA_GL') || h.has('LOCA_FDEP')) return 'LOCA';
+  if (h.has('ISPT_TOP') || h.has('ISPT_NVAL'))                 return 'ISPT';
+  if (h.has('WSTB_DPTH'))                                      return 'WSTB';
+  if (h.has('CPTG_DPTH') || h.has('CPTG_RES'))                return 'CPTG';
+  if (h.has('TRAN_DPTH') || h.has('TRAN_INCL'))               return 'TRAN';
+  return null;
+}
+
+function _parseTableRows(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return null;
+  const sep     = lines[0].includes('\t') ? '\t' : ',';
+  const headers = lines[0].split(sep).map(h => h.trim().replace(/^"|"$/g, ''));
+  const type    = _detectTableType(headers);
+  if (!type) return null;
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i].split(sep).map(c => c.trim().replace(/^"|"$/g, ''));
+    if (!cells.some(v => v)) continue;
+    const row = {};
+    headers.forEach((h, idx) => { row[h] = cells[idx] ?? ''; });
+    rows.push(row);
+  }
+  return { type, rows };
+}
+
+// Accepts [{text, name}] — each an Open Ground table CSV export.
+// Merges LOCA + GEOL + ISPT + WSTB tables and calls buildBoreholes.
+function _parseOpenGroundBatch(tableDataArr) {
+  const groups = {};
+  for (const { text, name } of tableDataArr) {
+    const parsed = _parseTableRows(text);
+    if (!parsed) continue;
+    if (!groups[parsed.type]) groups[parsed.type] = [];
+    groups[parsed.type].push(...parsed.rows);
+  }
+  if (!groups['LOCA'] && !groups['GEOL']) return [];
+  if (!groups['LOCA']) log('GEOL table found but no LOCA table — drop the LOCA CSV too for borehole coordinates.', 'warn');
+  if (!groups['GEOL']) log('LOCA table found but no GEOL table — drop the GEOL CSV too for geology layers.', 'warn');
+  return buildBoreholes(groups);
+}
+
 // ── File reading utility ───────────────────────────────────────────────────────
 function readFileText(file) {
   return new Promise((resolve, reject) => {
@@ -332,22 +384,53 @@ export function initUploader({ onParsed }) {
 
   async function parseAll(files) {
     let allBoreholes = [];
+
+    // Phase 1: read all files upfront
+    const readFiles = [];
     for (const file of files) {
       try {
-        const text = await readFileText(file);
-        const ext  = file.name.split('.').pop().toLowerCase();
+        readFiles.push({ file, text: await readFileText(file) });
+      } catch (err) {
+        log(`Error reading ${escHtml(file.name)}: ${err.message}`, 'error');
+      }
+    }
+
+    // Phase 2: separate Open Ground AGS-column tables from standard files
+    const ogTables = [], standardFiles = [];
+    for (const { file, text } of readFiles) {
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (ext === 'csv' || ext === 'txt') {
+        const firstLine = text.split(/\r?\n/).find(l => l.trim()) ?? '';
+        const sep       = firstLine.includes('\t') ? '\t' : ',';
+        const headers   = firstLine.split(sep).map(h => h.trim().replace(/^"|"$/g, ''));
+        if (_detectTableType(headers)) { ogTables.push({ text, name: file.name }); continue; }
+      }
+      standardFiles.push({ file, text });
+    }
+
+    // Phase 3: batch-process Open Ground tables (LOCA + GEOL + ISPT + WSTB merged)
+    if (ogTables.length) {
+      const names = ogTables.map(t => escHtml(t.name)).join(', ');
+      const bhs   = _parseOpenGroundBatch(ogTables);
+      log(`Open Ground tables (${names}): ${bhs.length} borehole(s) parsed`, bhs.length ? 'ok' : 'warn');
+      allBoreholes = allBoreholes.concat(bhs);
+    }
+
+    // Phase 4: standard AGS or generic CSV files
+    for (const { file, text } of standardFiles) {
+      try {
+        const ext   = file.name.split('.').pop().toLowerCase();
         const isAGS = ext === 'ags' || text.slice(0, 200).includes('"GROUP"') || text.slice(0, 200).includes('"LOCA"');
-        const bhs  = isAGS ? parseAGS(text) : parseCSV(text);
+        const bhs   = isAGS ? parseAGS(text) : parseCSV(text);
         log(`${escHtml(file.name)}: ${bhs.length} borehole(s) parsed`, bhs.length ? 'ok' : 'warn');
         allBoreholes = allBoreholes.concat(bhs);
       } catch (err) {
-        log(`Error parsing ${file.name}: ${err.message}`, 'error');
+        log(`Error parsing ${escHtml(file.name)}: ${err.message}`, 'error');
       }
     }
+
     if (allBoreholes.length) {
-      window.dispatchEvent(new CustomEvent('geomodel:data-loaded', {
-        detail: { boreholes: allBoreholes }
-      }));
+      window.dispatchEvent(new CustomEvent('geomodel:data-loaded', { detail: { boreholes: allBoreholes } }));
       onParsed(allBoreholes);
     } else {
       log('No boreholes extracted from dropped files.', 'warn');

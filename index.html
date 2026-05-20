@@ -60,7 +60,7 @@
         <div class="drop-zone" id="drop-bh" tabindex="0" role="button" aria-label="Drop borehole files here">
           <div class="drop-icon">⬇</div>
           <div class="drop-label">Borehole Logs</div>
-          <div class="drop-hint">AGS 4.x · CSV · TXT</div>
+          <div class="drop-hint">AGS 4.x · CSV · Open Ground tables</div>
           <input type="file" id="file-bh" accept=".ags,.csv,.txt" hidden multiple>
         </div>
         <div id="bh-file-list" class="file-list"></div>
@@ -115,15 +115,15 @@
 
         <!-- Topography (collapsible) -->
         <div class="collapsible-hdr" id="topo-toggle">
-          <span>Topography <span class="badge-opt">CSV optional</span></span>
+          <span>Topography <span class="badge-opt">GeoTIFF / CSV optional</span></span>
           <span class="collapse-arrow">›</span>
         </div>
         <div id="topo-section" class="collapsible-body" hidden>
           <div class="drop-zone drop-zone-sm" id="drop-topo" tabindex="0" role="button">
             <div class="drop-icon" style="font-size:18px">⬇</div>
             <div class="drop-label" style="font-size:12px">Topography Surface</div>
-            <div class="drop-hint">XYZ CSV or Esri ASCII Grid (.asc)</div>
-            <input type="file" id="file-topo" accept=".csv,.txt,.asc,.xyz" hidden>
+            <div class="drop-hint">GeoTIFF · XYZ CSV · Esri ASCII (.asc)</div>
+            <input type="file" id="file-topo" accept=".tif,.tiff,.csv,.txt,.asc,.xyz" hidden>
           </div>
           <div id="topo-file-info" class="file-list"></div>
           <label class="inline-check" style="margin-top:4px">

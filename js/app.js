@@ -668,6 +668,9 @@ function initTopoUpload() {
 }
 
 function parseTopoFile(file, infoEl) {
+  const ext = file.name.toLowerCase().split('.').pop();
+  if (ext === 'tif' || ext === 'tiff') { _parseTiffTopo(file, infoEl); return; }
+
   const reader = new FileReader();
   reader.onload = e => {
     const text = e.target.result;
@@ -677,7 +680,7 @@ function parseTopoFile(file, infoEl) {
     const points = isAsc ? _parseAscGrid(text) : _parseXYZCSV(text);
 
     if (points.length < 3) {
-      log('Topo file needs at least 3 valid data points. Supports XYZ CSV and Esri ASCII Grid (.asc).', 'warn');
+      log('Topo file needs at least 3 valid data points. Supports GeoTIFF, XYZ CSV and Esri ASCII Grid (.asc).', 'warn');
       return;
     }
     AppState.topoPoints = points;
@@ -750,6 +753,180 @@ function _parseAscGrid(text) {
     return points.filter((_, i) => i % step === 0);
   }
   return points;
+}
+
+// ── GeoTIFF topography parser ─────────────────────────────────────────────────
+// Handles uncompressed and Deflate (zlib) compressed single-band GeoTIFFs.
+// Float32, Int16, UInt16, Int32 sample formats + ModelTiepoint georeferencing.
+
+async function _parseTiffTopo(file, infoEl) {
+  try {
+    const buf    = await file.arrayBuffer();
+    const points = await _parseTiff(buf);
+    if (points.length < 3) {
+      log('GeoTIFF parsed but too few valid elevation points — check NoData value and coordinate system.', 'warn');
+      return;
+    }
+    AppState.topoPoints = points;
+    infoEl.innerHTML = `<div class="file-item">
+      <span class="file-name">${escHtml(file.name)}</span>
+      <span class="file-size">${points.length} pts</span></div>`;
+    if (AppState.scene) AppState.scene.showTopography(points);
+    log(`Topography loaded — ${points.length} pts (GeoTIFF)`, 'ok');
+  } catch (err) {
+    log(`GeoTIFF error: ${err.message}`, 'error');
+  }
+}
+
+async function _parseTiff(buf) {
+  const view = new DataView(buf);
+  const byteOrder = view.getUint16(0, true);
+  const le = byteOrder === 0x4949;
+  if (byteOrder !== 0x4949 && byteOrder !== 0x4D4D) throw new Error('Not a valid TIFF file');
+  if (view.getUint16(2, le) !== 42) throw new Error('Not a standard TIFF (bad magic — is this a BigTIFF?)');
+
+  const tags = _tiffReadIFD(view, view.getUint32(4, le), le);
+
+  const width    = _tiffNum(tags, 256, view, le) ?? 0;
+  const height   = _tiffNum(tags, 257, view, le) ?? 0;
+  const bps      = _tiffNum(tags, 258, view, le) ?? 32;
+  const comp     = _tiffNum(tags, 259, view, le) ?? 1;
+  const sampFmt  = _tiffNum(tags, 339, view, le) ?? 1; // 1=uint, 2=int, 3=float
+  const noDataStr = _tiffStr(tags, 42113, view, le);   // GDAL_NODATA tag
+  const noData   = noDataStr != null ? parseFloat(noDataStr) : null;
+
+  if (!width || !height) throw new Error('Could not read TIFF image dimensions');
+  if (comp !== 1 && comp !== 8 && comp !== 32946) {
+    const name = { 5: 'LZW', 6: 'JPEG', 34892: 'JPEG 2000' }[comp] ?? `type ${comp}`;
+    throw new Error(`${name} compression not supported. Re-save as Uncompressed or Deflate GeoTIFF from QGIS (Raster → Save As… → Compression: Deflate).`);
+  }
+  if (_tiffNum(tags, 322, view, le)) {
+    throw new Error('Tiled GeoTIFF not supported. Re-save as strip-based (Raster → Save As… → uncheck "Create tiles").');
+  }
+
+  const pixScale = _tiffDoubles(tags, 33550, view, le); // ModelPixelScaleTag
+  const tiepoint = _tiffDoubles(tags, 33922, view, le); // ModelTiepointTag
+  if (!pixScale?.length || !tiepoint?.length) {
+    throw new Error('No georeferencing found — ensure the file is a GeoTIFF with coordinate system metadata (not a plain TIFF image).');
+  }
+  const xScale = pixScale[0], yScale = pixScale[1];
+  // Tiepoint: [pixel_col, pixel_row, 0, map_x, map_y, 0] — image rows go top→bottom
+  const originX = tiepoint[3] - tiepoint[0] * xScale;
+  const originY = tiepoint[4] + tiepoint[1] * yScale;
+
+  const bytesPerPx   = bps >> 3;
+  const rowsPerStrip = _tiffNum(tags, 278, view, le) ?? height;
+  const stripOffsets = _tiffNums(tags, 273, view, le);
+  const stripBytes   = _tiffNums(tags, 279, view, le);
+  if (!stripOffsets?.length) throw new Error('No strip data found in TIFF');
+
+  const pixelData = new Uint8Array(width * height * bytesPerPx);
+  let pixOff = 0;
+  for (let s = 0; s < stripOffsets.length; s++) {
+    let strip;
+    if (comp === 1) {
+      strip = new Uint8Array(buf, stripOffsets[s], stripBytes[s]);
+    } else {
+      strip = await _tiffDeflate(new Uint8Array(buf, stripOffsets[s], stripBytes[s]));
+    }
+    pixelData.set(strip, pixOff);
+    pixOff += strip.length;
+  }
+
+  // Subsample to ≤ 50 k points
+  const step = Math.max(1, Math.ceil(Math.sqrt((width * height) / 50000)));
+  const dvPx = new DataView(pixelData.buffer, pixelData.byteOffset, pixelData.byteLength);
+  const points = [];
+
+  for (let row = 0; row < height; row += step) {
+    for (let col = 0; col < width; col += step) {
+      const idx = (row * width + col) * bytesPerPx;
+      let z;
+      if      (bps === 32 && sampFmt === 3) z = dvPx.getFloat32(idx, le);
+      else if (bps === 32 && sampFmt === 2) z = dvPx.getInt32(idx,   le);
+      else if (bps === 32)                  z = dvPx.getUint32(idx,   le);
+      else if (bps === 16 && sampFmt === 2) z = dvPx.getInt16(idx,    le);
+      else                                  z = dvPx.getUint16(idx,   le);
+
+      if (!isFinite(z) || z < -9000 || z > 20000) continue;
+      if (noData !== null && Math.abs(z - noData) < 0.001) continue;
+      points.push({ x: originX + (col + 0.5) * xScale, y: originY - (row + 0.5) * yScale, z });
+    }
+  }
+  return points;
+}
+
+// TIFF type sizes (indexed by type code 1–12)
+const _TIFF_SZ = [0,1,1,2,4,8,1,1,2,4,8,4,8];
+
+function _tiffReadIFD(view, offset, le) {
+  const tags = {};
+  const n = view.getUint16(offset, le);
+  for (let i = 0; i < n; i++) {
+    const o = offset + 2 + i * 12;
+    tags[view.getUint16(o, le)] = { type: view.getUint16(o+2,le), count: view.getUint32(o+4,le), vOff: o+8 };
+  }
+  return tags;
+}
+
+function _tiffOff(tag, view, le) {
+  const sz = _TIFF_SZ[tag.type] ?? 1;
+  return (sz * tag.count <= 4) ? tag.vOff : view.getUint32(tag.vOff, le);
+}
+
+function _tiffNum(tags, id, view, le) {
+  const t = tags[id]; if (!t) return null;
+  const o = _tiffOff(t, view, le);
+  if (t.type === 3) return view.getUint16(o, le);
+  if (t.type === 4) return view.getUint32(o, le);
+  if (t.type === 1) return view.getUint8(o);
+  return null;
+}
+
+function _tiffNums(tags, id, view, le) {
+  const t = tags[id]; if (!t) return null;
+  const sz = _TIFF_SZ[t.type] ?? 1;
+  const base = _tiffOff(t, view, le);
+  const out = [];
+  for (let i = 0; i < t.count; i++) {
+    const o = base + i * sz;
+    out.push(t.type === 3 ? view.getUint16(o,le) : t.type === 4 ? view.getUint32(o,le) : view.getUint8(o));
+  }
+  return out;
+}
+
+function _tiffDoubles(tags, id, view, le) {
+  const t = tags[id]; if (!t || t.type !== 12) return null;
+  const base = view.getUint32(t.vOff, le); // doubles always exceed 4 bytes
+  const out = [];
+  for (let i = 0; i < t.count; i++) out.push(view.getFloat64(base + i * 8, le));
+  return out;
+}
+
+function _tiffStr(tags, id, view, le) {
+  const t = tags[id]; if (!t) return null;
+  const base = _tiffOff(t, view, le);
+  let s = '';
+  for (let i = 0; i < t.count; i++) {
+    const ch = view.getUint8(base + i);
+    if (ch === 0) break;
+    s += String.fromCharCode(ch);
+  }
+  return s.trim() || null;
+}
+
+async function _tiffDeflate(compressed) {
+  const ds = new DecompressionStream('deflate');
+  const writer = ds.writable.getWriter();
+  const reader = ds.readable.getReader();
+  writer.write(compressed); writer.close();
+  const chunks = [];
+  while (true) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); }
+  const total = chunks.reduce((s, c) => s + c.length, 0);
+  const out   = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) { out.set(c, off); off += c.length; }
+  return out;
 }
 
 // ── Reset ──────────────────────────────────────────────────────────────────────

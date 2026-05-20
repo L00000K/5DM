@@ -91,6 +91,8 @@ A browser-based, AI-augmented 3D ground modelling tool that approaches the capab
 | CPT logs | AGS / CSV | `data-parser.js` | qc, fs → SBT Ic classification |
 | Lab results | CSV | `lab-import.js` | Unit_Code, Test_Type, Value → unit.params |
 | Topography | CSV (X,Y,Z) | app.js | Rendered as surface, clips voxel display |
+| Topography | GeoTIFF (.tif/.tiff) | app.js | Parsed via minimal built-in GeoTIFF reader; Float32/Int16/UInt16; Deflate or uncompressed; ModelTiepoint georeferencing |
+| Open Ground tables | CSV (LOCA / GEOL / ISPT / WSTB) | data-parser.js | Drop multiple files together; detected by AGS column names; merged into buildBoreholes |
 | Geological map | CSV (X,Y,UnitCode) | `geo-map.js` | Surface outcrop pinned as interpolation constraints |
 | Drillhole deviation | AGS TRAN group | `data-parser.js` | TRAN_DPTH, TRAN_INCL, TRAN_AZMH |
 | Unit descriptions | Plain text | `text-input.js` | Fed to Claude for parameter inference |
@@ -110,6 +112,8 @@ A browser-based, AI-augmented 3D ground modelling tool that approaches the capab
 - [x] Geological map CSV import → surface outcrop pins interpolation
 - [x] Drillhole deviation — minimum-curvature trajectory correction (AGS TRAN)
 - [x] Structural orientation import (strike/dip text → circular-mean azimuth)
+- [x] **Open Ground Studio table CSV import** — drop LOCA.csv + GEOL.csv + ISPT.csv etc. together; auto-detected by AGS column names (LOCA_NATE, GEOL_TOP etc.); merged and passed to shared buildBoreholes(); flat combined exports also supported via enhanced parseCSV aliases
+- [x] **GeoTIFF topography import** — pure-JS parser; Float32/Int16/UInt16/Int32 DEMs; uncompressed and Deflate (zlib) compressed strips; ModelTiepoint + ModelPixelScale georeferencing; auto-subsampled to ≤ 50 k points; clear error messages for LZW/tiled TIFFs with QGIS re-export instructions
 
 ### 4.2 AI / Claude Integration
 - [x] Unit discovery — Claude identifies distinct geological units from all layer descriptions
