@@ -305,7 +305,7 @@ function _channelSDF(feat, wx, wy, wz) {
   const cx     = feat._wx ?? 0;
   const cz     = feat._wz ?? 0;
   const gl     = feat._gl ?? wy;
-  const halfW  = (feat.width_m ?? 40) / 2;
+  const halfW  = Math.max(0.5, (feat.width_m ?? 40) / 2);
   const D      = feat.max_depth_m ?? 6;
   const θ      = (feat.orientation_deg ?? 90) * Math.PI / 180;
 

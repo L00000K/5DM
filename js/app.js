@@ -807,10 +807,13 @@ async function _parseTiff(buf) {
 
   const pixScale = _tiffDoubles(tags, 33550, view, le); // ModelPixelScaleTag
   const tiepoint = _tiffDoubles(tags, 33922, view, le); // ModelTiepointTag
-  if (!pixScale?.length || !tiepoint?.length) {
+  if (!pixScale || pixScale.length < 2 || !tiepoint || tiepoint.length < 5) {
     throw new Error('No georeferencing found — ensure the file is a GeoTIFF with coordinate system metadata (not a plain TIFF image).');
   }
   const xScale = pixScale[0], yScale = pixScale[1];
+  if (!isFinite(xScale) || !isFinite(yScale) || xScale === 0) {
+    throw new Error('Invalid pixel scale in GeoTIFF — check that the file has valid coordinate system metadata.');
+  }
   // Tiepoint: [pixel_col, pixel_row, 0, map_x, map_y, 0] — image rows go top→bottom
   const originX = tiepoint[3] - tiepoint[0] * xScale;
   const originY = tiepoint[4] + tiepoint[1] * yScale;
@@ -820,6 +823,9 @@ async function _parseTiff(buf) {
   const stripOffsets = _tiffNums(tags, 273, view, le);
   const stripBytes   = _tiffNums(tags, 279, view, le);
   if (!stripOffsets?.length) throw new Error('No strip data found in TIFF');
+  if (!stripBytes || stripBytes.length < stripOffsets.length) {
+    throw new Error('Malformed TIFF: StripByteCounts missing or shorter than StripOffsets.');
+  }
 
   const pixelData = new Uint8Array(width * height * bytesPerPx);
   let pixOff = 0;
@@ -830,7 +836,8 @@ async function _parseTiff(buf) {
     } else {
       strip = await _tiffDeflate(new Uint8Array(buf, stripOffsets[s], stripBytes[s]));
     }
-    pixelData.set(strip, pixOff);
+    const copyLen = Math.min(strip.length, pixelData.length - pixOff);
+    if (copyLen > 0) pixelData.set(strip.subarray(0, copyLen), pixOff);
     pixOff += strip.length;
   }
 
@@ -843,11 +850,15 @@ async function _parseTiff(buf) {
     for (let col = 0; col < width; col += step) {
       const idx = (row * width + col) * bytesPerPx;
       let z;
-      if      (bps === 32 && sampFmt === 3) z = dvPx.getFloat32(idx, le);
+      if      (bps === 64 && sampFmt === 3) z = dvPx.getFloat64(idx, le);
+      else if (bps === 64 && sampFmt === 2) z = Number(dvPx.getBigInt64(idx, le));
+      else if (bps === 32 && sampFmt === 3) z = dvPx.getFloat32(idx, le);
       else if (bps === 32 && sampFmt === 2) z = dvPx.getInt32(idx,   le);
       else if (bps === 32)                  z = dvPx.getUint32(idx,   le);
       else if (bps === 16 && sampFmt === 2) z = dvPx.getInt16(idx,    le);
-      else                                  z = dvPx.getUint16(idx,   le);
+      else if (bps === 16)                  z = dvPx.getUint16(idx,   le);
+      else if (bps === 8)                   z = dvPx.getUint8(idx);
+      else                                  z = NaN; // unsupported — skip
 
       if (!isFinite(z) || z < -9000 || z > 20000) continue;
       if (noData !== null && Math.abs(z - noData) < 0.001) continue;

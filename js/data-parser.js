@@ -251,6 +251,7 @@ export function parseCSV(text) {
   };
 
   const boreholeMap = {};
+  const _pf = (s) => { const v = parseFloat(s ?? ''); return isFinite(v) ? v : null; };
 
   for (let i = 1; i < rows.length; i++) {
     const cells = rows[i].split(sep).map(c => c.trim().replace(/^"|"$/g, ''));
@@ -265,9 +266,8 @@ export function parseCSV(text) {
     const base = parseFloat(cells[col('base')]  ?? '') || (top + 1);
     const desc = cells[col('description')] || '';
     const code = cells[col('unit_code')]   || null;
-    const cert = parseFloat(cells[col('certainty')] ?? '') || null;
-
-    const gwtD = parseFloat(cells[col('gwt_depth')] ?? '') || null;
+    const cert = _pf(cells[col('certainty')]);
+    const gwtD = _pf(cells[col('gwt_depth')]);
     if (!boreholeMap[id]) {
       const bh = { id, x, y, groundLevel: gl, depth: dep, layers: [] };
       if (gwtD != null && isFinite(gwtD)) bh.gwtDepth = gwtD;

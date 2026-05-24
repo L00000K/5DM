@@ -935,8 +935,8 @@ export function findUncertainClusters(certainty, grid, threshold = 0.45, maxClus
           centroid: { ix: cix_c, iy: ciy_c, iz: ciz_c },
           worldPos: {
             x: origin.x + cix_c * cellSize   + cellSize   * 0.5,
-            y: origin.y + ciz_c * cellHeight + cellHeight * 0.5,
-            z: origin.z + ciy_c * cellSize   + cellSize   * 0.5,
+            y: origin.z + ciy_c * cellSize   + cellSize   * 0.5,
+            z: origin.y + ciz_c * cellHeight + cellHeight * 0.5,
           },
           entropy: sumEnt / n,
           score:   n * (sumEnt / n),

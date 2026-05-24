@@ -894,7 +894,7 @@ class SceneManager {
       const lbl = document.createElement('div');
       lbl.className = 'log-label';
       lbl.style.height = `${pxH}px`;
-      lbl.innerHTML = `<span class="log-lbl-code">${layer.unit.code}</span>` +
+      lbl.innerHTML = `<span class="log-lbl-code">${_escHtml(layer.unit.code)}</span>` +
                       `<span class="log-lbl-depth">${layer.from?.toFixed(1)}–${layer.to?.toFixed(1)}</span>`;
       labels.appendChild(lbl);
 
@@ -1052,10 +1052,10 @@ class SceneManager {
           }
         }
         tooltip.innerHTML = `
-          <div class="tooltip-title">${unit?.name ?? hit.object.userData.unitCode}</div>
-          <div class="tooltip-row"><span>Code</span><span class="tooltip-val">${hit.object.userData.unitCode}</span></div>
-          <div class="tooltip-row"><span>Top of unit</span><span class="tooltip-val">${unitTopStr}</span></div>
-          <div class="tooltip-row"><span>Certainty</span><span class="tooltip-val">${cert}</span></div>
+          <div class="tooltip-title">${_escHtml(unit?.name ?? hit.object.userData.unitCode)}</div>
+          <div class="tooltip-row"><span>Code</span><span class="tooltip-val">${_escHtml(hit.object.userData.unitCode)}</span></div>
+          <div class="tooltip-row"><span>Top of unit</span><span class="tooltip-val">${_escHtml(unitTopStr)}</span></div>
+          <div class="tooltip-row"><span>Certainty</span><span class="tooltip-val">${_escHtml(cert)}</span></div>
           <div class="tooltip-row"><span>Pos</span><span class="tooltip-val">(${hit.point.x.toFixed(0)}, ${hit.point.y.toFixed(0)}, ${hit.point.z.toFixed(0)})</span></div>`;
 
         // Emit hover event for traceability panel
