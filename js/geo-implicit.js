@@ -6,7 +6,7 @@
 // Training: Adam + cosine-annealed LR, cross-entropy + L2
 // Oracle:   BFS cluster detection → Claude reasons over uncertain regions
 
-import { warpPoint, computeWarpedBounds, CONCEPT_AXES } from './concept-store.js';
+import { prepareShapesForSDF, evaluateAllSDFs } from './geo-shapes.js';
 
 const L_FOURIER = 6; // Fourier frequency bands → 3 + 3×2×6 = 39 features
 
@@ -111,41 +111,25 @@ class AdamOpt {
   setLr(lr) { this.lr = lr; }
 }
 
-// ── 4-Layer MLP with FiLM conditioning and skip connection H0f → H2 ─────────
-// FiLM = Feature-wise Linear Modulation: the concept context vector (last 32
-// elements of the input) generates per-layer scale γ and shift β that modulate
-// each hidden layer's pre-activation features before the non-linearity.
+// ── 4-Layer MLP with skip connection H0 → H2 ────────────────────────────────
+// Simple MLP: Fourier positional features + optional SDF inputs → geo unit probs.
 class GeoImplicitNet {
   constructor(nIn, nHidden, nOut, fourierDim = 39) {
     this.nIn = nIn; this.nHidden = nHidden; this.nOut = nOut;
     this.fourierDim = fourierDim;
-    const CTX_DIM = 32;
-    const k0 = Math.sqrt(2 / nIn), k1 = Math.sqrt(2 / nHidden), kg = Math.sqrt(2 / CTX_DIM);
-    // Main weight matrices W0..W3
+    const k0 = Math.sqrt(2 / nIn), k1 = Math.sqrt(2 / nHidden);
     this.W = [
       this._rand(nHidden, nIn,     k0),
       this._rand(nHidden, nHidden, k1),
       this._rand(nHidden, nHidden, k1),
       this._rand(nOut,    nHidden, k1),
     ];
-    // FiLM scale projections Wg0..Wg2  (nHidden × CTX_DIM) — small random init
-    this.Wg = [
-      this._rand(nHidden, CTX_DIM, kg * 0.1),
-      this._rand(nHidden, CTX_DIM, kg * 0.1),
-      this._rand(nHidden, CTX_DIM, kg * 0.1),  // layer 2
-    ];
-    // FiLM shift projections Wb0..Wb2  (nHidden × CTX_DIM) — zero init
-    this.Wb = [
-      new Float32Array(nHidden * CTX_DIM),
-      new Float32Array(nHidden * CTX_DIM),
-      new Float32Array(nHidden * CTX_DIM),  // layer 2
-    ];
     this.b = [
       new Float32Array(nHidden), new Float32Array(nHidden),
       new Float32Array(nHidden), new Float32Array(nOut),
     ];
-    // _params order: [W0,W1,W2,W3, Wg0,Wg1,Wg2, Wb0,Wb1,Wb2, b0,b1,b2,b3]
-    this._params = [...this.W, ...this.Wg, ...this.Wb, ...this.b];
+    // _params order: [W0,W1,W2,W3, b0,b1,b2,b3]
+    this._params = [...this.W, ...this.b];
   }
 
   getParams() { return this._params; }
@@ -161,17 +145,6 @@ class GeoImplicitNet {
     for (let r = 0; r < rows; r++) {
       let s = b[r];
       for (let c = 0; c < cols; c++) s += W[r * cols + c] * x[c];
-      out[r] = s;
-    }
-    return out;
-  }
-
-  // FiLM projection: returns nHidden-dim vector from CTX_DIM-dim ctx
-  _filmProj(Wg, ctx, nHidden, CTX_DIM) {
-    const out = new Float32Array(nHidden);
-    for (let r = 0; r < nHidden; r++) {
-      let s = 0;
-      for (let c = 0; c < CTX_DIM; c++) s += Wg[r * CTX_DIM + c] * ctx[c];
       out[r] = s;
     }
     return out;
@@ -193,81 +166,29 @@ class GeoImplicitNet {
     return ex;
   }
 
-  // filmDropout: fraction of FiLM units to zero during training (0 = no dropout)
-  forward(inp, filmDropout = 0) {
-    const { nHidden, nIn, nOut, W, Wg, Wb, b, fourierDim } = this;
-    const CTX_DIM = 32;
-    // ctx = last 32 elements (concept context)
-    const ctx = inp.subarray(fourierDim);
-
-    // Layer 0
+  forward(inp) {
+    const { nHidden, nIn, nOut, W, b } = this;
     const H0_pre = this._linear(W[0], b[0], inp, nHidden, nIn);
     const H0     = this._relu(H0_pre);
-    // FiLM layer 0: γ0 = 1 + Wg0@ctx, β0 = Wb0@ctx
-    // FiLM dropout: randomly zero individual FiLM units during training.
-    // This prevents the network from over-relying on concept signals at specific
-    // borehole positions and encourages it to generalise conceptual geometry.
-    const gamma0_raw = this._filmProj(Wg[0], ctx, nHidden, CTX_DIM);
-    const beta0      = this._filmProj(Wb[0], ctx, nHidden, CTX_DIM);
-    const gamma0     = new Float32Array(nHidden);
-    const H0f        = new Float32Array(nHidden);
-    for (let i = 0; i < nHidden; i++) {
-      const keep  = filmDropout > 0 ? (Math.random() > filmDropout ? 1 : 0) : 1;
-      gamma0[i] = 1 + gamma0_raw[i] * keep;
-      H0f[i]    = gamma0[i] * H0[i] + beta0[i] * keep;
-    }
-
-    // Layer 1 (takes modulated H0f)
-    const H1_pre = this._linear(W[1], b[1], H0f, nHidden, nHidden);
+    const H1_pre = this._linear(W[1], b[1], H0,  nHidden, nHidden);
     const H1     = this._relu(H1_pre);
-    // FiLM layer 1: γ1 = 1 + Wg1@ctx, β1 = Wb1@ctx
-    const gamma1_raw = this._filmProj(Wg[1], ctx, nHidden, CTX_DIM);
-    const beta1      = this._filmProj(Wb[1], ctx, nHidden, CTX_DIM);
-    const gamma1     = new Float32Array(nHidden);
-    const H1f        = new Float32Array(nHidden);
-    for (let i = 0; i < nHidden; i++) {
-      const keep  = filmDropout > 0 ? (Math.random() > filmDropout ? 1 : 0) : 1;
-      gamma1[i] = 1 + gamma1_raw[i] * keep;
-      H1f[i]    = gamma1[i] * H1[i] + beta1[i] * keep;
-    }
-
-    // Layer 2 (takes modulated H1f, skip from H0f)
-    const H2_raw = this._linear(W[2], b[2], H1f, nHidden, nHidden);
+    // Layer 2 with skip from H0 (×0.1)
+    const H2_raw = this._linear(W[2], b[2], H1, nHidden, nHidden);
     const H2_pre = new Float32Array(nHidden);
-    for (let i = 0; i < nHidden; i++) H2_pre[i] = H2_raw[i] + 0.1 * H0f[i];
+    for (let i = 0; i < nHidden; i++) H2_pre[i] = H2_raw[i] + 0.1 * H0[i];
     const H2     = this._relu(H2_pre);
-    // FiLM layer 2: final concept shaping pass before output
-    // Receives lower FiLM dropout so concept influence is retained at the output stage.
-    const gamma2_raw = this._filmProj(Wg[2], ctx, nHidden, CTX_DIM);
-    const beta2      = this._filmProj(Wb[2], ctx, nHidden, CTX_DIM);
-    const gamma2     = new Float32Array(nHidden);
-    const H2f        = new Float32Array(nHidden);
-    const filmDrop2  = filmDropout * 0.5; // half-rate dropout at deepest FiLM layer
-    for (let i = 0; i < nHidden; i++) {
-      const keep  = filmDrop2 > 0 ? (Math.random() > filmDrop2 ? 1 : 0) : 1;
-      gamma2[i] = 1 + gamma2_raw[i] * keep;
-      H2f[i]    = gamma2[i] * H2[i] + beta2[i] * keep;
-    }
-
-    // Output layer takes FiLM-modulated H2f
-    const logits = this._linear(W[3], b[3], H2f, nOut, nHidden);
+    const logits = this._linear(W[3], b[3], H2,  nOut,    nHidden);
     const probs  = this._softmax(logits);
-
-    return { H0_pre, H0, gamma0, beta0, H0f, H1_pre, H1, gamma1, beta1, H1f,
-             H2_pre, H2, gamma2, beta2, H2f, logits, probs };
+    return { H0_pre, H0, H1_pre, H1, H2_pre, H2, logits, probs };
   }
 
   predict(inp) { return this.forward(inp).probs; }
 
-  // Returns grads in same order as _params = [dW0,dW1,dW2,dW3, dWg0,dWg1,dWg2, dWb0,dWb1,dWb2, db0,db1,db2,db3]
+  // Returns grads in same order as _params = [dW0,dW1,dW2,dW3, db0,db1,db2,db3]
   // sampleWeight scales the gradient — allows high-confidence samples to drive stronger updates.
   backward(inp, act, targetIdx, l2 = 0.001, sampleWeight = 1.0) {
-    const { nHidden, nIn, nOut, W, Wg, Wb, fourierDim } = this;
-    const CTX_DIM = 32;
-    const ctx = inp.subarray(fourierDim);
-    const { H0_pre, H0, gamma0, beta0, H0f,
-            H1_pre, H1, gamma1, beta1, H1f,
-            H2_pre, H2, gamma2, beta2, H2f, probs } = act;
+    const { nHidden, nIn, nOut, W, b } = this;
+    const { H0_pre, H0, H1_pre, H1, H2_pre, H2, probs } = act;
 
     const dLogits = new Float32Array(nOut);
     for (let i = 0; i < nOut; i++) dLogits[i] = (probs[i] - (i === targetIdx ? 1 : 0)) * sampleWeight;
@@ -291,74 +212,29 @@ class GeoImplicitNet {
       for (let i = 0; i < pre.length; i++) d[i] = pre[i] > 0 ? dOut[i] : 0;
       return d;
     };
-    // Outer product gradient for FiLM projection (nHidden × CTX_DIM)
-    const filmOuterGrad = (dRaw, ctx_vec, Wmat) => {
-      const dW = new Float32Array(nHidden * CTX_DIM);
-      for (let r = 0; r < nHidden; r++)
-        for (let c = 0; c < CTX_DIM; c++)
-          dW[r * CTX_DIM + c] = dRaw[r] * ctx_vec[c] + l2 * Wmat[r * CTX_DIM + c];
-      return dW;
-    };
 
-    // ── Layer 3 (input was H2f) ───────────────────────────────────────────
-    const { dW: dW3, db: db3 } = outerGrad(dLogits, H2f, nOut, nHidden, W[3]);
-    const dH2f = matVecT(W[3], dLogits, nOut, nHidden);
-
-    // ── FiLM layer 2 (H2f = γ2 ⊙ H2 + β2) ───────────────────────────────
-    const dH2       = new Float32Array(nHidden);
-    const dGamma2   = new Float32Array(nHidden);
-    const dBeta2    = dH2f;
-    for (let i = 0; i < nHidden; i++) {
-      dH2[i]     = dH2f[i] * gamma2[i];
-      dGamma2[i] = dH2f[i] * H2[i];
-    }
-    const dWg2 = filmOuterGrad(dGamma2, ctx, Wg[2]);
-    const dWb2 = filmOuterGrad(dBeta2,  ctx, Wb[2]);
-
-    // ── Layer 2 (input was H1f; skip from H0f) ───────────────────────────
+    // Layer 3
+    const { dW: dW3, db: db3 } = outerGrad(dLogits, H2, nOut, nHidden, W[3]);
+    const dH2 = matVecT(W[3], dLogits, nOut, nHidden);
+    // Layer 2
     const dH2_pre = reluBack(dH2, H2_pre);
-    const { dW: dW2, db: db2 } = outerGrad(dH2_pre, H1f, nHidden, nHidden, W[2]);
-    const dH1f      = matVecT(W[2], dH2_pre, nHidden, nHidden);
-    const dH0f_skip = new Float32Array(nHidden);
-    for (let i = 0; i < nHidden; i++) dH0f_skip[i] = 0.1 * dH2_pre[i];
-
-    // ── FiLM layer 1 (H1f = γ1 ⊙ H1 + β1) ───────────────────────────────
-    const dH1       = new Float32Array(nHidden);
-    const dGamma1   = new Float32Array(nHidden);
-    const dBeta1    = dH1f;
-    for (let i = 0; i < nHidden; i++) {
-      dH1[i]     = dH1f[i] * gamma1[i];
-      dGamma1[i] = dH1f[i] * H1[i];
-    }
-    const dWg1 = filmOuterGrad(dGamma1, ctx, Wg[1]);
-    const dWb1 = filmOuterGrad(dBeta1,  ctx, Wb[1]);
-
-    // ── Layer 1 (input was H0f) ───────────────────────────────────────────
-    const dH1_pre     = reluBack(dH1, H1_pre);
-    const { dW: dW1, db: db1 } = outerGrad(dH1_pre, H0f, nHidden, nHidden, W[1]);
-    const dH0f_layer1 = matVecT(W[1], dH1_pre, nHidden, nHidden);
-
-    // Combine H0f gradients (layer1 + skip)
-    const dH0f = new Float32Array(nHidden);
-    for (let i = 0; i < nHidden; i++) dH0f[i] = dH0f_layer1[i] + dH0f_skip[i];
-
-    // ── FiLM layer 0 (H0f = γ0 ⊙ H0 + β0) ───────────────────────────────
-    const dH0       = new Float32Array(nHidden);
-    const dGamma0   = new Float32Array(nHidden);
-    const dBeta0    = dH0f;
-    for (let i = 0; i < nHidden; i++) {
-      dH0[i]     = dH0f[i] * gamma0[i];
-      dGamma0[i] = dH0f[i] * H0[i];
-    }
-    const dWg0 = filmOuterGrad(dGamma0, ctx, Wg[0]);
-    const dWb0 = filmOuterGrad(dBeta0,  ctx, Wb[0]);
-
-    // ── Layer 0 ───────────────────────────────────────────────────────────
-    const dH0_pre = reluBack(dH0, H0_pre);
+    const { dW: dW2, db: db2 } = outerGrad(dH2_pre, H1, nHidden, nHidden, W[2]);
+    const dH1      = matVecT(W[2], dH2_pre, nHidden, nHidden);
+    // Skip connection from H0
+    const dH0_skip = new Float32Array(nHidden);
+    for (let i = 0; i < nHidden; i++) dH0_skip[i] = 0.1 * dH2_pre[i];
+    // Layer 1
+    const dH1_pre = reluBack(dH1, H1_pre);
+    const { dW: dW1, db: db1 } = outerGrad(dH1_pre, H0, nHidden, nHidden, W[1]);
+    const dH0_layer1 = matVecT(W[1], dH1_pre, nHidden, nHidden);
+    // Layer 0
+    const dH0_combined = new Float32Array(nHidden);
+    for (let i = 0; i < nHidden; i++) dH0_combined[i] = dH0_layer1[i] + dH0_skip[i];
+    const dH0_pre = reluBack(dH0_combined, H0_pre);
     const { dW: dW0, db: db0 } = outerGrad(dH0_pre, inp, nHidden, nIn, W[0]);
 
-    // Return order matches _params: [W0,W1,W2,W3, Wg0,Wg1,Wg2, Wb0,Wb1,Wb2, b0,b1,b2,b3]
-    return [dW0, dW1, dW2, dW3, dWg0, dWg1, dWg2, dWb0, dWb1, dWb2, db0, db1, db2, db3];
+    // Return order matches _params: [W0,W1,W2,W3, b0,b1,b2,b3]
+    return [dW0, dW1, dW2, dW3, db0, db1, db2, db3];
   }
 }
 
@@ -374,9 +250,8 @@ export function buildGeoContext(geoUnits, siteHistory, unitDescriptions) {
 // Weights are synced back to the JS net after training for JS inference compat.
 async function _trainWithTF(net, allSamples, opts, onProgress) {
   const tf = window.tf;
-  const { epochs, lr, lrMin, l2, filmWarmupFrac } = opts;
-  const { nHidden, nIn, nOut, fourierDim } = net;
-  const CTX = 32;
+  const { epochs, lr, lrMin, l2 } = opts;
+  const { nHidden, nIn, nOut } = net;
   const N   = allSamples.length;
 
   // Pack all samples into flat typed arrays (created once, reused every epoch)
@@ -403,25 +278,17 @@ async function _trainWithTF(net, allSamples, opts, onProgress) {
     b1:  tf.variable(tf.tensor1d(net.b[1]),                      true, nm('b1')),
     b2:  tf.variable(tf.tensor1d(net.b[2]),                      true, nm('b2')),
     b3:  tf.variable(tf.tensor1d(net.b[3]),                      true, nm('b3')),
-    Wg0: tf.variable(tf.tensor2d(net.Wg[0], [nHidden, CTX]),     true, nm('Wg0')),
-    Wg1: tf.variable(tf.tensor2d(net.Wg[1], [nHidden, CTX]),     true, nm('Wg1')),
-    Wg2: tf.variable(tf.tensor2d(net.Wg[2], [nHidden, CTX]),     true, nm('Wg2')),
-    Wb0: tf.variable(tf.tensor2d(net.Wb[0], [nHidden, CTX]),     true, nm('Wb0')),
-    Wb1: tf.variable(tf.tensor2d(net.Wb[1], [nHidden, CTX]),     true, nm('Wb1')),
-    Wb2: tf.variable(tf.tensor2d(net.Wb[2], [nHidden, CTX]),     true, nm('Wb2')),
   };
-  const allVars   = Object.values(V);
-  const filmNames = new Set([V.Wg0, V.Wg1, V.Wg2, V.Wb0, V.Wb1, V.Wb2].map(v => v.name));
+  const allVars = Object.values(V);
 
   // Persistent input tensors — created once, reused each epoch (no re-allocation)
   const inpT = tf.tensor2d(inpArr, [N, nIn]);
   const tgtT = tf.tensor1d(tgtArr, 'int32');
   const wtT  = tf.tensor1d(wtArr);
 
-  const opt           = tf.train.adam(lr, 0.9, 0.999, 1e-8);
-  const warmupEps     = Math.max(1, Math.round(epochs * 0.05));
-  const filmWarmupEps = Math.max(1, Math.round(epochs * filmWarmupFrac));
-  const nOut_         = nOut; // local for closure
+  const opt       = tf.train.adam(lr, 0.9, 0.999, 1e-8);
+  const warmupEps = Math.max(1, Math.round(epochs * 0.05));
+  const nOut_     = nOut; // local for closure
 
   for (let ep = 0; ep < epochs; ep++) {
     // LR schedule: linear warmup → cosine decay (mirrors the JS path)
@@ -429,40 +296,20 @@ async function _trainWithTF(net, allSamples, opts, onProgress) {
     const cf = ep < warmupEps ? 0 : (ep - warmupEps) / Math.max(1, epochs - warmupEps);
     opt.learningRate = lrMin + 0.5 * (lr * wf - lrMin) * (1 + Math.cos(Math.PI * cf));
 
-    const filmScale = Math.min(1, ep / Math.max(1, filmWarmupEps));
-
     // Full-batch forward pass + auto-diff backward via TF
     const { value: lossT, grads } = tf.variableGrads(() => {
-      // [N, 32] concept context from the last CTX columns of each input
-      const ctx    = inpT.slice([0, fourierDim], [-1, CTX]);
-      // Layer 0 + FiLM 0
-      const H0     = inpT.matMul(V.W0.transpose()).add(V.b0).relu();
-      const H0f    = H0.mul(ctx.matMul(V.Wg0.transpose()).add(1)).add(ctx.matMul(V.Wb0.transpose()));
-      // Layer 1 + FiLM 1
-      const H1     = H0f.matMul(V.W1.transpose()).add(V.b1).relu();
-      const H1f    = H1.mul(ctx.matMul(V.Wg1.transpose()).add(1)).add(ctx.matMul(V.Wb1.transpose()));
-      // Layer 2 + skip from H0f + FiLM 2
-      const H2     = H1f.matMul(V.W2.transpose()).add(V.b2).add(H0f.mul(0.1)).relu();
-      const H2f    = H2.mul(ctx.matMul(V.Wg2.transpose()).add(1)).add(ctx.matMul(V.Wb2.transpose()));
+      const H0  = inpT.matMul(V.W0.transpose()).add(V.b0).relu();
+      const H1  = H0.matMul(V.W1.transpose()).add(V.b1).relu();
+      const H2r = H1.matMul(V.W2.transpose()).add(V.b2);
+      const H2  = H2r.add(H0.mul(0.1)).relu();  // skip
+      const logits = H2.matMul(V.W3.transpose()).add(V.b3);
       // Output: weighted cross-entropy + L2 on main weights
-      const logits = H2f.matMul(V.W3.transpose()).add(V.b3);
-      const ce     = tf.oneHot(tgtT, nOut_).toFloat()
-                       .mul(tf.logSoftmax(logits)).sum(1).neg().mul(wtT).mean();
-      const l2L    = [V.W0, V.W1, V.W2, V.W3]
-                       .reduce((a, w) => a.add(w.square().sum()), tf.scalar(0)).mul(l2 / N);
+      const ce  = tf.oneHot(tgtT, nOut_).toFloat()
+                    .mul(tf.logSoftmax(logits)).sum(1).neg().mul(wtT).mean();
+      const l2L = [V.W0, V.W1, V.W2, V.W3]
+                    .reduce((a, w) => a.add(w.square().sum()), tf.scalar(0)).mul(l2 / N);
       return ce.add(l2L);
     }, allVars);
-
-    // Scale FiLM gradients during warmup (mirrors JS filmGradScale logic)
-    if (filmScale < 1) {
-      for (const [name, grad] of Object.entries(grads)) {
-        if (filmNames.has(name)) {
-          const scaled = grad.mul(filmScale);
-          grad.dispose();
-          grads[name] = scaled;
-        }
-      }
-    }
 
     opt.applyGradients(grads);
 
@@ -482,8 +329,6 @@ async function _trainWithTF(net, allSamples, opts, onProgress) {
   net.W[2].set(await V.W2.data()); net.W[3].set(await V.W3.data());
   net.b[0].set(await V.b0.data()); net.b[1].set(await V.b1.data());
   net.b[2].set(await V.b2.data()); net.b[3].set(await V.b3.data());
-  net.Wg[0].set(await V.Wg0.data()); net.Wg[1].set(await V.Wg1.data()); net.Wg[2].set(await V.Wg2.data());
-  net.Wb[0].set(await V.Wb0.data()); net.Wb[1].set(await V.Wb1.data()); net.Wb[2].set(await V.Wb2.data());
 
   // Free all GPU memory
   allVars.forEach(v => v.dispose());
@@ -494,20 +339,15 @@ async function _trainWithTF(net, allSamples, opts, onProgress) {
 // ── TF.js GPU-accelerated batched inference ───────────────────────────────────
 // Runs all voxel forward passes in one GPU call (chunked to avoid OOM).
 // Returns Float32Array [total * nOut] of softmax probabilities.
-function _inferBatchTF(net, inpFlat, total, nIn, fourierDim, CHUNK = 8192) {
+function _inferBatchTF(net, inpFlat, total, nIn, CHUNK = 8192) {
   const tf = window.tf;
   const { nHidden, nOut } = net;
-  const CTX = 32;
 
   // Constant tensors for weights — not variables, no gradient tracking
   const W  = net.W.map((w, i) => tf.tensor2d(w, [i === 3 ? nOut : nHidden, i === 0 ? nIn : nHidden]));
   const b  = net.b.map(bv => tf.tensor1d(bv));
-  const Wg = net.Wg.map(w => tf.tensor2d(w, [nHidden, CTX]));
-  const Wb = net.Wb.map(w => tf.tensor2d(w, [nHidden, CTX]));
   // Pre-transpose all weight matrices once — reused across chunks
-  const Wt  = W.map(w => w.transpose());
-  const Wgt = Wg.map(w => w.transpose()); // [CTX, nHidden]
-  const Wbt = Wb.map(w => w.transpose());
+  const Wt = W.map(w => w.transpose());
 
   const outFlat = new Float32Array(total * nOut);
 
@@ -517,15 +357,12 @@ function _inferBatchTF(net, inpFlat, total, nIn, fourierDim, CHUNK = 8192) {
 
     // tf.tidy disposes all intermediate tensors except the returned one
     const probT = tf.tidy(() => {
-      const inp  = tf.tensor2d(chunk, [count, nIn]);
-      const ctx  = inp.slice([0, fourierDim], [-1, CTX]);
-      const H0   = inp.matMul(Wt[0]).add(b[0]).relu();
-      const H0f  = H0.mul(ctx.matMul(Wgt[0]).add(1)).add(ctx.matMul(Wbt[0]));
-      const H1   = H0f.matMul(Wt[1]).add(b[1]).relu();
-      const H1f  = H1.mul(ctx.matMul(Wgt[1]).add(1)).add(ctx.matMul(Wbt[1]));
-      const H2   = H1f.matMul(Wt[2]).add(b[2]).add(H0f.mul(0.1)).relu();
-      const H2f  = H2.mul(ctx.matMul(Wgt[2]).add(1)).add(ctx.matMul(Wbt[2]));
-      return tf.softmax(H2f.matMul(Wt[3]).add(b[3]));
+      const inp    = tf.tensor2d(chunk, [count, nIn]);
+      const H0     = inp.matMul(Wt[0]).add(b[0]).relu();
+      const H1     = H0.matMul(Wt[1]).add(b[1]).relu();
+      const H2     = H1.matMul(Wt[2]).add(b[2]).add(H0.mul(0.1)).relu();
+      const logits = H2.matMul(Wt[3]).add(b[3]);
+      return tf.softmax(logits);
     });
 
     outFlat.set(probT.dataSync(), start * nOut);
@@ -533,16 +370,14 @@ function _inferBatchTF(net, inpFlat, total, nIn, fourierDim, CHUNK = 8192) {
   }
 
   // Free all GPU memory held by weight tensors
-  [...W, ...b, ...Wg, ...Wb, ...Wt, ...Wgt, ...Wbt].forEach(t => t.dispose());
+  [...W, ...b, ...Wt].forEach(t => t.dispose());
   return outFlat;
 }
 
 // ── Train the neural implicit geological field ───────────────────────────────
-// conceptStore: ConceptStore instance (or null for neutral/no-concept runs)
-// The store's concept embeddings warp the coordinate space so that the output
-// geometry of the implicit field directly reflects geological conceptual inputs.
-// Returns { net, fourierEnc, conceptStore, warpedBounds, bounds, nUnits, unitCodes } or null
-export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, options = {}) {
+// geoShapes: PreparedShape[] from geo-shapes.js prepareShapesForSDF() (can be [])
+// Returns { net, fourierEnc, geoShapes, bounds, nUnits, unitCodes, nSDFs } or null
+export async function trainGeoImplicit(boreholes, geoUnits, geoShapes = [], options = {}) {
   const {
     epochs          = 600,
     lr              = 0.01,
@@ -575,27 +410,20 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
     bounds[mn] -= margin; bounds[mx] += margin;
   }
 
+  // Convert fractional centroid coordinates to world coords using site bounds.
+  const sdfBbox       = { minX: bounds.minX, maxX: bounds.maxX, minY: bounds.minY, maxY: bounds.maxY, maxGL: bounds.maxZ };
+  const preparedShapes = prepareShapesForSDF(geoShapes, sdfBbox);
+
   const fourierEnc = new FourierEncoder(L_FOURIER);
-  const CONCEPT_DIM = 32;
-  // nIn = Fourier positional (39) + concept context (32) = 71
-  const nIn        = fourierEnc.outDim + CONCEPT_DIM;
+  const nSDFs      = preparedShapes.length;
+  // nIn = Fourier positional (39) + SDF values (nSDFs, may be 0)
+  const nIn        = fourierEnc.outDim + nSDFs;
   const nUnits     = geoUnits.length;
   const unitCodes  = geoUnits.map(u => u.code);
   const unitIdx    = {};
   geoUnits.forEach((u, i) => { unitIdx[u.code] = i; });
 
-  // Compute global anisotropy tensor for the warped bounds used by the Fourier encoder.
-  // Using a global average tensor keeps the normalisation bounds consistent while still
-  // allowing per-point local warping to vary.
-  const gTensor = conceptStore?.globalTensor() ?? { Ax: 1, Ay: 1, Az: 1, Amaj: 1, Amin: 1, theta: 0, cosT: 1, sinT: 0 };
-  const warpedBounds = computeWarpedBounds(bounds, gTensor);
-
-  const zeroCtx = new Float32Array(CONCEPT_DIM);
-
   // Build training samples from boreholes.
-  // Each sample's positional features are warped by the local concept tensor at (x,y,z),
-  // and the concept context vector is appended so the network learns to associate the
-  // semantic geometry signal with the factual borehole observation.
   const samples = [];
   for (const bh of boreholes) {
     for (const layer of (bh.layers ?? [])) {
@@ -605,31 +433,13 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
       const zBase = bh.groundLevel - layer.base;
       const wt    = layer.certainty ?? 0.9;
       for (let s = 0; s < samplesPerLayer; s++) {
-        const t   = (s + 0.5) / samplesPerLayer;
-        const wz  = zBase + t * (zTop - zBase);
-        // Compute local concept context at this point; pass unitCode so concepts with
-        // unit affinity restrictions apply only to the relevant geological units.
-        const ctx    = conceptStore ? conceptStore.computeAt(bh.x, bh.y, wz, layer.unitCode) : null;
-        const ctxVec = ctx?.vec ?? zeroCtx;
-        const tensor = ctx?.tensor ?? gTensor;
-        // Boost sample weight in concept-active zones: concept relevance provides
-        // extra semantic certainty, so we want stronger gradient signal there.
-        const conceptBoost = ctx ? Math.min(0.5, ctx.totalWeight * 0.3) : 0;
-        const warped = warpPoint(bh.x, bh.y, wz, tensor);
-        // Apply depth trend: deepening axes tilt the Z coordinate in normalised space.
-        // This makes the implicit field naturally learn dipping contacts without extra samples.
-        let warpedZ = warped.z;
-        const trend = ctx?.trend;
-        if (trend && (Math.abs(trend.dz_dxN) > 0.005 || Math.abs(trend.dz_dyN) > 0.005)) {
-          const xN = 2 * (warped.x - warpedBounds.minX) / Math.max(1e-6, warpedBounds.maxX - warpedBounds.minX) - 1;
-          const yN = 2 * (warped.y - warpedBounds.minY) / Math.max(1e-6, warpedBounds.maxY - warpedBounds.minY) - 1;
-          warpedZ += trend.dz_dxN * xN + trend.dz_dyN * yN;
-        }
-        const pos = fourierEnc.encode(warped.x, warped.y, warpedZ, warpedBounds);
+        const t  = (s + 0.5) / samplesPerLayer;
+        const wz = zBase + t * (zTop - zBase);
+        const pos = fourierEnc.encode(bh.x, bh.y, wz, bounds);
         const inp = new Float32Array(nIn);
         inp.set(pos);
-        inp.set(ctxVec, fourierEnc.outDim);
-        samples.push({ inp, target: ti, weight: wt + conceptBoost });
+        if (nSDFs) inp.set(evaluateAllSDFs(preparedShapes, bh.x, bh.y, wz), fourierEnc.outDim);
+        samples.push({ inp, target: ti, weight: wt });
       }
     }
   }
@@ -663,43 +473,21 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
         // 2 samples just inside the UPPER unit (slightly above contact)
         for (let k = 0; k < 2; k++) {
           const wz = contactZ + offsetAbove * (k + 1);
-          const ctx    = conceptStore ? conceptStore.computeAt(bh.x, bh.y, wz, above.unitCode) : null;
-          const ctxVec = ctx?.vec ?? zeroCtx;
-          const tensor = ctx?.tensor ?? gTensor;
-          const warped = warpPoint(bh.x, bh.y, wz, tensor);
-          let warpedZ = warped.z;
-          const trend = ctx?.trend;
-          if (trend && (Math.abs(trend.dz_dxN) > 0.005 || Math.abs(trend.dz_dyN) > 0.005)) {
-            const xN = 2 * (warped.x - warpedBounds.minX) / Math.max(1e-6, warpedBounds.maxX - warpedBounds.minX) - 1;
-            const yN = 2 * (warped.y - warpedBounds.minY) / Math.max(1e-6, warpedBounds.maxY - warpedBounds.minY) - 1;
-            warpedZ += trend.dz_dxN * xN + trend.dz_dyN * yN;
-          }
-          const pos = fourierEnc.encode(warped.x, warped.y, warpedZ, warpedBounds);
+          const pos = fourierEnc.encode(bh.x, bh.y, wz, bounds);
           const inp = new Float32Array(nIn);
-          inp.set(pos); inp.set(ctxVec, fourierEnc.outDim);
-          const conceptBoost = ctx ? Math.min(0.5, ctx.totalWeight * 0.3) : 0;
-          samples.push({ inp, target: tiAbove, weight: (above.certainty ?? 0.9) * CONTACT_WEIGHT + conceptBoost });
+          inp.set(pos);
+          if (nSDFs) inp.set(evaluateAllSDFs(preparedShapes, bh.x, bh.y, wz), fourierEnc.outDim);
+          samples.push({ inp, target: tiAbove, weight: (above.certainty ?? 0.9) * CONTACT_WEIGHT });
         }
 
         // 2 samples just inside the LOWER unit (slightly below contact)
         for (let k = 0; k < 2; k++) {
           const wz = contactZ - offsetBelow * (k + 1);
-          const ctx    = conceptStore ? conceptStore.computeAt(bh.x, bh.y, wz, below.unitCode) : null;
-          const ctxVec = ctx?.vec ?? zeroCtx;
-          const tensor = ctx?.tensor ?? gTensor;
-          const warped = warpPoint(bh.x, bh.y, wz, tensor);
-          let warpedZ = warped.z;
-          const trend = ctx?.trend;
-          if (trend && (Math.abs(trend.dz_dxN) > 0.005 || Math.abs(trend.dz_dyN) > 0.005)) {
-            const xN = 2 * (warped.x - warpedBounds.minX) / Math.max(1e-6, warpedBounds.maxX - warpedBounds.minX) - 1;
-            const yN = 2 * (warped.y - warpedBounds.minY) / Math.max(1e-6, warpedBounds.maxY - warpedBounds.minY) - 1;
-            warpedZ += trend.dz_dxN * xN + trend.dz_dyN * yN;
-          }
-          const pos = fourierEnc.encode(warped.x, warped.y, warpedZ, warpedBounds);
+          const pos = fourierEnc.encode(bh.x, bh.y, wz, bounds);
           const inp = new Float32Array(nIn);
-          inp.set(pos); inp.set(ctxVec, fourierEnc.outDim);
-          const conceptBoost = ctx ? Math.min(0.5, ctx.totalWeight * 0.3) : 0;
-          samples.push({ inp, target: tiBelow, weight: (below.certainty ?? 0.9) * CONTACT_WEIGHT + conceptBoost });
+          inp.set(pos);
+          if (nSDFs) inp.set(evaluateAllSDFs(preparedShapes, bh.x, bh.y, wz), fourierEnc.outDim);
+          samples.push({ inp, target: tiBelow, weight: (below.certainty ?? 0.9) * CONTACT_WEIGHT });
         }
       }
     }
@@ -762,140 +550,12 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
             for (const dz of [-interpThick, -interpThick * 2.5]) {
               const wz = iz + dz; // negative dz = below contact = inside unit
               if (wz < bounds.minZ || wz > bounds.maxZ) continue;
-              const ctx    = conceptStore ? conceptStore.computeAt(ix, iy, wz, code) : null;
-              const ctxVec = ctx?.vec ?? zeroCtx;
-              const tensor = ctx?.tensor ?? gTensor;
-              const warped = warpPoint(ix, iy, wz, tensor);
-              let warpedZ  = warped.z;
-              const trend  = ctx?.trend;
-              if (trend && (Math.abs(trend.dz_dxN) > 0.005 || Math.abs(trend.dz_dyN) > 0.005)) {
-                const xN = 2 * (warped.x - warpedBounds.minX) / Math.max(1e-6, warpedBounds.maxX - warpedBounds.minX) - 1;
-                const yN = 2 * (warped.y - warpedBounds.minY) / Math.max(1e-6, warpedBounds.maxY - warpedBounds.minY) - 1;
-                warpedZ += trend.dz_dxN * xN + trend.dz_dyN * yN;
-              }
-              const pos = fourierEnc.encode(warped.x, warped.y, warpedZ, warpedBounds);
+              const pos = fourierEnc.encode(ix, iy, wz, bounds);
               const inp = new Float32Array(nIn);
-              inp.set(pos); inp.set(ctxVec, fourierEnc.outDim);
-              const conceptBoost = ctx ? Math.min(0.3, ctx.totalWeight * 0.2) : 0;
-              samples.push({ inp, target: ti, weight: INTERP_WEIGHT + conceptBoost });
+              inp.set(pos);
+              if (nSDFs) inp.set(evaluateAllSDFs(preparedShapes, ix, iy, wz), fourierEnc.outDim);
+              samples.push({ inp, target: ti, weight: INTERP_WEIGHT });
             }
-          }
-        }
-      }
-    }
-  }
-
-  // ── Concept-driven lateral propagation ───────────────────────────────────────
-  // Geological rule embedding: the concept embedding at each BH observation controls
-  // HOW FAR that observation propagates spatially. High lateral_continuity → strong
-  // lateral spread; high fault_controlled or structural_complexity → no propagation.
-  // The anisotropy tensor shapes which directions carry more weight, so an E-W
-  // palaeochannel concept makes BH observations propagate E-W but not N-S.
-  //
-  // This is not post-processing — it injects synthetic training samples that teach
-  // the network "unit X continues in THIS direction because of THESE concepts."
-  if (conceptStore && !conceptStore.isEmpty) {
-    const PROP_WEIGHT  = 0.30;   // lower than real BH observations
-    const BASE_SPREAD  = Math.max(1, (bounds.maxX - bounds.minX) * 0.05); // 5% of site width
-    // Concept axis indices (mirror CONCEPT_AXES in this file)
-    const AX_LATERAL_CONT  = 9;
-    const AX_FAULT_CTRL    = 7;
-    const AX_EW_ELONG      = 3;
-    const AX_NS_ELONG      = 4;
-    const AX_STRUCT_CMPLX  = 25;
-
-    for (const bh of boreholes) {
-      for (const layer of (bh.layers ?? [])) {
-        const ti = unitIdx[layer.unitCode];
-        if (ti === undefined) continue;
-        const zMid  = bh.groundLevel - (layer.top + layer.base) / 2;
-        const ctx   = conceptStore.computeAt(bh.x, bh.y, zMid, layer.unitCode);
-        if (!ctx || ctx.totalWeight < 0.05) continue;
-        const emb = ctx.vec;
-
-        // Suppress propagation if fault-controlled or highly complex geology
-        if (emb[AX_FAULT_CTRL] > 0.55 || emb[AX_STRUCT_CMPLX] > 0.65) continue;
-
-        // Lateral continuity controls base scale; below -0.3 → skip
-        const latCont = emb[AX_LATERAL_CONT];
-        if (latCont < -0.3) continue;
-        const contScale = Math.max(0.1, latCont + 0.5); // 0.2 at latCont=−0.3, 1.3 at +0.8
-
-        // Directional spread: concept elongation axes scale each direction
-        const spreadEW = BASE_SPREAD * Math.exp(emb[AX_EW_ELONG] * 0.8) * contScale;
-        const spreadNS = BASE_SPREAD * Math.exp(emb[AX_NS_ELONG] * 0.8) * contScale;
-        if (spreadEW < 0.5 && spreadNS < 0.5) continue;
-
-        const offsets = [
-          [spreadEW, 0], [-spreadEW, 0],
-          [0, spreadNS], [0, -spreadNS],
-          [spreadEW * 0.6, spreadNS * 0.6],
-        ];
-        for (const [dx, dy] of offsets) {
-          const px = bh.x + dx, py = bh.y + dy;
-          if (px < bounds.minX || px > bounds.maxX || py < bounds.minY || py > bounds.maxY) continue;
-          const pCtx    = conceptStore.computeAt(px, py, zMid, layer.unitCode);
-          const pCtxVec = pCtx?.vec ?? zeroCtx;
-          const pTensor = pCtx?.tensor ?? gTensor;
-          const warped  = warpPoint(px, py, zMid, pTensor);
-          const pos     = fourierEnc.encode(warped.x, warped.y, warped.z, warpedBounds);
-          const inp     = new Float32Array(nIn);
-          inp.set(pos); inp.set(pCtxVec, fourierEnc.outDim);
-          samples.push({ inp, target: ti, weight: PROP_WEIGHT * contScale });
-        }
-      }
-    }
-  }
-
-  // ── Stepped-boundary contact sharpening samples ──────────────────────────────
-  // For concepts with high stepped_boundary (axis 18) or fault_controlled (axis 7),
-  // inject training samples immediately above and below observed contacts to force
-  // a steep gradient at the boundary. This teaches the network that the contact is
-  // abrupt, not gradational — a direct geological rule from the concept embedding.
-  if (conceptStore && !conceptStore.isEmpty) {
-    const AX_STEPPED = 18; // stepped_boundary axis
-    const AX_FAULT   = 7;  // fault_controlled axis
-    const SHARP_WEIGHT = 1.5; // higher than normal — this boundary matters
-    const SHARP_EPSILON = 0.08; // fraction of layer thickness for tight sampling
-
-    // Check if ANY concept has high stepped_boundary or fault_controlled
-    const sharpConceptActive = conceptStore.concepts.some(c =>
-      (c.embedding?.[AX_STEPPED] ?? 0) > 0.4 || (c.embedding?.[AX_FAULT] ?? 0) > 0.4
-    );
-
-    if (sharpConceptActive) {
-      for (const bh of boreholes) {
-        const layers = (bh.layers ?? []).filter(l => l.unitCode && unitIdx[l.unitCode] !== undefined);
-        for (let li = 0; li < layers.length - 1; li++) {
-          const above = layers[li], below = layers[li + 1];
-          const tiAbove = unitIdx[above.unitCode], tiBelow = unitIdx[below.unitCode];
-          if (tiAbove === undefined || tiBelow === undefined) continue;
-          const contactZ = bh.groundLevel - above.base;
-
-          // Check concept sharpness at this contact location
-          const ctx = conceptStore.computeAt(bh.x, bh.y, contactZ);
-          if (!ctx || ctx.totalWeight < 0.05) continue;
-          const steppedAx = ctx.vec[AX_STEPPED] ?? 0;
-          const faultAx   = ctx.vec[AX_FAULT]   ?? 0;
-          const sharpness = Math.max(steppedAx, faultAx);
-          if (sharpness < 0.3) continue;
-
-          const thickAbove = Math.abs(above.base - above.top);
-          const thickBelow = Math.abs(below.base - below.top);
-          const eps = Math.max(0.03, Math.min(thickAbove, thickBelow) * SHARP_EPSILON);
-          const w   = SHARP_WEIGHT * sharpness;
-
-          for (const [dz, ti] of [[eps, tiAbove], [-eps, tiBelow], [eps * 2, tiAbove], [-eps * 2, tiBelow]]) {
-            const wz = contactZ + dz;
-            if (wz < bounds.minZ || wz > bounds.maxZ) continue;
-            const pCtx    = conceptStore.computeAt(bh.x, bh.y, wz);
-            const pCtxVec = pCtx?.vec ?? zeroCtx;
-            const pTensor = pCtx?.tensor ?? gTensor;
-            const warped  = warpPoint(bh.x, bh.y, wz, pTensor);
-            const pos     = fourierEnc.encode(warped.x, warped.y, warped.z, warpedBounds);
-            const inp     = new Float32Array(nIn);
-            inp.set(pos); inp.set(pCtxVec, fourierEnc.outDim);
-            samples.push({ inp, target: ti, weight: w });
           }
         }
       }
@@ -960,20 +620,10 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
           for (let s = 1; s <= N_STRAT; s++) {
             const wz  = meanElev + (s / N_STRAT) * stratJitter;
             if (wz < bounds.minZ || wz > bounds.maxZ) continue;
-            const ctx    = conceptStore ? conceptStore.computeAt(sx, sy, wz, codeA) : null;
-            const ctxVec = ctx?.vec ?? zeroCtx;
-            const tensor = ctx?.tensor ?? gTensor;
-            const warped = warpPoint(sx, sy, wz, tensor);
-            let warpedZ = warped.z;
-            const trend = ctx?.trend;
-            if (trend && (Math.abs(trend.dz_dxN) > 0.005 || Math.abs(trend.dz_dyN) > 0.005)) {
-              const xN = 2 * (warped.x - warpedBounds.minX) / Math.max(1e-6, warpedBounds.maxX - warpedBounds.minX) - 1;
-              const yN = 2 * (warped.y - warpedBounds.minY) / Math.max(1e-6, warpedBounds.maxY - warpedBounds.minY) - 1;
-              warpedZ += trend.dz_dxN * xN + trend.dz_dyN * yN;
-            }
-            const pos = fourierEnc.encode(warped.x, warped.y, warpedZ, warpedBounds);
+            const pos = fourierEnc.encode(sx, sy, wz, bounds);
             const inp = new Float32Array(nIn);
-            inp.set(pos); inp.set(ctxVec, fourierEnc.outDim);
+            inp.set(pos);
+            if (nSDFs) inp.set(evaluateAllSDFs(preparedShapes, sx, sy, wz), fourierEnc.outDim);
             // Strat samples get reduced weight (0.25) — they guide but don't override BH data
             samples.push({ inp, target: tiA, weight: 0.25 });
           }
@@ -981,235 +631,16 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
           for (let s = 1; s <= N_STRAT; s++) {
             const wz  = meanElev - (s / N_STRAT) * stratJitter;
             if (wz < bounds.minZ || wz > bounds.maxZ) continue;
-            const ctx    = conceptStore ? conceptStore.computeAt(sx, sy, wz, codeB) : null;
-            const ctxVec = ctx?.vec ?? zeroCtx;
-            const tensor = ctx?.tensor ?? gTensor;
-            const warped = warpPoint(sx, sy, wz, tensor);
-            let warpedZ = warped.z;
-            const trend = ctx?.trend;
-            if (trend && (Math.abs(trend.dz_dxN) > 0.005 || Math.abs(trend.dz_dyN) > 0.005)) {
-              const xN = 2 * (warped.x - warpedBounds.minX) / Math.max(1e-6, warpedBounds.maxX - warpedBounds.minX) - 1;
-              const yN = 2 * (warped.y - warpedBounds.minY) / Math.max(1e-6, warpedBounds.maxY - warpedBounds.minY) - 1;
-              warpedZ += trend.dz_dxN * xN + trend.dz_dyN * yN;
-            }
-            const pos = fourierEnc.encode(warped.x, warped.y, warpedZ, warpedBounds);
+            const pos = fourierEnc.encode(sx, sy, wz, bounds);
             const inp = new Float32Array(nIn);
-            inp.set(pos); inp.set(ctxVec, fourierEnc.outDim);
+            inp.set(pos);
+            if (nSDFs) inp.set(evaluateAllSDFs(preparedShapes, sx, sy, wz), fourierEnc.outDim);
             samples.push({ inp, target: tiB, weight: 0.25 });
           }
         }
       }
     }
     if (onProgress) onProgress(0, 0, { stratContactsFound: Object.keys(contactElevs).length });
-  }
-
-  // ── Concept-guided virtual samples ──────────────────────────────────────────
-  // For each concept with strong anisotropy (palaeochannel, terrace, etc.):
-  //  (A) Interpolate: add training points BETWEEN borehole observations of the same
-  //      unit, weighted by concept relevance, to reinforce lateral continuity along
-  //      the concept's preferred elongation axis.
-  //  (B) Extrapolate: add training points ALONG the elongation axis BEYOND the
-  //      outermost borehole observations to project geometry into data-sparse areas.
-  //      These have lower weight (0.25) so they guide but don't override actual data.
-  //  The cap prevents virtual samples from outnumbering real samples by more than 3×.
-  if (conceptStore && !conceptStore.isEmpty) {
-    const gT = conceptStore.globalTensor();
-    // Use Amaj (major axis elongation) to determine whether concept warp is significant
-    const gAmaj = gT.Amaj ?? Math.max(gT.Ax, gT.Ay);
-    if (gAmaj > 1.3) {
-      const unitBHs = {};  // { unitIdx → [{x, y, z, unitCode, top, base}] }
-      for (const bh of boreholes) {
-        for (const layer of (bh.layers ?? [])) {
-          const ti = unitIdx[layer.unitCode];
-          if (ti === undefined) continue;
-          const zTop  = bh.groundLevel - layer.top;
-          const zBase = bh.groundLevel - layer.base;
-          const zMid  = (zTop + zBase) / 2;
-          if (!unitBHs[ti]) unitBHs[ti] = [];
-          unitBHs[ti].push({ x: bh.x, y: bh.y, z: zMid, zTop, zBase, unitCode: layer.unitCode });
-        }
-      }
-
-      const N_SYNTH = Math.min(5, Math.ceil(gAmaj / 1.2) + 1);
-
-      // Helper: encode one virtual sample and push to samples
-      const addVirtual = (sx, sy, sz, tiInt, unitCode, w) => {
-        const ctx = conceptStore.computeAt(sx, sy, sz, unitCode);
-        if (ctx.totalWeight < 0.15) return;
-        const tensor = ctx.tensor;
-        const warpedPt = warpPoint(sx, sy, sz, tensor);
-        const wx = warpedPt.x, wy = warpedPt.y;
-        let wz = warpedPt.z;
-        const vTrend = ctx.trend;
-        if (vTrend && (Math.abs(vTrend.dz_dxN) > 0.005 || Math.abs(vTrend.dz_dyN) > 0.005)) {
-          const xN = 2 * (wx - warpedBounds.minX) / Math.max(1e-6, warpedBounds.maxX - warpedBounds.minX) - 1;
-          const yN = 2 * (wy - warpedBounds.minY) / Math.max(1e-6, warpedBounds.maxY - warpedBounds.minY) - 1;
-          wz += vTrend.dz_dxN * xN + vTrend.dz_dyN * yN;
-        }
-        const pos = fourierEnc.encode(wx, wy, wz, warpedBounds);
-        const inp = new Float32Array(nIn);
-        inp.set(pos);
-        inp.set(ctx.vec, fourierEnc.outDim);
-        // Scale weight by data_confidence axis (26): 0=uncertain concept, 1=high confidence.
-        // Concepts with low data_confidence should guide geometry more weakly.
-        const dataConf = Math.max(0.2, (ctx.vec[26] + 1) / 2); // −1..+1 → 0.1..1.0
-        samples.push({ inp, target: tiInt, weight: w * ctx.totalWeight * dataConf });
-      };
-
-      for (const [ti, pts] of Object.entries(unitBHs)) {
-        if (!pts.length) continue;
-        const tiInt = parseInt(ti);
-        // Elongation direction: use concept major-axis angle (theta) for directional guidance
-        const gTheta = gT.theta ?? (gT.Ax > gT.Ay ? 0 : Math.PI / 2);
-        const gCosT  = gT.cosT  ?? Math.cos(gTheta);
-        const gSinT  = gT.sinT  ?? Math.sin(gTheta);
-        // Effective span along major axis direction for proximity filtering
-        const spanX = (bounds.maxX - bounds.minX) / Math.max(1, gAmaj * Math.abs(gCosT) + 0.1);
-        const spanY = (bounds.maxY - bounds.minY) / Math.max(1, gAmaj * Math.abs(gSinT) + 0.1);
-        const maxDist = Math.max(spanX, spanY) * 0.8;
-
-        // (A) Interpolation between pairs
-        for (let a = 0; a < pts.length; a++) {
-          for (let b = a + 1; b < pts.length; b++) {
-            const pa = pts[a], pb = pts[b];
-            const dist = Math.hypot(pa.x - pb.x, pa.y - pb.y);
-            if (dist > maxDist) continue;
-            for (let s = 1; s <= N_SYNTH; s++) {
-              const t = s / (N_SYNTH + 1);
-              addVirtual(
-                pa.x + t * (pb.x - pa.x),
-                pa.y + t * (pb.y - pa.y),
-                pa.z + t * (pb.z - pa.z),
-                tiInt, pa.unitCode, 0.4
-              );
-            }
-          }
-        }
-
-        // (B) Extrapolation beyond the outermost BH along concept's major axis direction
-        // Step direction follows theta (concept elongation angle), not just E-W or N-S
-        if (pts.length >= 2) {
-          const extendDist = Math.max(
-            (bounds.maxX - bounds.minX) * 0.35 * Math.abs(gCosT),
-            (bounds.maxY - bounds.minY) * 0.35 * Math.abs(gSinT),
-            Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY) * 0.15,
-          );
-          const avgZ = pts.reduce((s, p) => s + p.z, 0) / pts.length;
-          for (const p of pts) {
-            const stepX = gCosT * extendDist / N_SYNTH;
-            const stepY = gSinT * extendDist / N_SYNTH;
-            for (let s = 1; s <= N_SYNTH; s++) {
-              // Extend in both positive and negative directions
-              for (const sign of [+1, -1]) {
-                const ex = p.x + sign * s * stepX;
-                const ey = p.y + sign * s * stepY;
-                // Clamp to site bounds with small margin
-                if (ex < bounds.minX - 5 || ex > bounds.maxX + 5) continue;
-                if (ey < bounds.minY - 5 || ey > bounds.maxY + 5) continue;
-                // Extrapolation weight decays with distance from the last real BH
-                const extW = 0.25 * (1 - s / (N_SYNTH + 1));
-                addVirtual(ex, ey, avgZ, tiInt, p.unitCode, extW);
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // ── Concept temporal ordering samples ──────────────────────────────────────
-  // For each pair of concepts where one is explicitly younger than the other,
-  // and both have unit affinities, inject synthetic samples to teach the network
-  // that the younger unit appears ABOVE the older unit in their shared domain.
-  // These use the same low-weight (0.2) guidance-only pattern as strat-order samples.
-  if (conceptStore && !conceptStore.isEmpty) {
-    const temporalPairs = conceptStore.temporallyOrderedPairs();
-    if (temporalPairs.length > 0) {
-      // Build unit elevation stats from real borehole data
-      const unitMeanElev = {}; // unitCode → mean midpoint elevation
-      const unitElevSamples = {};
-      for (const bh of boreholes) {
-        for (const layer of (bh.layers ?? [])) {
-          const mid = bh.groundLevel - (layer.top + layer.base) / 2;
-          if (!unitElevSamples[layer.unitCode]) unitElevSamples[layer.unitCode] = [];
-          unitElevSamples[layer.unitCode].push(mid);
-        }
-      }
-      for (const [code, elevs] of Object.entries(unitElevSamples)) {
-        unitMeanElev[code] = elevs.reduce((s, e) => s + e, 0) / elevs.length;
-      }
-
-      const midZ = (bounds.minZ + bounds.maxZ) / 2;
-      const spanZ = bounds.maxZ - bounds.minZ;
-      const jitterZ = spanZ * 0.07;
-      const N_TMP = 4; // samples per side
-
-      // Sampling positions spread across the shared domain
-      const tempXs = [
-        bounds.minX * 0.7 + bounds.maxX * 0.3,
-        (bounds.minX + bounds.maxX) / 2,
-        bounds.minX * 0.3 + bounds.maxX * 0.7,
-      ];
-      const tempYs = [
-        bounds.minY * 0.7 + bounds.maxY * 0.3,
-        (bounds.minY + bounds.maxY) / 2,
-        bounds.minY * 0.3 + bounds.maxY * 0.7,
-      ];
-
-      for (const { younger, older } of temporalPairs) {
-        // Determine which units are younger and older from unitAffinity
-        const youngerCodes = younger.unitAffinity?.length ? younger.unitAffinity : geoUnits.map(u => u.code);
-        const olderCodes   = older.unitAffinity?.length  ? older.unitAffinity   : geoUnits.map(u => u.code);
-
-        // Estimate contact Z: midpoint between mean elevations, or site mid if unknown
-        const youngerElev = youngerCodes.reduce((s, c) => s + (unitMeanElev[c] ?? midZ), 0) / youngerCodes.length;
-        const olderElev   = olderCodes.reduce((s, c) => s + (unitMeanElev[c] ?? midZ), 0) / olderCodes.length;
-        // If elevation data available, use midpoint; else use vertical thirds
-        const contactZ = Math.abs(youngerElev - olderElev) > 0.5
-          ? (youngerElev + olderElev) / 2
-          : bounds.minZ + spanZ * 0.6; // young = upper 40%, old = lower 60%
-
-        for (const sx of tempXs) {
-          for (const sy of tempYs) {
-            // Samples ABOVE contact → younger unit
-            for (const yCode of youngerCodes) {
-              const tiY = unitIdx[yCode];
-              if (tiY === undefined) continue;
-              for (let s = 1; s <= N_TMP; s++) {
-                const wz = contactZ + (s / N_TMP) * jitterZ;
-                if (wz > bounds.maxZ) continue;
-                const ctx    = conceptStore ? conceptStore.computeAt(sx, sy, wz, yCode) : null;
-                const ctxVec = ctx?.vec ?? zeroCtx;
-                const tensor = ctx?.tensor ?? gTensor;
-                const warped = warpPoint(sx, sy, wz, tensor);
-                const pos    = fourierEnc.encode(warped.x, warped.y, warped.z, warpedBounds);
-                const inp    = new Float32Array(nIn);
-                inp.set(pos); inp.set(ctxVec, fourierEnc.outDim);
-                samples.push({ inp, target: tiY, weight: 0.2 });
-              }
-            }
-            // Samples BELOW contact → older unit
-            for (const oCode of olderCodes) {
-              const tiO = unitIdx[oCode];
-              if (tiO === undefined) continue;
-              for (let s = 1; s <= N_TMP; s++) {
-                const wz = contactZ - (s / N_TMP) * jitterZ;
-                if (wz < bounds.minZ) continue;
-                const ctx    = conceptStore ? conceptStore.computeAt(sx, sy, wz, oCode) : null;
-                const ctxVec = ctx?.vec ?? zeroCtx;
-                const tensor = ctx?.tensor ?? gTensor;
-                const warped = warpPoint(sx, sy, wz, tensor);
-                const pos    = fourierEnc.encode(warped.x, warped.y, warped.z, warpedBounds);
-                const inp    = new Float32Array(nIn);
-                inp.set(pos); inp.set(ctxVec, fourierEnc.outDim);
-                samples.push({ inp, target: tiO, weight: 0.2 });
-              }
-            }
-          }
-        }
-      }
-      if (onProgress) onProgress(0, 0, { temporalPairs: temporalPairs.length });
-    }
   }
 
   // Separate real and virtual samples for diagnostics and capping
@@ -1233,28 +664,22 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
   }
   if (onProgress) onProgress(0, 0, { nSamples: allSamples.length, nReal: nRealSamples, nVirtual: nVirtualSamples });
 
-  const net         = new GeoImplicitNet(nIn, 80, nUnits, fourierEnc.outDim);
-  const FILM_WARMUP = 0.25;
-  const hasTF       = typeof window !== 'undefined' && !!window.tf;
+  const net   = new GeoImplicitNet(nIn, 80, nUnits, fourierEnc.outDim);
+  const hasTF = typeof window !== 'undefined' && !!window.tf;
 
   if (hasTF) {
     // ── GPU path: TF.js WebGL full-batch Adam ──────────────────────────────
     if (onProgress) onProgress(0, 0, { nSamples: allSamples.length, gpu: true, nReal: nRealSamples, nVirtual: nVirtualSamples });
-    await _trainWithTF(net, allSamples, { epochs, lr, lrMin, l2, filmWarmupFrac: FILM_WARMUP }, onProgress);
+    await _trainWithTF(net, allSamples, { epochs, lr, lrMin, l2 }, onProgress);
   } else {
     // ── CPU fallback: original sample-by-sample Adam ───────────────────────
-    const opt          = new AdamOpt(net._params, lr);
-    const filmParamStart = 4;
-    const filmParamEnd   = 10;
+    const opt = new AdamOpt(net._params, lr);
 
     for (let ep = 0; ep < epochs; ep++) {
-      const warmupEps  = Math.max(1, Math.round(epochs * 0.05));
-      const lrWarmup   = ep < warmupEps ? (lr * (ep + 1) / warmupEps) : lr;
-      const cosPhase   = ep < warmupEps ? 0 : (ep - warmupEps) / (epochs - warmupEps);
+      const warmupEps = Math.max(1, Math.round(epochs * 0.05));
+      const lrWarmup  = ep < warmupEps ? (lr * (ep + 1) / warmupEps) : lr;
+      const cosPhase  = ep < warmupEps ? 0 : (ep - warmupEps) / (epochs - warmupEps);
       opt.setLr(lrMin + 0.5 * (lrWarmup - lrMin) * (1 + Math.cos(Math.PI * cosPhase)));
-
-      const filmGradScale = Math.min(1, ep / Math.max(1, FILM_WARMUP * epochs));
-      const filmDropout   = filmGradScale < 0.5 ? 0.3 : 0.1;
 
       for (let i = allSamples.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -1263,16 +688,10 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
 
       let totalLoss = 0;
       for (const s of allSamples) {
-        const act   = net.forward(s.inp, filmDropout);
+        const act   = net.forward(s.inp);
         const loss  = -Math.log(Math.max(act.probs[s.target], 1e-9));
         totalLoss  += s.weight * loss;
         const grads = net.backward(s.inp, act, s.target, l2, s.weight);
-        if (filmGradScale < 1) {
-          for (let pi = filmParamStart; pi < filmParamEnd; pi++) {
-            const g = grads[pi];
-            for (let i = 0; i < g.length; i++) g[i] *= filmGradScale;
-          }
-        }
         opt.step(grads);
       }
 
@@ -1284,7 +703,7 @@ export async function trainGeoImplicit(boreholes, geoUnits, conceptStore, option
   }
 
   if (onProgress) onProgress(1, 0, { epoch: epochs, epochs });
-  return { net, fourierEnc, conceptStore, warpedBounds, bounds, nUnits, unitCodes, CONCEPT_DIM, fourierDim: fourierEnc.outDim };
+  return { net, fourierEnc, geoShapes: preparedShapes, bounds, nUnits, unitCodes, nSDFs };
 }
 
 // ── Concept-driven refinement fine-tune ──────────────────────────────────────
@@ -1298,27 +717,21 @@ export async function finetuneGeoImplicit(trained, geoUnits, refinementSamples, 
   if (!trained || !refinementSamples?.length) return trained;
   const { epochs = 100, lr = 0.002, l2 = 0.0005, onProgress = null } = options;
 
-  const { net, fourierEnc, warpedBounds, unitCodes, CONCEPT_DIM, fourierDim } = trained;
-  const localConceptStore = trained.conceptStore;
-  const zeroCtx = new Float32Array(CONCEPT_DIM);
+  const { net, fourierEnc, bounds, unitCodes, nSDFs } = trained;
+  const trainedGeoShapes = trained.geoShapes ?? [];
+  const nIn  = fourierEnc.outDim + (nSDFs ?? 0);
   const unitIdx = {};
   geoUnits.forEach((u, i) => { unitIdx[u.code] = i; });
-
-  const gTensor = localConceptStore?.globalTensor() ?? { Ax: 1, Ay: 1, Az: 1, theta: 0, cosT: 1, sinT: 0 };
 
   // Build training samples from refinement hints
   const samples = [];
   for (const { x, y, z, unitCode, weight = 0.15 } of refinementSamples) {
     const ti = unitIdx[unitCode];
     if (ti === undefined) continue;
-    const ctx    = localConceptStore ? localConceptStore.computeAt(x, y, z, unitCode) : null;
-    const ctxVec = ctx?.vec ?? zeroCtx;
-    const tensor = ctx?.tensor ?? gTensor;
-    const warped = warpPoint(x, y, z, tensor);
-    const pos    = fourierEnc.encode(warped.x, warped.y, warped.z, warpedBounds);
-    const inp    = new Float32Array(fourierDim + CONCEPT_DIM);
+    const pos = fourierEnc.encode(x, y, z, bounds);
+    const inp = new Float32Array(nIn);
     inp.set(pos);
-    inp.set(ctxVec, fourierDim);
+    if (nSDFs) inp.set(evaluateAllSDFs(trainedGeoShapes, x, y, z), fourierEnc.outDim);
     samples.push({ inp, target: ti, weight });
   }
   if (!samples.length) return trained;
@@ -1336,7 +749,7 @@ export async function finetuneGeoImplicit(trained, geoUnits, refinementSamples, 
       [samples[i], samples[j]] = [samples[j], samples[i]];
     }
     for (const s of samples) {
-      const act = net.forward(s.inp, 0);
+      const act = net.forward(s.inp);
       opt.step(net.backward(s.inp, act, s.target, l2, s.weight));
     }
     if (onProgress && ep % 25 === 0) {
@@ -1350,63 +763,31 @@ export async function finetuneGeoImplicit(trained, geoUnits, refinementSamples, 
 
 // ── Infer voxel grid from trained model ─────────────────────────────────────
 // grid must have { nx, ny, nz, cellSize, cellHeight, origin: {x,y,z} }
-// options.sectionPlanes: [{fence, localKwVec}] for spatially-local section context
-// conceptStore: ConceptStore instance (or null) — same store passed to trainGeoImplicit.
-// At each voxel the store's computeAt() returns the concept context that warps coordinates
-// exactly as during training, ensuring inference geometry matches the trained distribution.
-export function inferGeoImplicit(trained, grid, geoUnits, conceptStore, options = {}) {
-  // Backward compat: if old options object passed, ignore options silently
-  if (conceptStore && typeof conceptStore !== 'object') conceptStore = null;
-  if (conceptStore && typeof conceptStore.computeAt !== 'function') conceptStore = null;
-
-  // nMCPasses > 1: Monte Carlo dropout inference — multiple stochastic forward passes
-  // with FiLM dropout active. Produces per-unit probability volumes (uncertainty) in
-  // addition to the point-estimate unitIds. This is the Leapfrog-style UQ approach.
-  const nMCPasses = Math.max(1, options.nMCPasses ?? 1);
-  const mcDropout = 0.08; // light dropout for test-time MC (less than training)
-
-  const { net, fourierEnc, warpedBounds, bounds, unitCodes, CONCEPT_DIM } = trained;
-  const cdim      = CONCEPT_DIM ?? 32;
-  const nIn       = fourierEnc.outDim + cdim;
-  const zeroCtx   = new Float32Array(cdim);
-  const gTensor   = conceptStore?.globalTensor() ?? { Ax: 1, Ay: 1, Az: 1, Amaj: 1, Amin: 1, theta: 0, cosT: 1, sinT: 0 };
-  // Recompute warped bounds using rotation-aware helper if conceptStore is available
-  const useBounds = conceptStore ? computeWarpedBounds(bounds, gTensor) : (warpedBounds ?? bounds);
+// geoShapes: PreparedShape[] from geo-shapes.js (same list used during training, can be [])
+export function inferGeoImplicit(trained, grid, geoUnits, geoShapes = [], options = {}) {
+  const { net, fourierEnc, bounds, unitCodes, nSDFs } = trained;
+  const inferShapes = geoShapes.length ? geoShapes : (trained.geoShapes ?? []);
+  const nIn         = fourierEnc.outDim + (nSDFs ?? 0);
 
   const { nx, ny, nz, cellSize, cellHeight, origin } = grid;
   const total   = nx * ny * nz;
   const nUnitsI = unitCodes.length;
 
-  const unitIds          = new Uint8Array(total);
-  const certainty        = new Float32Array(total);
-  const blendUnitIds     = new Uint8Array(total);
-  const blendRatios      = new Float32Array(total);
-  const conceptInfluence = new Float32Array(total);
-  // Per-voxel contact sharpness temperature (1=no sharpening, 0.3=stepped/fault sharp boundary).
-  // Derived from concept context axes stepped_boundary(18) and fault_controlled(7).
-  // Applied as power-law tempering: p_sharp[u] = p[u]^(1/T) / sum(p[u]^(1/T)).
-  const sharpnessT = new Float32Array(total).fill(1.0);
+  const unitIds      = new Uint8Array(total);
+  const certainty    = new Float32Array(total);
+  const blendUnitIds = new Uint8Array(total);
+  const blendRatios  = new Float32Array(total);
 
-  // Accumulator for MC probability averaging — shape [total * nUnitsI].
-  // When nMCPasses == 1 this is used once then discarded; the allocation is
-  // small (~total × nUnits × 4 bytes) and avoids a separate code path.
+  // Accumulator for probability averaging — shape [total * nUnitsI]
   const probAcc = new Float32Array(total * nUnitsI);
 
   const codeToId = {};
   geoUnits.forEach(u => { codeToId[u.code] = u.id; });
 
-  // Column-context cache: concept context is normally horizontal-only (domain filtering
-  // is XY-based), but when any concept has a vertical domain (minZ/maxZ), context varies
-  // per voxel rather than per column. Use a 3D cache key in that case.
-  const hasVerticalDomains = conceptStore?._concepts?.some(c => c.domain?.minZ !== undefined) ?? false;
-  const colCtxCache = new Map();
-
-  const hasTFInfer = typeof window !== 'undefined' && !!window.tf && nMCPasses === 1;
+  const hasTFInfer = typeof window !== 'undefined' && !!window.tf;
 
   if (hasTFInfer) {
     // ── GPU-accelerated batched inference ──────────────────────────────────────
-    // Pre-compute all voxel input vectors in JS, then run one batched GPU forward pass.
-    // Fallback: JS per-voxel loop used for MC passes (nMCPasses > 1).
     const allInps = new Float32Array(total * nIn);
 
     for (let iz = nz - 1; iz >= 0; iz--) {
@@ -1416,154 +797,52 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore, options 
         for (let ix = 0; ix < nx; ix++) {
           const worldX = origin.x + ix * cellSize + cellSize * 0.5;
           const idx    = ix + iy * nx + iz * nx * ny;
-
-          const colKey = hasVerticalDomains ? ix + iy * nx + iz * nx * ny : ix * ny + iy;
-          let ctx = colCtxCache.get(colKey);
-          if (ctx === undefined) {
-            ctx = conceptStore ? conceptStore.computeAt(worldX, worldY, worldZ) : null;
-            colCtxCache.set(colKey, ctx);
-          }
-          const ctxVec = ctx?.vec ?? zeroCtx;
-          const tensor = ctx?.tensor ?? gTensor;
-
-          const warpedInf = warpPoint(worldX, worldY, worldZ, tensor);
-          const wx = warpedInf.x, wy = warpedInf.y;
-          let   wz = warpedInf.z;
-          const iTrend = ctx?.trend;
-          if (iTrend && (Math.abs(iTrend.dz_dxN) > 0.005 || Math.abs(iTrend.dz_dyN) > 0.005)) {
-            const xN = 2 * (wx - useBounds.minX) / Math.max(1e-6, useBounds.maxX - useBounds.minX) - 1;
-            const yN = 2 * (wy - useBounds.minY) / Math.max(1e-6, useBounds.maxY - useBounds.minY) - 1;
-            wz += iTrend.dz_dxN * xN + iTrend.dz_dyN * yN;
-          }
-          const pos = fourierEnc.encode(wx, wy, wz, useBounds);
-          allInps.set(pos,    idx * nIn);
-          allInps.set(ctxVec, idx * nIn + fourierEnc.outDim);
-
-          conceptInfluence[idx] = ctx ? Math.min(1, ctx.totalWeight) : 0;
-          if (ctx && ctx.totalWeight > 0.05) {
-            const stepped = Math.max(0, ctxVec[18] ?? 0);
-            const faulted = Math.max(0, ctxVec[7]  ?? 0);
-            sharpnessT[idx] = Math.max(0.3, 1 - 0.7 * Math.max(stepped, faulted));
-          }
+          const pos    = fourierEnc.encode(worldX, worldY, worldZ, bounds);
+          allInps.set(pos, idx * nIn);
+          if (nSDFs) allInps.set(evaluateAllSDFs(inferShapes, worldX, worldY, worldZ), idx * nIn + fourierEnc.outDim);
         }
       }
     }
 
     // Single batched GPU forward pass over all voxels
-    const allProbs  = _inferBatchTF(net, allInps, total, nIn, fourierEnc.outDim);
-    const hasBoosts = conceptStore && !conceptStore.isEmpty;
-
-    for (let iz = 0; iz < nz; iz++) {
-      for (let iy = 0; iy < ny; iy++) {
-        for (let ix = 0; ix < nx; ix++) {
-          const idx  = ix + iy * nx + iz * nx * ny;
-          const base = idx * nUnitsI;
-          if (hasBoosts) {
-            const worldX = origin.x + ix * cellSize + cellSize * 0.5;
-            const worldY = origin.z + iy * cellSize + cellSize * 0.5;
-            const worldZ = origin.y + iz * cellHeight + cellHeight * 0.5;
-            const boosts = conceptStore.computeAffinityBoostsAt(worldX, worldY, worldZ, unitCodes);
-            let bSum = 0;
-            for (let u = 0; u < nUnitsI; u++) {
-              probAcc[base + u] = allProbs[base + u] * boosts[u];
-              bSum += probAcc[base + u];
-            }
-            if (bSum > 1e-9) for (let u = 0; u < nUnitsI; u++) probAcc[base + u] /= bSum;
-          } else {
-            for (let u = 0; u < nUnitsI; u++) probAcc[base + u] = allProbs[base + u];
-          }
-        }
-      }
-    }
+    const allProbs = _inferBatchTF(net, allInps, total, nIn);
+    for (let i = 0; i < total * nUnitsI; i++) probAcc[i] = allProbs[i];
   } else {
-    // ── JS per-voxel inference (also handles MC dropout passes) ───────────────
-    for (let pass = 0; pass < nMCPasses; pass++) {
-      const drop = nMCPasses > 1 ? mcDropout : 0;
-
-      for (let iz = nz - 1; iz >= 0; iz--) {
-        const worldZ = origin.y + iz * cellHeight + cellHeight * 0.5;
-        for (let iy = 0; iy < ny; iy++) {
-          const worldY = origin.z + iy * cellSize + cellSize * 0.5;
-          for (let ix = 0; ix < nx; ix++) {
-            const worldX = origin.x + ix * cellSize + cellSize * 0.5;
-            const idx    = ix + iy * nx + iz * nx * ny;
-
-            const colKey = hasVerticalDomains ? ix + iy * nx + iz * nx * ny : ix * ny + iy;
-            let ctx = colCtxCache.get(colKey);
-            if (ctx === undefined) {
-              ctx = conceptStore ? conceptStore.computeAt(worldX, worldY, worldZ) : null;
-              colCtxCache.set(colKey, ctx);
-            }
-            const ctxVec = ctx?.vec ?? zeroCtx;
-            const tensor = ctx?.tensor ?? gTensor;
-
-            const warpedInf = warpPoint(worldX, worldY, worldZ, tensor);
-            const wx  = warpedInf.x;
-            const wy  = warpedInf.y;
-            let   wz  = warpedInf.z;
-            const iTrend = ctx?.trend;
-            if (iTrend && (Math.abs(iTrend.dz_dxN) > 0.005 || Math.abs(iTrend.dz_dyN) > 0.005)) {
-              const xN = 2 * (wx - useBounds.minX) / Math.max(1e-6, useBounds.maxX - useBounds.minX) - 1;
-              const yN = 2 * (wy - useBounds.minY) / Math.max(1e-6, useBounds.maxY - useBounds.minY) - 1;
-              wz += iTrend.dz_dxN * xN + iTrend.dz_dyN * yN;
-            }
-            const pos = fourierEnc.encode(wx, wy, wz, useBounds);
-
-            const inp = new Float32Array(nIn);
-            inp.set(pos);
-            inp.set(ctxVec, fourierEnc.outDim);
-
-            const probs = net.forward(inp, drop).probs;
-            const base  = idx * nUnitsI;
-            if (conceptStore && !conceptStore.isEmpty) {
-              const boosts = conceptStore.computeAffinityBoostsAt(worldX, worldY, worldZ, unitCodes);
-              let bSum = 0;
-              for (let u = 0; u < nUnitsI; u++) { probs[u] *= boosts[u]; bSum += probs[u]; }
-              if (bSum > 1e-9) for (let u = 0; u < nUnitsI; u++) probs[u] /= bSum;
-            }
-            for (let u = 0; u < nUnitsI; u++) probAcc[base + u] += probs[u];
-
-            if (pass === 0) {
-              conceptInfluence[idx] = ctx ? Math.min(1, ctx.totalWeight) : 0;
-              if (ctx && ctx.totalWeight > 0.05) {
-                const stepped = Math.max(0, ctxVec[18] ?? 0);
-                const faulted = Math.max(0, ctxVec[7]  ?? 0);
-                sharpnessT[idx] = Math.max(0.3, 1 - 0.7 * Math.max(stepped, faulted));
-              }
-            }
-          }
+    // ── JS per-voxel inference ─────────────────────────────────────────────────
+    for (let iz = nz - 1; iz >= 0; iz--) {
+      const worldZ = origin.y + iz * cellHeight + cellHeight * 0.5;
+      for (let iy = 0; iy < ny; iy++) {
+        const worldY = origin.z + iy * cellSize + cellSize * 0.5;
+        for (let ix = 0; ix < nx; ix++) {
+          const worldX = origin.x + ix * cellSize + cellSize * 0.5;
+          const idx    = ix + iy * nx + iz * nx * ny;
+          const pos    = fourierEnc.encode(worldX, worldY, worldZ, bounds);
+          const inp    = new Float32Array(nIn);
+          inp.set(pos);
+          if (nSDFs) inp.set(evaluateAllSDFs(inferShapes, worldX, worldY, worldZ), fourierEnc.outDim);
+          const probs = net.forward(inp).probs;
+          const base  = idx * nUnitsI;
+          for (let u = 0; u < nUnitsI; u++) probAcc[base + u] = probs[u];
         }
       }
     }
   }
 
-  // Average probabilities and build outputs
+  // Build outputs from probAcc
   const probVolumes = new Map();
   unitCodes.forEach(code => probVolumes.set(code, new Float32Array(total)));
 
   for (let idx = 0; idx < total; idx++) {
     const base = idx * nUnitsI;
-    const T = sharpnessT[idx]; // temperature: 1 = normal, 0.3 = very sharp
-    const exp = T < 0.99 ? 1 / T : 1; // power exponent for tempering
-
-    // Compute probabilities (average over passes), optionally apply power-law sharpening
-    const probs = new Float32Array(nUnitsI);
-    let pSum = 0;
-    for (let u = 0; u < nUnitsI; u++) {
-      const raw = probAcc[base + u] / nMCPasses;
-      probs[u] = exp !== 1 ? Math.pow(Math.max(1e-9, raw), exp) : raw;
-      pSum += probs[u];
-    }
-    if (pSum > 1e-9 && exp !== 1) for (let u = 0; u < nUnitsI; u++) probs[u] /= pSum;
 
     let b1 = 0, b2 = -1;
-    let p1 = probs[0], p2 = 0;
+    let p1 = probAcc[base], p2 = 0;
     if (nUnitsI > 1) {
-      b2 = 1; p2 = probs[1];
+      b2 = 1; p2 = probAcc[base + 1];
       if (p2 > p1) { b1 = 1; b2 = 0; const tmp = p1; p1 = p2; p2 = tmp; }
     }
     for (let u = 2; u < nUnitsI; u++) {
-      const p = probs[u];
+      const p = probAcc[base + u];
       if (p > p1) { b2 = b1; p2 = p1; b1 = u; p1 = p; }
       else if (p > p2) { b2 = u; p2 = p; }
     }
@@ -1571,20 +850,14 @@ export function inferGeoImplicit(trained, grid, geoUnits, conceptStore, options 
     unitIds[idx]      = codeToId[unitCodes[b1]] ?? 0;
     blendUnitIds[idx] = b2 >= 0 ? (codeToId[unitCodes[b2]] ?? 0) : 0;
     blendRatios[idx]  = p2;
+    certainty[idx]    = Math.max(0.05, Math.min(1, 0.5 + p1 - p2));
 
-    // Certainty from MC probability: higher p1 and larger gap to p2 = more certain.
-    // No concept boost here — concept-aware calibration is applied post-hoc in
-    // interpolator.js using coverageDensity (which isn't available inside this function).
-    certainty[idx] = Math.max(0.05, Math.min(1, 0.5 + p1 - p2));
-
-    // Fill probability volumes with UNSHARPENED probabilities (raw MC averages)
-    // so isosurfaces and uncertainty maps reflect the true learned distribution.
     for (let u = 0; u < nUnitsI; u++) {
-      probVolumes.get(unitCodes[u])[idx] = probAcc[base + u] / nMCPasses;
+      probVolumes.get(unitCodes[u])[idx] = probAcc[base + u];
     }
   }
 
-  return { unitIds, certainty, blendUnitIds, blendRatios, conceptInfluence, probVolumes, sharpnessT };
+  return { unitIds, certainty, blendUnitIds, blendRatios, probVolumes };
 }
 
 // ── Patch voxel grid with oracle probability distributions ───────────────────
@@ -1811,7 +1084,7 @@ export function analyzeBoreholeGeometry(boreholes, geoUnits) {
     const obs = unitObs[u.code];
     if (obs.length < 2) continue;
 
-    const emb = new Float32Array(CONCEPT_AXES.length);
+    const emb = new Float32Array(32); // 32-dim concept embedding (legacy analyzeBoreholeGeometry output)
     const reasons = [];
 
     // ── Compute lateral statistics ────────────────────────────────────────────

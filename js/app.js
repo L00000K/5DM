@@ -81,8 +81,9 @@ export const AppState = {
   mcRealisations: 20,
   faultPlanes: [],
   shapeBoreholes: [],
+  resolvedShapes: [],     // raw shape definitions for SDF inputs to neural implicit field
   sectionBoreholes: [],   // virtual BHs from section descriptions/sketches
-  conceptStore: null,     // ConceptStore — geological concept embeddings for neural field
+  conceptStore: null,     // ConceptStore — semantic analysis (no longer neural network input)
   geoEvents: [],          // Geological event timeline (oldest first)
   stratCorr: null,        // StratCorrelation panel
   trainedModel: null,     // cached neural-implicit trained model for fast re-inference
@@ -941,6 +942,8 @@ function initReset() {
     AppState.certaintyThreshold = 0;
     AppState.parsedConstraints = [];
     AppState.topoPoints = null;
+    AppState.shapeBoreholes = [];
+    AppState.resolvedShapes = [];
 
     document.getElementById('analysis-log').innerHTML =
       '<div class="log-entry log-info">Run AI Analysis to see results here.</div>';
@@ -1310,10 +1313,11 @@ function initBuildModel() {
         faultPlanes: AppState.faultPlanes,
         topoPoints:  AppState.topoPoints ?? null,
         conceptStore: AppState.conceptStore ?? null,
+        // SDF geometric prior: raw shape definitions (centroid_x_frac etc.) from geological
+        // feature parsing. trainGeoImplicit calls prepareShapesForSDF() internally using
+        // the computed bounds, then evaluates SDFs as direct neural network inputs.
+        geoShapes: AppState.resolvedShapes ?? [],
         nMCPasses:   AppState.nMCPasses ?? 8,
-        // Concept-driven iterative refinement: enabled by default when concepts are active.
-        // After first inference, fine-tune on virtual samples in uncertain concept-driven zones.
-        conceptRefinement: document.getElementById('ni-concept-refinement')?.checked ?? true,
         onProgress: (p, loss, meta) => setBuildProgress(p, loss, meta),
       };
 
@@ -6388,9 +6392,12 @@ function initGeoFeatures() {
       // Resolve unit codes in shape objects
       const resolved = parseShapesFromClaude(shapes, AppState.geoUnits);
 
-      // Generate virtual boreholes from shape primitives
+      // Generate virtual boreholes from shape primitives (IDW/Kriging path)
       const shapeBHs = generateShapeBoreholes(resolved, bbox, AppState.semanticWeight ?? 0.3);
       AppState.shapeBoreholes = shapeBHs;
+      // Store raw resolved shapes for SDF inputs to the neural implicit field.
+      // trainGeoImplicit calls prepareShapesForSDF() internally once bounds are known.
+      AppState.resolvedShapes = resolved;
 
       const nShapes = resolved.length, nBHs = shapeBHs.length;
       log(`Feature injection: ${nShapes} shape(s) → ${nBHs} virtual observation point(s)`, 'ok');

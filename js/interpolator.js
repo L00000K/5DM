@@ -677,16 +677,18 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
 
   // ── Neural Implicit Geological Field ──────────────────────────────────────
   if (method === 'neural-implicit') {
-    const conceptStore = options.conceptStore ?? null;
-    if (conceptStore && !conceptStore.isEmpty) {
-      log(`Concept store: ${conceptStore.concepts.length} geological concept(s) active — coordinate warping enabled`, 'info');
+    // geoShapes: raw shape definitions (with centroid_x_frac etc.) from AppState.resolvedShapes.
+    // prepareShapesForSDF is called inside trainGeoImplicit once the bounds are known.
+    const geoShapes = options.geoShapes ?? [];
+    if (geoShapes.length) {
+      log(`SDF geometric prior: ${geoShapes.length} shape primitive(s) will be injected as neural inputs`, 'info');
     }
 
     log(`Training neural implicit field (${options.niEpochs ?? 600} epochs)…`, 'info');
     if (onProgress) onProgress(0.02);
 
     const trainedModel = await trainGeoImplicit(
-      allBoreholes, geoUnits, conceptStore,
+      allBoreholes, geoUnits, geoShapes,
       {
         epochs:          options.niEpochs ?? 600,
         lr:              0.01,
@@ -707,27 +709,19 @@ export async function buildVoxelGrid(boreholes, geoUnits, cellSizeParam, options
       // Fall through to IDW below
     } else {
       log('Inferring voxel grid from neural implicit field…', 'info');
-      const nMCPasses = options.nMCPasses ?? 8;
-      if (nMCPasses > 1) log(`MC uncertainty: ${nMCPasses} passes`, 'info');
       const gridMeta = { nx, ny, nz, cellSize, cellHeight: cellH, origin: { x: ox, y: oz, z: oy } };
-      const inferred = inferGeoImplicit(trainedModel, gridMeta, geoUnits, conceptStore, { nMCPasses });
+      const inferred = inferGeoImplicit(trainedModel, gridMeta, geoUnits);
       unitIds.set(inferred.unitIds);
       certainty.set(inferred.certainty);
       blendUnitIds.set(inferred.blendUnitIds);
       blendRatios.set(inferred.blendRatios);
-      const conceptInfluence = inferred.conceptInfluence ?? null;
-      const probVolumes      = inferred.probVolumes ?? null;
-      const sharpnessT       = inferred.sharpnessT ?? null;
+      const probVolumes       = inferred.probVolumes ?? null;
+      const conceptInfluence  = inferred.conceptInfluence ?? null;
+      const sharpnessT        = inferred.sharpnessT ?? null;
 
-      // ── Concept-driven iterative refinement ──────────────────────────────────
-      // After the first inference pass, identify voxel columns where:
-      //   (a) concept influence is active (semantics are driving prediction)
-      //   (b) borehole coverage is sparse (no nearby real data to anchor it)
-      //   (c) certainty is low (model is genuinely uncertain)
-      // Inject virtual "expectation" observations at those positions using the
-      // concept store's predicted unit profile, then fine-tune the network for
-      // a short pass to strengthen the concept-anchored regions.
-      if (conceptStore && !conceptStore.isEmpty && options.conceptRefinement !== false) {
+      // ── (Concept-driven iterative refinement removed — replaced by SDF inputs) ──
+
+      if (false) {
         const refineSamples = [];
         const realBHs = allBoreholes.filter(b => !b.synthetic && b.layers?.length);
         const bhSigmaSq = (() => {

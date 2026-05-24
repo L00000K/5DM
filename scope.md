@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-19 (batch 19 — UI redesign: 3-tab left panel + layer TOC)
+> Last updated: 2026-05-24 (batch 20 — SDF geometric priors replace FiLM concept conditioning in neural implicit field)
 
 ---
 
@@ -148,7 +148,7 @@ Seven methods, all operating on the same voxel grid:
 | Neural Network | 2-layer MLP (3→32→nUnits), cosine-annealed SGD |
 | Universal Kriging | Polynomial drift removal (order 0/1/2) |
 | RBF (Multiquadric) | Smooth implicit surface fitting — φ(r)=√(1+(r/ε)²) per unit, solves Gram system |
-| Neural Implicit Field | F(x,y,z,concept)→P(unit₁…unitₙ); 4-layer MLP, Fourier encoding, FiLM concept conditioning, anisotropic coordinate warp, LLM Oracle. **GPU-accelerated** via TF.js WebGL: full-batch training + batched voxel inference (20–50× faster than JS). |
+| Neural Implicit Field | F(x,y,z,SDF₁…SDFₙ)→P(unit₁…unitₙ); 4-layer MLP, Fourier encoding, **SDF geometric priors** (signed distance fields for channel/lens/hill/fault/pinch shapes), LLM Oracle. **GPU-accelerated** via TF.js WebGL: full-batch training + batched voxel inference (20–50× faster than JS). |
 
 **Advanced uncertainty:**
 - [x] **Monte Carlo boundary perturbation** — N IDW realisations with Gaussian-perturbed layer boundaries (σ=0.5m); certainty = fraction agreeing with majority vote
@@ -171,63 +171,28 @@ Seven methods, all operating on the same voxel grid:
 
 ### 4.4 Semantic Concept Embedding Architecture
 
-The core AI innovation: geological knowledge is encoded as dense 32-dimensional vectors that **geometrically shape** the neural implicit field output — not as classification hints but as structural constraints on the function's spatial behaviour.
+#### ConceptStore (`js/concept-store.js`) — Semantic Analysis
+The ConceptStore is retained for semantic analysis functions (cross-sections, concept coherence, back-projection, predicted borehole logs). Each concept is encoded on 32 named geological axes (−1 to +1) via `encodeGeologicalConcept()`. ConceptStore is **not** passed to the neural network training/inference path.
 
-#### 32 Geological Geometry Axes
+#### SDF Geometric Priors (`js/geo-shapes.js`) — Neural Network Input
 
-Each concept is rated −1 to +1 on 32 named axes:
+The neural implicit field receives direct spatial geometry via **Signed Distance Fields** for each parsed geological feature. This replaces the previous FiLM concept conditioning approach.
 
-| # | Axis | # | Axis |
-|---|------|---|------|
-| 0 | horizontal_layering | 16 | deepens_north |
-| 1 | inclined_bedding | 17 | deepens_south |
-| 2 | dip_magnitude | 18 | stepped_boundary |
-| 3 | east_west_elongation | 19 | irregular_base |
-| 4 | north_south_elongation | 20 | nested_channels |
-| 5 | channel_morphology | 21 | coarsening_upward |
-| 6 | dome_anticline | 22 | fining_upward |
-| 7 | fault_controlled | 23 | gravel_basal_lag |
-| 8 | erosional_contact | 24 | dissolution_features |
-| 9 | lateral_continuity | 25 | structural_complexity |
-| 10 | lateral_thinning_east | 26 | data_confidence |
-| 11 | lateral_thinning_west | 27 | lateral_anisotropy |
-| 12 | lateral_thinning_north | 28 | vertical_anisotropy |
-| 13 | lateral_thinning_south | 29 | incision_depth_ratio |
-| 14 | deepens_east | 30 | overburden_control |
-| 15 | deepens_west | 31 | complexity_gradient |
+Feature types and their SDF functions:
+- **Palaeochannel** — parabolic trough `_channelSDF`: orientation-aligned, width, depth, concave-up
+- **Lens / lenticle** — triaxial ellipsoid `_lensSDF`: semi-axes from width_m/depth_m/length_m
+- **Buried hill / dome** — Gaussian dome `_hillSDF`: amplitude, σ from width_m
+- **Fault / shear** — signed plane distance `_faultSDF`: orientation, damage zone width
+- **Pinch-out / taper** — linear taper `_pinchSDF`: along-axis thickness gradient
 
-#### ConceptStore (`js/concept-store.js`)
-- [x] Add/remove named concepts with description, embedding, confidence, spatial domain, unit affinity
-- [x] Domain types: `global` (uniform influence) or `bbox` (Gaussian decay from bounding box, σ configurable)
-- [x] `computeAt(x,y,z)` → weighted sum of concept embeddings scaled by spatial relevance × confidence → normalised 32-dim context vector + per-concept weights + anisotropy tensor
-- [x] `_embeddingToTensor()` → diagonal anisotropy tensor [Ax, Ay, Az] from axes 3,4,5,18,29
-- [x] `clonePerturbed(σ)` → Box-Muller noise scaled by `(1 − data_confidence)` — used for knowledge uncertainty sampling
-- [x] `cloneScaled()` → uniform scale for ensemble analysis
-- [x] Serialize/deserialize to JSON; persisted to sessionStorage between rebuilds
-- [x] Concept scenarios — save/restore named interpretations; scenario comparison
-
-#### Mechanism 1: Anisotropic Coordinate Warping
-Before Fourier-encoding position, coordinates are warped by an anisotropy tensor derived from the concept embedding:
+```js
+// Network input (39 + nSDFs dims):
+inp = [Fourier(pos)(39) | SDF₁(pos) … SDFₙ(pos)]
 ```
-A_x = exp(+ew_elongation × 1.4)    // axis 3
-A_y = exp(−incision_depth × 1.0)   // axis 29
-A_z = exp(+ns_elongation × 1.4)    // axis 4
-warped = [A_x·x, A_y·y, A_z·z]
-```
-Effect: a palaeochannel E-W concept (axis 3 = +0.9) → A_x ≈ 3.5× → E-W BH observations "see" each other as closer → natural E-W elongated geology without any manual anisotropy settings.
 
-#### Mechanism 2: FiLM Concept Conditioning
-The 32-dim concept context vector modulates each hidden layer via Feature-wise Linear Modulation:
-```
-γ, β = linear(concept_ctx)
-h' = γ ⊙ h + β    (applied after each ReLU)
-```
-Warmup schedule ramps 0→1 over the first 30% of training epochs to avoid early dominance. The network learns: "when palaeochannel axes are active, activate this pattern of units at the channel base."
+`prepareShapesForSDF(shapes, bbox)` converts fractional centroid coordinates to world space (called inside `trainGeoImplicit` once bounds are known). `evaluateAllSDFs(preparedShapes, wx, wy, wz)` returns one value per shape in [−1, +1] (scaled by feature confidence).
 
-#### Network Input (71-dim)
-```
-inp = [Fourier(warped_pos)(39) | concept_ctx(32)]
-```
+**Why SDF over FiLM**: FiLM conditioning requires the network to learn how abstract axis values (e.g. east_west_elongation=+0.7) correlate with spatial unit distributions — too indirect a signal for 10–20 boreholes. SDF inputs explicitly encode WHERE the geological body is expected; the network only needs to learn HOW MUCH to trust the prior vs borehole observations.
 
 #### Concept-Driven Analysis (`js/app.js` window functions)
 - [x] **Knowledge uncertainty** — K perturbed ConceptStore copies via `clonePerturbed()`; re-infer grid each time (no retrain); Shannon entropy H = −Σ p_k log₂ p_k per voxel; 3-component uncertainty decomposition (data / model / knowledge)

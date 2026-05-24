@@ -245,3 +245,146 @@ Each shape object must have:
     user: featureText,
   };
 }
+
+// ─── SDF (Signed Distance Field) functions ────────────────────────────────────
+// These turn each geological shape primitive into a continuous spatial function:
+//   +1 = clearly inside / near expected unit
+//    0 = at the boundary
+//   -1 = clearly outside
+// Used as direct inputs to the neural implicit field so the network can learn
+// correlations between proximity to each geological feature and unit identity.
+
+// Converts fractional centroid coords to world coordinates using the bbox.
+// Returns enriched shape objects ready for evaluateFeatureSDF / evaluateAllSDFs.
+export function prepareShapesForSDF(shapes, bbox) {
+  if (!shapes?.length || !bbox) return [];
+  const { minX, maxX, minY, maxY, maxGL } = bbox;
+  const siteW = maxX - minX || 100;
+  const siteH = maxY - minY || 100;
+  return shapes.map(s => ({
+    ...s,
+    _wx: minX + (s.centroid_x_frac ?? 0.5) * siteW,  // easting
+    _wz: minY + (s.centroid_y_frac ?? 0.5) * siteH,  // northing
+    _gl: maxGL,
+  }));
+}
+
+// Evaluates one feature's SDF at world point (wx=easting, wy=elevation, wz=northing).
+// Returns value in [-1, 1] scaled by feature confidence.
+export function evaluateFeatureSDF(feat, wx, wy, wz) {
+  const ft = feat.feature_type?.toLowerCase() ?? '';
+  const conf = feat.confidence ?? 0.5;
+  let raw = 0;
+
+  if (ft.includes('palaeochannel') || ft.includes('channel')) {
+    raw = _channelSDF(feat, wx, wy, wz);
+  } else if (ft.includes('lens') || ft.includes('pod') || ft.includes('lenticle')) {
+    raw = _lensSDF(feat, wx, wy, wz);
+  } else if (ft.includes('hill') || ft.includes('dome') || ft.includes('mound') || ft.includes('ridge')) {
+    raw = _hillSDF(feat, wx, wy, wz);
+  } else if (ft.includes('fault') || ft.includes('shear')) {
+    raw = _faultSDF(feat, wx, wy, wz);
+  } else if (ft.includes('pinch') || ft.includes('taper')) {
+    raw = _pinchSDF(feat, wx, wy, wz);
+  }
+
+  return Math.max(-1, Math.min(1, raw * conf));
+}
+
+// Evaluates all prepared shapes at one world point.
+// Returns Float32Array(shapes.length) — one SDF value per active feature.
+export function evaluateAllSDFs(shapes, wx, wy, wz) {
+  const out = new Float32Array(shapes.length);
+  for (let i = 0; i < shapes.length; i++) out[i] = evaluateFeatureSDF(shapes[i], wx, wy, wz);
+  return out;
+}
+
+// ── Palaeochannel SDF ─────────────────────────────────────────────────────────
+// Parabolic trough; positive inside channel fill, negative outside.
+function _channelSDF(feat, wx, wy, wz) {
+  const cx     = feat._wx ?? 0;
+  const cz     = feat._wz ?? 0;
+  const gl     = feat._gl ?? wy;
+  const halfW  = (feat.width_m ?? 40) / 2;
+  const D      = feat.max_depth_m ?? 6;
+  const θ      = (feat.orientation_deg ?? 90) * Math.PI / 180;
+
+  // Rotate to channel-aligned frame (azimuth θ from North)
+  const dx     = wx - cx;
+  const dz     = wz - cz;
+  const along  =  dx * Math.sin(θ) + dz * Math.cos(θ);
+  const across = -dx * Math.cos(θ) + dz * Math.sin(θ);
+
+  // Parabolic depth profile
+  const t      = Math.abs(across) / halfW;          // 0=centreline, 1=edge
+  const zTop   = gl;
+  const zBase  = zTop - D * Math.max(0, 1 - t * t); // deepest at t=0
+
+  if (Math.abs(across) <= halfW && wy <= zTop && wy >= zBase) {
+    // Inside channel: peak at centreline base
+    const crossScore = 1 - t * t;
+    const elevScore  = (zTop - wy) / Math.max(0.1, D);
+    return crossScore * 0.6 + Math.min(1, elevScore) * 0.4;
+  }
+
+  // Outside: negative, proportional to approximate distance
+  const dCross = Math.max(0, Math.abs(across) - halfW);
+  const dElev  = Math.max(0, Math.max(zBase - wy, wy - zTop));
+  return -Math.min(1, Math.sqrt(dCross * dCross + dElev * dElev) / halfW);
+}
+
+// ── Lens / Pod SDF ────────────────────────────────────────────────────────────
+// Triaxial ellipsoid; positive inside.
+function _lensSDF(feat, wx, wy, wz) {
+  const cx = feat._wx ?? 0;
+  const cz = feat._wz ?? 0;
+  const cy = feat._gl != null ? feat._gl - (feat.depth_m ?? 5) : wy;
+  const rx = feat.rx_m ?? feat.radius_m ?? 20;
+  const ry = feat.ry_m ?? rx * 0.3;
+  const rz = feat.rz_m ?? rx;
+  const dx = (wx - cx) / Math.max(0.1, rx);
+  const dy = (wy - cy) / Math.max(0.1, ry);
+  const dz = (wz - cz) / Math.max(0.1, rz);
+  return Math.max(-1, 1 - 2 * (dx * dx + dy * dy + dz * dz));
+}
+
+// ── Buried Hill / Dome SDF ───────────────────────────────────────────────────
+// Gaussian uplift; positive above the dome surface (elevated rock exposed).
+function _hillSDF(feat, wx, wy, wz) {
+  const cx   = feat._wx ?? 0;
+  const cz   = feat._wz ?? 0;
+  const gl   = feat._gl ?? wy;
+  const amp  = feat.amplitude_m ?? 5;
+  const hw   = feat.half_width_m ?? 30;
+  const r    = Math.sqrt((wx - cx) ** 2 + (wz - cz) ** 2);
+  const zSurf = gl - amp * (1 - Math.exp(-(r / hw) ** 2));
+  return Math.tanh((wy - zSurf) / Math.max(0.5, amp * 0.3));
+}
+
+// ── Fault SDF ────────────────────────────────────────────────────────────────
+// Signed side-of-fault; positive = hanging wall, negative = footwall.
+function _faultSDF(feat, wx, wy, wz) {
+  const cx     = feat._wx ?? 0;
+  const cz     = feat._wz ?? 0;
+  const strike = (feat.orientation_deg ?? 0) * Math.PI / 180;
+  const dip    = (feat.dip_deg ?? 90) * Math.PI / 180;
+  const damageW = feat.damage_zone_width ?? 10;
+  // Fault plane normal
+  const nx = -Math.sin(strike) * Math.cos(dip);
+  const ny =  Math.sin(dip);
+  const nz =  Math.cos(strike) * Math.cos(dip);
+  const d  = (wx - cx) * nx + wy * ny + (wz - cz) * nz;
+  return Math.tanh(d / Math.max(0.5, damageW * 0.5));
+}
+
+// ── Pinch-out SDF ─────────────────────────────────────────────────────────────
+// Unit that thins towards a line; positive on the thick side.
+function _pinchSDF(feat, wx, wy, wz) {
+  const cx  = feat._wx ?? 0;
+  const cz  = feat._wz ?? 0;
+  const θ   = (feat.orientation_deg ?? 0) * Math.PI / 180;
+  const len = feat.length_m ?? 100;
+  const dx  = wx - cx, dz = wz - cz;
+  const along = dx * Math.sin(θ) + dz * Math.cos(θ);
+  return Math.tanh(along / Math.max(1, len * 0.3));
+}
