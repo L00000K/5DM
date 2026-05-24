@@ -407,6 +407,7 @@ export class VoxelBuilder {
           continue;
         }
         const dom = ctx.weights[0]; // sorted desc
+        if (!concepts.length) { colDom.set(ix * ny + iy, null); continue; }
         const cIdx = concepts.findIndex(c => c.id === dom.id);
         const hue  = (cIdx / concepts.length); // evenly spaced hues
         colDom.set(ix * ny + iy, { hue, weight: ctx.totalWeight });

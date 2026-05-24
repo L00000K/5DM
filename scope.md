@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-24 (batch 20 — SDF geometric priors replace FiLM concept conditioning in neural implicit field)
+> Last updated: 2026-05-24 (batch 21 — robustness fixes: IDW empty-votes guard, kriging single-unit b2 OOB, lens/channel degenerate geometry, pixOff strip advance, concept coloring empty-concepts guard, claude-client range calculation)
 
 ---
 

@@ -2051,7 +2051,7 @@ export function scoreConceptCoherence(concept, classifiedBH, geoUnits) {
       if (zArr.length < 2) continue;
       const mean = zArr.reduce((s, z) => s + z, 0) / zArr.length;
       const std  = Math.sqrt(zArr.reduce((s, z) => s + (z - mean) ** 2, 0) / zArr.length);
-      const range = Math.max(1, ...zArr) - Math.min(1, ...zArr);
+      const range = Math.max(...zArr) - Math.min(...zArr);
       zStdSum += range > 0 ? std / range : 0;
       nUnits++;
     }

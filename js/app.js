@@ -838,7 +838,7 @@ async function _parseTiff(buf) {
     }
     const copyLen = Math.min(strip.length, pixelData.length - pixOff);
     if (copyLen > 0) pixelData.set(strip.subarray(0, copyLen), pixOff);
-    pixOff += strip.length;
+    pixOff += copyLen;
   }
 
   // Subsample to ≤ 50 k points

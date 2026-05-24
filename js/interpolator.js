@@ -185,6 +185,7 @@ function idwVote(neighbours, power, unitIndex, unknownId, typicalSpacing) {
     totalW += w;
   }
   const sorted = Object.entries(votes).sort((a, b) => b[1] - a[1]);
+  if (!sorted.length || totalW === 0) return makeResult(null, null, 0, 0, 0, 0, unitIndex, unknownId);
   const [bc, bw] = sorted[0];
   const [sc, sw = 0] = sorted[1] ?? [];
   const dDecay = Math.exp(-neighbours[0].dist / typicalSpacing);
@@ -1402,7 +1403,7 @@ export async function buildIndicatorKriging(boreholes, geoUnits, cellSizeParam, 
 
   for (let v = 0; v < total; v++) {
     const base = v * nUnits;
-    let b1 = 0, b2 = 1;
+    let b1 = 0, b2 = nUnits > 1 ? 1 : 0;
     for (let u = 2; u < nUnits; u++) {
       if      (probs[base + u] > probs[base + b1]) { b2 = b1; b1 = u; }
       else if (probs[base + u] > probs[base + b2])  b2 = u;
@@ -1410,7 +1411,7 @@ export async function buildIndicatorKriging(boreholes, geoUnits, cellSizeParam, 
     unitIds[v]      = unitIdsMap[unitCodes[b1]] ?? 0;
     certainty[v]    = Math.max(0.05, probs[base + b1]);
     blendUnitIds[v] = unitIdsMap[unitCodes[b2]] ?? 0;
-    blendRatios[v]  = probs[base + b2];
+    blendRatios[v]  = nUnits > 1 ? probs[base + b2] : 0;
   }
 
   // ── Build per-unit probability maps (separate Float32Arrays) ─────────────────

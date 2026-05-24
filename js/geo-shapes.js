@@ -33,10 +33,10 @@ function palaeochannelPoints(
   // Sample along the centreline (-halfLen to +halfLen) and across (-halfW to +halfW)
   const nAlong = Math.max(5, Math.ceil(lengthM / 15));
   const nAcross = Math.max(5, Math.ceil(widthM / 10));
-  const halfLen = lengthM / 2, halfW = widthM / 2;
+  const halfLen = lengthM / 2, halfW = Math.max(0.5, widthM / 2);
 
   for (let ia = 0; ia <= nAlong; ia++) {
-    const tAlong = -halfLen + (ia / nAlong) * lengthM;
+    const tAlong = nAlong > 0 ? -halfLen + (ia / nAlong) * lengthM : 0;
     const cx = centreX + tAlong * sinA;
     const cy = centreY + tAlong * cosA;
 
@@ -70,13 +70,14 @@ function lensPoints(cx, cy, cElev, rxM, ryM, rzM, orientationDeg, unitCode, conf
   const sinA   = Math.sin(azRad), cosA = Math.cos(azRad);
   const nSamp  = 20;
 
+  const safeRx = Math.max(0.1, rxM), safeRy = Math.max(0.1, ryM), safeRz = Math.max(0.1, rzM);
   // Sample on a grid of the bounding box and accept inside ellipsoid
   for (let ix = -2; ix <= 2; ix++) {
     for (let iy = -2; iy <= 2; iy++) {
       for (let iz = -2; iz <= 2; iz++) {
         // Rotated local coords
-        const lx = ix * rxM * 0.4, ly = iy * ryM * 0.4, lz = iz * rzM * 0.4;
-        if ((lx/rxM)**2 + (ly/ryM)**2 + (lz/rzM)**2 > 0.9) continue;
+        const lx = ix * safeRx * 0.4, ly = iy * safeRy * 0.4, lz = iz * safeRz * 0.4;
+        if ((lx/safeRx)**2 + (ly/safeRy)**2 + (lz/safeRz)**2 > 0.9) continue;
         // Rotate in plan by orientationDeg
         const wx = cx + lx * cosA - ly * sinA;
         const wy = cy + lx * sinA + ly * cosA;
@@ -109,7 +110,7 @@ function buriedHillPoints(cx, cy, crestElev, amplitudeM, halfWidthM, unitCode, c
 
 // ─── Convert virtual points → synthetic boreholes ─────────────────────────────
 // Compatible format with AppState.classifiedBH entries so interpolator can use them.
-export function shapePointsToBoreholes(shapePoints, groundLevel, semanticWeight) {
+export function shapePointsToBoreholes(shapePoints, groundLevel, semanticWeight = 0.5) {
   const bhMap = {}; // key = `${x.toFixed(1)}_${y.toFixed(1)}` → borehole
 
   for (const pt of shapePoints) {
