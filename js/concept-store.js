@@ -119,7 +119,7 @@ export class ConceptStore {
   add({ description, embedding, confidence = 0.7, domain = { type: 'global' }, unitAffinity = [], temporalOrder = null, parentId = null }) {
     const id = `c${this._nextId++}`;
     this._concepts.push({
-      id, description,
+      id, description: String(description ?? ''),
       embedding: embedding instanceof Float32Array ? embedding : new Float32Array(embedding),
       confidence, domain, unitAffinity,
       temporalOrder, // integer rank: lower = older, higher = younger; null = unspecified

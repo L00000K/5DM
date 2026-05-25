@@ -2085,7 +2085,7 @@ function initUnitEditor() {
       } else {
         out.innerHTML = corrections.map(c => `
           <div class="corr-row" style="font-size:10px;border:1px solid var(--border);border-radius:4px;padding:5px 7px;margin-bottom:4px;background:var(--bg-deep)">
-            <div style="color:var(--text-mid);margin-bottom:2px;line-height:1.3">"${escHtml(c.description.slice(0, 70))}"</div>
+            <div style="color:var(--text-mid);margin-bottom:2px;line-height:1.3">"${escHtml((c.description ?? '').slice(0, 70))}"</div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
               <span style="color:var(--red)">${escHtml(c.currentCode)}</span>
               <span>→</span>
@@ -8960,7 +8960,7 @@ window._showConceptCoherence = function() {
     const pct = (r.score * 100).toFixed(0);
     const col = r.score > 0.65 ? 'var(--accent)' : r.score > 0.4 ? '#f0b429' : 'var(--red)';
     return `<div class="coherence-row">
-      <span class="coherence-name" title="${r.description}">${r.description.slice(0, 35)}…</span>
+      <span class="coherence-name" title="${escHtml(r.description ?? '')}">${escHtml((r.description ?? '').slice(0, 35))}…</span>
       <div class="coherence-bar-wrap"><div class="coherence-bar" style="width:${pct}%;background:${col}"></div></div>
       <span class="coherence-pct" style="color:${col}">${pct}%</span>
     </div>` +
@@ -8996,11 +8996,11 @@ export function _renderConceptList() {
     const confPct   = (c.confidence * 100).toFixed(0);
     const parentC   = c.parentId ? concepts.find(p => p.id === c.parentId) : null;
     const parentTag = parentC
-      ? `<span style="font-size:9px;color:var(--accent);opacity:.8;margin-left:4px" title="Inherits 40% of parent embedding">↳ ${parentC.description.slice(0, 28)}</span>`
+      ? `<span style="font-size:9px;color:var(--accent);opacity:.8;margin-left:4px" title="Inherits 40% of parent embedding">↳ ${escHtml((parentC.description ?? '').slice(0, 28))}</span>`
       : '';
     return `<div class="concept-entry" data-id="${c.id}">
       <div class="concept-header">
-        <span class="concept-desc" title="${c.description}">${c.description.slice(0, 55)}${c.description.length > 55 ? '…' : ''}</span>
+        <span class="concept-desc" title="${escHtml(c.description ?? '')}">${escHtml((c.description ?? '').slice(0, 55))}${(c.description ?? '').length > 55 ? '…' : ''}</span>
         <div style="display:flex;gap:2px">
           <button class="concept-radar-btn" title="Show radar chart" onclick="_toggleConceptRadar('${c.id}', this)">◎</button>
           <button class="concept-hl-btn" title="Highlight this concept's influence in 3D" onclick="_highlightConcept3D('${c.id}', this)" style="font-size:10px;padding:1px 4px;background:none;border:1px solid var(--border);border-radius:3px;color:var(--text-dim);cursor:pointer">🔦</button>
@@ -9504,7 +9504,7 @@ window._showConceptSensitivity = function() {
     const pct = r.pctOfTotal.toFixed(1);
     const col = r.pctOfTotal > 30 ? 'var(--accent)' : r.pctOfTotal > 10 ? '#f0b429' : 'var(--text-mid)';
     return `<div class="coherence-row" style="margin-bottom:3px">
-      <span class="coherence-name" title="${r.description}">${r.description.slice(0, 32)}…</span>
+      <span class="coherence-name" title="${escHtml(r.description ?? '')}">${escHtml((r.description ?? '').slice(0, 32))}…</span>
       <div class="coherence-bar-wrap"><div class="coherence-bar" style="width:${Math.min(100, r.pctOfTotal * 2)}%;background:${col}"></div></div>
       <span class="coherence-pct" style="color:${col}">${pct}%</span>
     </div>`;
@@ -9533,7 +9533,7 @@ function _warnLowInfluenceConcepts() {
       if (r.pctOfTotal < 3 && r.meanRelevance < 0.05) {
         sensitivityWarnings.push({
           severity: 'warning',
-          description: `"${r.description.slice(0, 45)}" influenced only ${r.pctOfTotal.toFixed(1)}% of voxels — check domain, confidence, or opposing concepts`,
+          description: `"${(r.description ?? '').slice(0, 45)}" influenced only ${r.pctOfTotal.toFixed(1)}% of voxels — check domain, confidence, or opposing concepts`,
         });
       }
     }
@@ -9548,7 +9548,7 @@ function _warnLowInfluenceConcepts() {
       if (sim >= 0.90) {
         simWarnings.push({
           severity: 'warning',
-          description: `"${concepts[i].description.slice(0, 28)}" and "${concepts[j].description.slice(0, 28)}" are ${(sim * 100).toFixed(0)}% similar — consider merging or using different domains`,
+          description: `"${(concepts[i].description ?? '').slice(0, 28)}" and "${(concepts[j].description ?? '').slice(0, 28)}" are ${(sim * 100).toFixed(0)}% similar — consider merging or using different domains`,
         });
       }
     }
@@ -11085,12 +11085,11 @@ window._runConceptContributionReport = async function() {
       accHtml = `<span style="color:${col};margin-left:6px">${sign}${(r.accDelta * 100).toFixed(1)}% acc</span>`;
     }
 
-    const desc = r.concept.description.length > 40
-      ? r.concept.description.slice(0, 40) + '…'
-      : r.concept.description;
+    const rawDesc = r.concept.description ?? '';
+    const desc = rawDesc.length > 40 ? rawDesc.slice(0, 40) + '…' : rawDesc;
 
     return `<div style="margin-bottom:6px;padding:5px 6px;background:var(--bg-surface);border-radius:3px;border-left:3px solid ${infCol}">
-      <div style="font-size:9.5px;font-weight:600;color:var(--text)">${desc}</div>
+      <div style="font-size:9.5px;font-weight:600;color:var(--text)">${escHtml(desc)}</div>
       <div style="font-size:9px;color:${infCol};margin-top:2px;font-family:monospace">${infBar} ${infPct}%${accHtml}</div>
       <div style="font-size:8.5px;color:var(--text-muted);margin-top:1px">Removing shifts ${infPct}% of voxels${r.ablAcc != null ? ` · BH accuracy without: ${(r.ablAcc * 100).toFixed(1)}%` : ''}</div>
     </div>`;
