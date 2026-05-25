@@ -8313,7 +8313,7 @@ window._compareConceptScenarios = function() {
     for (const { name, store } of stores) {
       try {
         const r = inferGeoImplicit(AppState.trainedModel, gridMeta, AppState.geoUnits, store);
-        const acc = _bhAccuracy(r.unitIds);
+        const acc = _bhAccuracyVsGrid(r.unitIds, grid);
         // Count voxels per dominant unit to measure distribution
         const unitCount = new Map();
         for (const id of r.unitIds) {
