@@ -7082,6 +7082,7 @@ function _updateConceptInfluenceBar() {
 }
 
 function _saveConceptStore() {
+  if (!AppState.conceptStore) return;
   try {
     sessionStorage.setItem('geomodel:concepts', AppState.conceptStore.serialize());
   } catch { /* quota or private-mode — silently ignore */ }
@@ -7262,8 +7263,7 @@ function initConceptPanel() {
         cellSize: grid.cellSize, cellHeight: grid.cellHeight, origin: grid.origin,
       };
       // Re-infer with no concepts to get the pure-data baseline
-      const { ConceptStore: CS } = await import('./concept-store.js');
-      const emptyStore = new CS();
+      const emptyStore = new ConceptStore();
       const baseline = inferGeoImplicit(AppState.trainedModel, gridMeta, AppState.geoUnits, emptyStore);
 
       // Build effect map: 1 where concept changed prediction, 0 where same
