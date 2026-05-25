@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-25 (batch 33 — HTML injection guards: unit editor uses DOM .value instead of innerHTML attribute injection; escHtml() added to option elements, error messages, and concept description in traceability panel; concept refinement apply button re-enabled on error)
+> Last updated: 2026-05-25 (batch 34 — concept description always coerced to String in ConceptStore.add(); escHtml() + null guards for concept descriptions throughout concept list, coherence, sensitivity, contribution report, and corrections panel rendering)
 
 ---
 
