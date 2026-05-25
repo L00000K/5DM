@@ -4320,21 +4320,25 @@ function initIsosurfaces() {
       ? 'Building isosurfaces from MC probability volumes…'
       : 'Building marching-cubes isosurfaces…', 'info');
     await new Promise(r => setTimeout(r, 0));
+    try {
+      const op = parseFloat(document.getElementById('surface-opacity')?.value ?? 55) / 100;
+      AppState.scene.buildIsosurfaces(
+        AppState.voxelGrid, AppState.geoUnits, op,
+        p => { btn.textContent = `⬡ ${(p * 100).toFixed(0)}%`; },
+      );
 
-    const op = parseFloat(document.getElementById('surface-opacity')?.value ?? 55) / 100;
-    AppState.scene.buildIsosurfaces(
-      AppState.voxelGrid, AppState.geoUnits, op,
-      p => { btn.textContent = `⬡ ${(p * 100).toFixed(0)}%`; },
-    );
-
-    isoBuilt = true;
-    isoVisible = true;
-    AppState.scene.setIsosurfacesVisible(true);
-    btn.disabled = false;
-    btn.textContent = '⬡ Isosurfaces';
-    btn.classList.add('active');
-    const src = AppState.voxelGrid.probVolumes?.size > 0 ? ' (MC probability)' : '';
-    log(`Isosurfaces built for ${AppState.geoUnits.length} unit(s)${src}.`, 'ok');
+      isoBuilt = true;
+      isoVisible = true;
+      AppState.scene.setIsosurfacesVisible(true);
+      btn.classList.add('active');
+      const src = AppState.voxelGrid.probVolumes?.size > 0 ? ' (MC probability)' : '';
+      log(`Isosurfaces built for ${AppState.geoUnits.length} unit(s)${src}.`, 'ok');
+    } catch (err) {
+      log(`Isosurface build failed: ${err.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '⬡ Isosurfaces';
+    }
   });
 
   // ── Uncertainty isosurface ─────────────────────────────────────────────────
@@ -4354,17 +4358,21 @@ function initIsosurfaces() {
     uncertBtn.textContent = '◈ Building…';
     log('Building uncertainty isosurface…', 'info');
     await new Promise(r => setTimeout(r, 0));
+    try {
+      const threshold = parseFloat(document.getElementById('uncertainty-threshold')?.value ?? 60) / 100;
+      AppState.scene.buildUncertaintySurface(AppState.voxelGrid, threshold, 0.35);
 
-    const threshold = parseFloat(document.getElementById('uncertainty-threshold')?.value ?? 60) / 100;
-    AppState.scene.buildUncertaintySurface(AppState.voxelGrid, threshold, 0.35);
-
-    uncertBuilt = true;
-    uncertVisible = true;
-    AppState.scene.setUncertaintySurfaceVisible(true);
-    uncertBtn.disabled = false;
-    uncertBtn.textContent = '◈ Uncertainty';
-    uncertBtn.classList.add('active');
-    log(`Uncertainty surface built (threshold: ${(threshold * 100).toFixed(0)}% entropy).`, 'ok');
+      uncertBuilt = true;
+      uncertVisible = true;
+      AppState.scene.setUncertaintySurfaceVisible(true);
+      uncertBtn.classList.add('active');
+      log(`Uncertainty surface built (threshold: ${(threshold * 100).toFixed(0)}% entropy).`, 'ok');
+    } catch (err) {
+      log(`Uncertainty surface failed: ${err.message}`, 'error');
+    } finally {
+      uncertBtn.disabled = false;
+      uncertBtn.textContent = '◈ Uncertainty';
+    }
   });
 
   const uncertThresh = document.getElementById('uncertainty-threshold');
