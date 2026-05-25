@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-25 (batch 27 — Null guard fixes: geo-implicit presentFraction division-by-zero; interpolator prevCode reset bug drops transitions; scene.js querySelector/getElementById null dereferences)
+> Last updated: 2026-05-25 (batch 28 — SPT profile bin size RangeError fix: clamp binSize to ≥0.1 to prevent Array.from({length:Infinity}) crash when user enters 0)
 
 ---
 

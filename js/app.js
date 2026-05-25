@@ -2351,7 +2351,7 @@ function drawSPTProfile() {
 
   const showBHs   = document.getElementById('spt-show-bhs')?.checked ?? true;
   const showUnits = document.getElementById('spt-show-units')?.checked ?? false;
-  const binSize   = parseFloat(document.getElementById('spt-bin-size')?.value ?? '1');
+  const binSize   = Math.max(0.1, parseFloat(document.getElementById('spt-bin-size')?.value ?? '1') || 1);
 
   // Find total depth range
   let maxDepth = 0;
