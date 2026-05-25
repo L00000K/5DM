@@ -2594,3 +2594,72 @@ kbd {
 }
 .bm-del:hover { color: var(--red, #e05050); }
 .bm-empty { font-size: 10px; color: var(--text-dim); padding: 4px 0; text-align: center; }
+
+/* ── Process tab ── */
+#tab-process {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Compact processing button — full width, ghost style */
+.proc-btn {
+  width: 100%;
+  font-size: 10px;
+  text-align: left;
+  padding: 5px 8px;
+  border-radius: var(--radius-sm);
+}
+.proc-btn:hover { background: var(--bg-raised); }
+
+/* Card-style grouping for proc sections with header + content */
+.proc-section {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.proc-section:last-child { border-bottom: none; }
+
+.proc-section-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  gap: 6px;
+}
+.proc-section-hdr > span {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-mid);
+}
+
+/* Make the Process tab's settings-divider act as a category header */
+#tab-process .settings-divider {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border-top: 1px solid var(--border);
+  padding: 6px 8px 3px;
+  margin: 0;
+  background: var(--bg-surface);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+/* Compact panel-actions in Process tab (build group) */
+#tab-process .panel-actions {
+  border-top: none;
+  background: transparent;
+  padding: 6px 8px 4px;
+}
+
+/* Tab count badge for Process tab — could add notification dot later */
+.tab-btn[data-tab="process"] { position: relative; }
+
+/* Compact right panel — hide scrollbar track, keep functional */
+#right-panel {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}

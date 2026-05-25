@@ -43,6 +43,7 @@
         <button class="tab-btn active" data-tab="data" role="tab">Data</button>
         <button class="tab-btn" data-tab="knowledge" role="tab">Knowledge</button>
         <button class="tab-btn" data-tab="build" role="tab">Build</button>
+        <button class="tab-btn" data-tab="process" role="tab">Process</button>
       </div>
 
       <!-- DATA TAB — uploads, table, logs, properties -->
@@ -442,7 +443,6 @@
         </div>
 
         <div class="settings-divider">Conceptual Model ✦ AI</div>
-        <div class="settings-divider">Conceptual Model ✴ AI</div>
 
         <div class="concept-panel-header">
           <div class="concept-panel-title">Conceptual Model</div>
@@ -542,28 +542,7 @@
         <!-- Global concept influence summary -->
         <div id="concept-global-tensor" class="concept-global-tensor" style="display:none"></div>
 
-        <!-- Quick 3D concept influence overlays -->
-        <div class="btn-row" style="margin-top:6px;gap:4px">
-          <button id="btn-show-concept-influence" class="btn btn-secondary btn-sm" style="flex:1;font-size:10px" disabled
-            title="Colour the 3D model by how much concept (vs borehole data) drove each voxel">
-            ⬤ Concept influence overlay
-          </button>
-          <button id="btn-show-dominant-concept" class="btn btn-secondary btn-sm" style="flex:1;font-size:10px" disabled
-            title="Colour voxels by their dominant active geological concept">
-            ⬤ Dominant concept
-          </button>
-        </div>
-        <div class="btn-row" style="margin-top:4px;gap:4px">
-          <button id="btn-show-concept-effect" class="btn btn-secondary btn-sm" style="flex:1;font-size:10px" disabled
-            title="Re-infer without concepts and highlight voxels where semantic knowledge changed the prediction">
-            ⊕ Concept effect map
-          </button>
-          <button id="btn-concept-interp-summary" class="btn btn-secondary btn-sm" style="flex:1;font-size:10px"
-            title="Instantly describe what the active concepts predict about the site geology — no model build needed">
-            ✦ Interpret
-          </button>
-        </div>
-        <div id="concept-interp-summary-output" style="display:none;margin-top:6px;font-size:9.5px;background:var(--bg-surface);border-radius:4px;padding:6px;border:1px solid var(--border)"></div>
+        <p class="hint" style="font-size:9.5px;margin:6px 0 4px">→ Concept overlay &amp; interpretation tools are in the <strong>Process</strong> tab.</p>
 
         <!-- Export / Import concept store -->
         <div class="btn-row" style="margin-top:4px;gap:4px">
@@ -641,102 +620,7 @@
           <div id="concept-scenario-compare" style="display:none;margin-top:6px"></div>
         </div>
 
-        <!-- Section line suggestions based on concept anisotropy -->
-        <div style="margin-top:8px">
-          <button id="btn-suggest-sections" class="btn btn-ghost" style="font-size:10px;width:100%"
-            title="Suggest fence section orientations that best test the concept predictions">
-            ⊙ Suggest section lines for concept verification
-          </button>
-          <div id="concept-section-suggestions" style="display:none;margin-top:4px"></div>
-        </div>
-
-        <!-- Borehole concept validation -->
-        <div style="margin-top:8px">
-          <button id="btn-bh-concept-validation" class="btn btn-ghost" style="font-size:10px;width:100%"
-            title="Check how well active concepts predict the observed stratigraphy at each borehole">
-            ⊙ Validate concepts against borehole observations
-          </button>
-          <div id="bh-concept-validation-output" style="display:none;margin-top:6px"></div>
-        </div>
-
-        <!-- Coherence check — verify geometry matches concepts -->
-        <div style="margin-top:8px">
-          <button class="btn btn-ghost" style="font-size:10px;width:100%" onclick="_showConceptCoherence()" title="Check how well the built model geometry matches each concept">
-            ⊙ Check concept-geometry coherence
-          </button>
-          <div id="concept-coherence-output" style="display:none;margin-top:6px"></div>
-        </div>
-
-        <!-- Bayesian concept confidence calibration from BH evidence -->
-        <div style="margin-top:4px">
-          <button class="btn btn-ghost" style="font-size:10px;width:100%" onclick="_calibrateConceptConfidences()"
-            title="Use borehole prediction accuracy to Bayesian-update each concept's confidence. Concepts that helped correct predictions get higher confidence; concepts that hurt predictions get lower confidence.">
-            ◈ Bayesian confidence calibration
-          </button>
-          <div id="concept-calib-output" style="display:none;margin-top:6px"></div>
-        </div>
-
-        <!-- Concept contribution report — per-concept ablation vs BH accuracy -->
-        <div style="margin-top:4px">
-          <button class="btn btn-ghost" style="font-size:10px;width:100%" onclick="_runConceptContributionReport()"
-            title="Remove each concept one at a time and measure how much it shifts the model and affects prediction accuracy at boreholes. Shows which concepts genuinely help.">
-            ◉ Concept contribution report
-          </button>
-          <div id="concept-contrib-output" style="display:none;margin-top:6px"></div>
-        </div>
-
-        <!-- Concept sensitivity — which concepts influence the most voxels -->
-        <div style="margin-top:4px">
-          <button class="btn btn-ghost" style="font-size:10px;width:100%" onclick="_showConceptSensitivity()" title="Show how many voxels each concept influences">
-            ⟳ Concept influence coverage
-          </button>
-          <div id="concept-sensitivity-output" style="display:none;margin-top:6px"></div>
-        </div>
-
-        <!-- Concept-driven engineering hazard map — no model build needed -->
-        <div style="margin-top:4px">
-          <button class="btn btn-ghost" style="font-size:10px;width:100%" onclick="_showConceptHazardMap()"
-            title="Derive 2D engineering hazard zones directly from concept embeddings — no model build needed. Shows karst risk, structural complexity, settlement, and instability zones.">
-            ⚠ Concept-driven hazard map
-          </button>
-          <div id="concept-hazard-output" style="display:none;margin-top:6px"></div>
-        </div>
-
-        <!-- Concept ensemble uncertainty — stability across concept scales -->
-        <div style="margin-top:4px">
-          <button class="btn btn-ghost" style="font-size:10px;width:100%" onclick="_runConceptEnsemble()"
-            title="Run 3 inference passes (concepts off / baseline / amplified) and colour voxels by stability. Green = borehole-anchored, red = concept-sensitive. Neural-implicit method gives instant results.">
-            ◈ Concept ensemble uncertainty
-          </button>
-          <div id="concept-ensemble-output" style="display:none;margin-top:6px"></div>
-        </div>
-
-        <!-- Geological Knowledge Uncertainty — stochastic concept embedding sampling -->
-        <div style="margin-top:4px">
-          <button class="btn btn-ghost" style="font-size:10px;width:100%" onclick="_runKnowledgeUncertainty()"
-            title="Sample the concept embedding space (K perturbed copies, Box-Muller noise scaled by 1−confidence) and compute per-voxel entropy across realisations. Reveals which zones are sensitive to geological interpretation uncertainty vs borehole-anchored.">
-            ◈ Geological knowledge uncertainty
-          </button>
-          <div id="knowledge-uncert-output" style="display:none;margin-top:6px"></div>
-        </div>
-
-        <!-- Concept Completeness Scanner — axis coverage gaps and suggestions -->
-        <div style="margin-top:4px">
-          <button class="btn btn-ghost" style="font-size:10px;width:100%" onclick="_scanConceptCompleteness()"
-            title="Analyse which of the 32 geological axes are under-specified by the current concept store. Highlights blind spots and suggests what additional concepts would improve coverage.">
-            ◉ Concept completeness scan
-          </button>
-          <div id="concept-completeness-output" style="display:none;margin-top:6px"></div>
-        </div>
-
-        <!-- Concept interpretation narrative — report-ready text -->
-        <div style="margin-top:4px">
-          <button id="btn-concept-narrative" class="btn btn-ghost" style="font-size:10px;width:100%" title="Generate a report-ready paragraph describing the conceptual model interpretation">
-            ¶ Generate interpretation narrative
-          </button>
-          <div id="concept-narrative-output" style="display:none;margin-top:6px;font-size:10px;color:var(--text-mid);padding:6px;background:var(--bg-surface);border:1px solid var(--border);border-radius:4px;line-height:1.5;font-style:italic"></div>
-          <button id="btn-copy-narrative" style="display:none;font-size:9px;padding:2px 8px;margin-top:3px" class="btn btn-ghost">⧉ Copy to clipboard</button>
-        </div>
+        <p class="hint" style="margin-top:8px;font-size:10px;text-align:center;color:var(--accent)">→ Concept analysis tools are in the <strong>Process</strong> tab</p>
 
         <!-- Concept axis correlation matrix -->
         <div class="collapsible-hdr" id="concept-corr-toggle" style="margin-top:8px">
@@ -1064,31 +948,56 @@
           <p class="hint">0% = pure spatial interpolation. 100% = full semantic guidance.</p>
         </div>
 
-      <!-- Action buttons -->
-      <div class="panel-actions">
-        <button id="btn-run-ai" class="btn-primary" disabled>Run AI Analysis →</button>
-        <button id="btn-interpret-geology" class="btn-secondary" disabled title="Use Claude to interpret site geology, generate constraints and hazard flags">🧠 Interpret Geology</button>
-        <button id="btn-edit-units" class="btn-secondary" title="Add or edit geological unit definitions">✎ Edit Units</button>
-        <button id="btn-build-model" class="btn-primary" disabled>Build 3D Model →</button>
-        <div id="concept-method-hint" style="display:none;font-size:9.5px;color:var(--accent);background:rgba(26,111,165,0.08);border-left:2px solid var(--accent);padding:3px 6px;border-radius:0 3px 3px 0;margin-top:2px">✦ Concepts active — select <b>Neural Implicit</b> method to apply them geometrically</div>
-        <label class="checkbox-row" style="margin-top:4px;gap:8px;align-items:center;cursor:pointer;font-size:10px;color:var(--text-mid)">
-          <input type="checkbox" id="mc-enabled">
-          <span>Monte Carlo (N=<input type="number" id="mc-n" value="20" min="5" max="100" step="5" style="width:44px;background:none;border:none;border-bottom:1px solid var(--border);color:var(--text-main);font-size:10px"> realisations) — boundary perturbation uncertainty</span>
-        </label>
-        <label class="checkbox-row" style="margin-top:4px;gap:8px;align-items:center;cursor:pointer;font-size:10px;color:var(--text-mid)" title="After building, scan each vertical column for stratigraphic inversions (younger unit below older unit) and replace them with the expected older unit. Uses the stratigraphic order defined in the Analysis panel.">
-          <input type="checkbox" id="correct-inversions" checked>
-          <span>Correct stratigraphic inversions</span>
-        </label>
-      </div>
+        <p class="hint" style="margin:10px 8px 4px;font-size:10px;text-align:center;color:var(--accent)">→ Build &amp; run model from the <strong>Process</strong> tab</p>
 
-      <div class="settings-divider">Analysis</div>
+        <div id="status-log" class="status-log" aria-live="polite" style="margin-top:8px">
+          <div class="log-entry log-info">Ready — drop files or load a sample site.</div>
+        </div>
+      </div><!-- /tab-build -->
+
+      <!-- PROCESS TAB — all processing, analysis and export actions -->
+      <div class="tab-content" id="tab-process" role="tabpanel">
+
+        <!-- ── Build ── -->
+        <div class="settings-divider">Model Build</div>
+        <div class="panel-actions">
+          <button id="btn-run-ai" class="btn-primary" disabled>Run AI Analysis →</button>
+          <button id="btn-interpret-geology" class="btn-secondary" disabled title="Use Claude to interpret site geology, generate constraints and hazard flags">🧠 Interpret Geology</button>
+          <button id="btn-edit-units" class="btn-secondary" title="Add or edit geological unit definitions">✎ Edit Units</button>
+          <button id="btn-build-model" class="btn-primary" disabled>Build 3D Model →</button>
+          <div id="concept-method-hint" style="display:none;font-size:9.5px;color:var(--accent);background:rgba(26,111,165,0.08);border-left:2px solid var(--accent);padding:3px 6px;border-radius:0 3px 3px 0;margin-top:2px">✦ Concepts active — select <b>Neural Implicit</b> method to apply them geometrically</div>
+          <label class="checkbox-row" style="margin-top:4px;gap:8px;align-items:center;cursor:pointer;font-size:10px;color:var(--text-mid)">
+            <input type="checkbox" id="mc-enabled">
+            <span>Monte Carlo (N=<input type="number" id="mc-n" value="20" min="5" max="100" step="5" style="width:44px;background:none;border:none;border-bottom:1px solid var(--border);color:var(--text-main);font-size:10px"> realisations) — boundary perturbation uncertainty</span>
+          </label>
+          <label class="checkbox-row" style="margin-top:4px;gap:8px;align-items:center;cursor:pointer;font-size:10px;color:var(--text-mid)" title="After building, scan each vertical column for stratigraphic inversions and replace them with the expected older unit.">
+            <input type="checkbox" id="correct-inversions" checked>
+            <span>Correct stratigraphic inversions</span>
+          </label>
+        </div>
 
         <div id="bh-chart-wrap" class="bh-chart-wrap" hidden>
           <canvas id="bh-chart-canvas" class="bh-chart-canvas"></canvas>
         </div>
+        <div id="analysis-log" class="analysis-log">
+          <div class="log-entry log-info">Run AI Analysis to see results here.</div>
+        </div>
 
-        <!-- Model certainty histogram -->
-        <div id="certainty-hist-wrap" style="display:none;padding:4px 8px 0">
+        <!-- ── Views & Maps ── -->
+        <div class="settings-divider">Views &amp; Maps</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:0 8px 6px">
+          <button id="btn-plan-view" class="btn-secondary btn-sm" disabled>⊟ Plan View</button>
+          <button class="btn-secondary btn-sm" onclick="document.getElementById('toc-launch-fence')?.click()" title="Open cross-section">⊞ Cross-Section</button>
+          <button id="btn-isopach" class="btn-secondary btn-sm" disabled>⊠ Isopach Map</button>
+          <button id="btn-strat-corr" class="btn-secondary btn-sm" disabled title="Stratigraphic correlation panel">⊟ Stratigraphy</button>
+          <button class="btn-secondary btn-sm" onclick="document.getElementById('btn-build-isosurfaces')?.click()" title="Build smooth 3D unit solids (marching cubes)">⬡ Isosurfaces</button>
+          <button class="btn-secondary btn-sm" style="color:#e8a020" onclick="document.getElementById('btn-uncertainty-surface')?.click()" title="Show isosurface of high model uncertainty">◈ Uncertainty</button>
+        </div>
+
+        <!-- ── Uncertainty ── -->
+        <div class="settings-divider">Uncertainty</div>
+
+        <div id="certainty-hist-wrap" style="padding:4px 8px 6px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
             <span style="font-size:10px;font-weight:600;color:var(--text-mid)">Model Certainty Distribution</span>
             <select id="cert-hist-unit" style="font-size:10px;background:var(--bg-deep);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:1px 4px">
@@ -1098,13 +1007,41 @@
           <canvas id="certainty-hist-canvas" style="display:block;max-width:100%;border:1px solid var(--border);border-radius:4px;background:#f8fafb"></canvas>
         </div>
 
-        <!-- Cross-plot panel -->
-        <div class="panel-section" style="margin:4px 0 0">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-            <h3 style="margin:0">Cross-Plot</h3>
+        <!-- Probability Volume Viewer (indicator kriging) -->
+        <div id="prob-vol-panel" style="padding:0 8px 6px;display:none">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:11px;font-weight:600">Probability Volumes <span style="font-size:9px;color:var(--text-dim)">(Indicator Kriging)</span></span>
+            <button id="btn-prob-vol-show" class="btn-secondary btn-sm" disabled>Show</button>
+          </div>
+          <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
+            <label style="font-size:10px;color:var(--text-mid);white-space:nowrap">Unit</label>
+            <select id="prob-vol-unit-sel" style="flex:1;font-size:10px;background:var(--bg-surface);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:2px 4px"></select>
+            <button id="btn-prob-vol-clear" class="btn-ghost btn-sm" style="font-size:9px">✕</button>
+          </div>
+          <div style="display:flex;gap:4px;align-items:center;margin-bottom:3px">
+            <label style="font-size:10px;color:var(--text-mid);white-space:nowrap">Threshold ≥</label>
+            <input type="range" id="prob-vol-threshold" min="0" max="1" step="0.01" value="0.5" style="flex:1">
+            <span id="prob-vol-threshold-val" style="font-size:10px;font-family:var(--font-mono);color:var(--accent);width:30px;text-align:right">0.50</span>
+          </div>
+          <div id="prob-vol-stats" style="font-size:9px;color:var(--text-dim);font-family:var(--font-mono)"></div>
+        </div>
+
+        <div style="padding:0 8px 6px">
+          <button class="btn btn-ghost proc-btn" onclick="_runConceptEnsemble()" title="Run 3 inference passes (concepts off / baseline / amplified) and colour voxels by stability.">◈ Concept ensemble uncertainty</button>
+          <div id="concept-ensemble-output" style="display:none;margin-top:4px"></div>
+          <button class="btn btn-ghost proc-btn" onclick="_runKnowledgeUncertainty()" title="Sample concept embedding space and compute per-voxel entropy across realisations." style="margin-top:4px">◈ Geological knowledge uncertainty</button>
+          <div id="knowledge-uncert-output" style="display:none;margin-top:4px"></div>
+        </div>
+
+        <!-- ── Analysis ── -->
+        <div class="settings-divider">Analysis</div>
+
+        <!-- Cross-plot -->
+        <div class="proc-section">
+          <div class="proc-section-hdr">
+            <span>Cross-Plot</span>
             <button id="btn-crossplot-draw" class="btn-secondary btn-sm" disabled>Draw</button>
           </div>
-          <p class="hint" style="margin-bottom:6px;font-size:10px">Scatter plot of any two engineering parameters per borehole layer, coloured by geological unit.</p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:5px">
             <div>
               <div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">X axis</div>
@@ -1137,51 +1074,360 @@
           </div>
         </div>
 
-        <!-- Volume by depth slice panel -->
-        <div class="panel-section" style="margin:4px 0 0">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-            <h3 style="margin:0">Volume by Depth</h3>
+        <!-- Volume by Depth -->
+        <div class="proc-section">
+          <div class="proc-section-hdr">
+            <span>Volume by Depth</span>
             <button id="btn-depth-vol-compute" class="btn-secondary btn-sm" disabled>Compute</button>
           </div>
-          <p class="hint" style="margin-bottom:6px;font-size:10px">Volume of each geological unit within a depth range (m bgl). Useful for cut-and-fill, excavation quantities.</p>
-          <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
+          <div style="display:flex;gap:4px;align-items:center">
             <label style="font-size:10px;color:var(--text-mid);white-space:nowrap">Depth from</label>
-            <input type="number" id="depth-vol-from" class="cell-size-input" value="0" min="0" step="0.5" style="width:55px">
+            <input type="number" id="depth-vol-from" class="cell-size-input" value="0" min="0" step="0.5" style="width:52px">
             <label style="font-size:10px;color:var(--text-mid)">to</label>
-            <input type="number" id="depth-vol-to" class="cell-size-input" value="10" min="0" step="0.5" style="width:55px">
+            <input type="number" id="depth-vol-to" class="cell-size-input" value="10" min="0" step="0.5" style="width:52px">
             <span style="font-size:10px;color:var(--text-dim)">m bgl</span>
           </div>
           <div id="depth-vol-results" style="display:none;margin-top:4px"></div>
         </div>
 
-        <!-- Probability Volume Viewer (indicator kriging) -->
-        <div class="panel-section" id="prob-vol-panel" style="margin:4px 0 0;display:none">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px">
-            <h3 style="margin:0">Probability Volumes</h3>
-            <button id="btn-prob-vol-show" class="btn-secondary btn-sm" disabled>Show</button>
+        <!-- Surface Orientations -->
+        <div class="proc-section">
+          <div class="proc-section-hdr">
+            <span>Surface Orientations</span>
+            <div style="display:flex;gap:4px;align-items:center">
+              <select id="stereonet-unit" class="isopach-select" style="font-size:10px">
+                <option value="">All units</option>
+              </select>
+              <button id="btn-stereonet" class="btn-secondary btn-sm" disabled>Compute</button>
+            </div>
           </div>
-          <p class="hint" style="font-size:10px;margin-bottom:5px">Per-unit probability P(unit) from Indicator Kriging. Select a unit to visualise its probability volume as a heat-map overlay.</p>
-          <div style="display:flex;gap:4px;align-items:center;margin-bottom:5px">
-            <label style="font-size:10px;color:var(--text-mid);white-space:nowrap">Unit</label>
-            <select id="prob-vol-unit-sel" style="flex:1;font-size:10px;background:var(--bg-surface);color:var(--text);border:1px solid var(--border);border-radius:3px;padding:2px 4px"></select>
-            <button id="btn-prob-vol-clear" class="btn-ghost btn-sm" style="font-size:9px" title="Clear probability overlay">✕</button>
+          <div style="display:flex;gap:4px">
+            <canvas id="stereonet-canvas" width="120" height="120" style="flex:1;background:var(--bg-deep);border-radius:4px"></canvas>
+            <canvas id="rose-canvas" width="120" height="120" style="flex:1;background:var(--bg-deep);border-radius:4px"></canvas>
+          </div>
+          <div id="stereonet-stats" style="font-size:9px;color:var(--text-mid);margin-top:4px;font-family:monospace;line-height:1.6"></div>
+        </div>
+
+        <!-- Formation Pinch-outs -->
+        <div class="proc-section">
+          <div class="proc-section-hdr">
+            <span>Formation Pinch-outs</span>
+            <button id="btn-detect-pinchouts" class="btn-secondary btn-sm" title="Detect formation pinch-out edges">⊙ Detect</button>
+          </div>
+          <div id="pinchout-results" style="display:none;font-size:10px"></div>
+        </div>
+
+        <!-- ── Concept Analysis ── -->
+        <div class="settings-divider">Concept Analysis</div>
+        <div style="padding:0 8px 6px;display:flex;flex-direction:column;gap:4px">
+          <button id="btn-bh-concept-validation" class="btn btn-ghost proc-btn" title="Check how well active concepts predict the observed stratigraphy at each borehole">⊙ Validate concepts against boreholes</button>
+          <div id="bh-concept-validation-output" style="display:none;margin-bottom:2px"></div>
+          <button class="btn btn-ghost proc-btn" onclick="_showConceptCoherence()" title="Check how well the built model geometry matches each concept">⊙ Concept-geometry coherence</button>
+          <div id="concept-coherence-output" style="display:none;margin-bottom:2px"></div>
+          <button class="btn btn-ghost proc-btn" onclick="_calibrateConceptConfidences()" title="Bayesian-update concept confidences from BH prediction accuracy">◈ Bayesian confidence calibration</button>
+          <div id="concept-calib-output" style="display:none;margin-bottom:2px"></div>
+          <button class="btn btn-ghost proc-btn" onclick="_runConceptContributionReport()" title="Remove each concept one at a time and measure how much it shifts the model">◉ Concept contribution report</button>
+          <div id="concept-contrib-output" style="display:none;margin-bottom:2px"></div>
+          <button class="btn btn-ghost proc-btn" onclick="_showConceptSensitivity()" title="Show how many voxels each concept influences">⟳ Concept influence coverage</button>
+          <div id="concept-sensitivity-output" style="display:none;margin-bottom:2px"></div>
+          <button class="btn btn-ghost proc-btn" onclick="_showConceptHazardMap()" title="Derive 2D engineering hazard zones from concept embeddings">⚠ Concept-driven hazard map</button>
+          <div id="concept-hazard-output" style="display:none;margin-bottom:2px"></div>
+          <button class="btn btn-ghost proc-btn" onclick="_scanConceptCompleteness()" title="Highlight under-specified axes and suggest additional concepts">◉ Concept completeness scan</button>
+          <div id="concept-completeness-output" style="display:none;margin-bottom:2px"></div>
+          <button id="btn-suggest-sections" class="btn btn-ghost proc-btn" title="Suggest fence section orientations that best test the concept predictions">⊙ Suggest section lines for verification</button>
+          <div id="concept-section-suggestions" style="display:none;margin-bottom:2px"></div>
+          <button onclick="_analyseUnitConceptSignatures()" class="btn btn-ghost proc-btn" title="Compute which concept axes most characterise each unit's spatial distribution">✦ Unit concept signatures</button>
+          <div id="unit-concept-sig-output" style="display:none;margin-bottom:2px"></div>
+          <!-- Concept overlay buttons -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:2px">
+            <button id="btn-show-concept-influence" class="btn btn-secondary btn-sm" disabled title="Colour model by concept vs borehole influence">⬤ Concept influence</button>
+            <button id="btn-show-dominant-concept" class="btn btn-secondary btn-sm" disabled title="Colour voxels by dominant concept">⬤ Dominant concept</button>
+            <button id="btn-show-concept-effect" class="btn btn-secondary btn-sm" disabled title="Re-infer without concepts and highlight changed voxels">⊕ Concept effect map</button>
+            <button id="btn-concept-interp-summary" class="btn btn-secondary btn-sm" title="Describe what active concepts predict about the site">✦ Interpret</button>
+          </div>
+          <div id="concept-interp-summary-output" style="display:none;margin-top:4px;font-size:9.5px;background:var(--bg-surface);border-radius:4px;padding:6px;border:1px solid var(--border)"></div>
+          <!-- Concept narrative -->
+          <button id="btn-concept-narrative" class="btn btn-ghost proc-btn" style="margin-top:2px" title="Generate a report-ready paragraph describing the conceptual model interpretation">¶ Generate interpretation narrative</button>
+          <div id="concept-narrative-output" style="display:none;font-size:10px;color:var(--text-mid);padding:6px;background:var(--bg-surface);border:1px solid var(--border);border-radius:4px;line-height:1.5;font-style:italic"></div>
+          <button id="btn-copy-narrative" style="display:none;font-size:9px;padding:2px 8px" class="btn btn-ghost">⧉ Copy to clipboard</button>
+        </div>
+
+        <!-- ── Model Validation ── -->
+        <div class="settings-divider">Model Validation</div>
+        <div style="padding:0 8px 6px;display:flex;flex-direction:column;gap:4px">
+          <button id="btn-validate-model" class="btn-secondary btn-sm" disabled style="width:100%">⚙ Validate vs BH Data</button>
+          <div id="validation-results" class="quality-stats"></div>
+          <button id="btn-loocv" class="btn-secondary btn-sm" disabled style="width:100%" title="Leave-one-out cross-validation (IDW)">⚙ LOO Cross-Validate (IDW)</button>
+          <div id="loocv-results" style="display:none"></div>
+          <button id="btn-compare-methods" class="btn-secondary btn-sm" disabled style="width:100%" title="Run all interpolation methods and compare accuracy">⚡ Compare All Methods</button>
+          <div id="method-comparison-results" style="display:none"></div>
+          <button id="btn-unit-similarity" class="btn-secondary btn-sm" style="width:100%" title="Flag geological units with similar descriptions">⊛ Analyse Unit Similarity</button>
+          <div id="unit-similarity-results" style="display:none;font-size:10px"></div>
+          <button id="btn-seq-surfaces" class="btn-secondary btn-sm" disabled style="width:100%" title="Identify geological sequence surfaces from concept temporal ordering + model unit contacts">⊟ Identify Sequence Surfaces</button>
+          <div id="seq-surfaces-results" style="display:none;font-size:10px"></div>
+          <div style="display:flex;gap:4px;margin-top:2px">
+            <button id="btn-infer-strat-order" class="btn-secondary btn-sm" style="flex:1" title="Infer stratigraphic order from borehole data">⇅ Infer Strat Order</button>
+            <button id="btn-apply-strat-order" class="btn btn-sm" style="flex:1" disabled title="Apply stratigraphic order as constraint">✓ Enforce Order</button>
+          </div>
+        </div>
+
+        <!-- ── AI & Reports ── -->
+        <div class="settings-divider">AI &amp; Reports</div>
+        <div style="padding:0 8px 6px;display:flex;flex-direction:column;gap:4px">
+          <button id="btn-ai-narrative" class="btn-secondary btn-sm" disabled style="width:100%;background:linear-gradient(135deg,var(--accent-cyan) 0%,#2a6aad 100%);color:#fff;border:none" title="Generate professional geotechnical narrative using Claude AI">✦ AI Geotechnical Narrative</button>
+          <div id="ai-narrative-output" style="display:none;background:var(--bg-surface);border-radius:6px;padding:10px;border:1px solid var(--border)"></div>
+          <button id="btn-model-report" class="btn-secondary btn-sm" disabled style="width:100%">⬇ Export Report HTML</button>
+          <button onclick="_inferGeomechanicalParameters()" class="btn btn-ghost proc-btn" title="Derive geomechanical parameters from concept axis values">⚙ Infer Geomechanical Parameters</button>
+          <div id="geomech-infer-output" style="display:none;font-size:10px"></div>
+          <button id="btn-assess-risk" class="btn-secondary btn-sm" disabled style="width:100%" title="Identifies settlement, bearing, liquefaction and uncertainty hazards">⚠ Assess Geotechnical Risk Zones</button>
+          <div id="risk-results"></div>
+          <button onclick="document.getElementById('btn-auto-params')?.click()" class="btn-secondary btn-sm" disabled style="width:100%" title="Use Claude to fill in missing geotechnical parameters">🧠 Auto Geotechnical Params</button>
+          <button id="btn-ai-narrative-unit" style="display:none" class="btn btn-ghost proc-btn">✦ Unit narrative</button>
+        </div>
+
+        <!-- ── Drilling & Planning ── -->
+        <div class="settings-divider">Drilling &amp; Planning</div>
+
+        <!-- AI Borehole Gap Analysis -->
+        <div class="proc-section" id="borehole-gap-panel">
+          <div class="proc-section-hdr">
+            <span>AI Borehole Planner</span>
+            <button id="btn-borehole-gap-analysis" class="btn btn-secondary btn-sm" style="font-size:10px">✦ Suggest</button>
+          </div>
+          <div id="borehole-gap-results" style="display:none;margin-top:4px"></div>
+        </div>
+
+        <!-- Optimal Drilling Recommendation -->
+        <div class="proc-section">
+          <div class="proc-section-hdr">
+            <span>Optimal Drilling</span>
+            <div style="display:flex;gap:4px;align-items:center">
+              <label style="font-size:10px;color:var(--text-mid)">N</label>
+              <input type="number" id="drill-rec-n" value="5" min="1" max="12" step="1" style="width:38px;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px">
+              <button id="btn-recommend-drilling" class="btn-secondary btn-sm" disabled title="Recommend optimal drilling locations using uncertainty + concept geometry">⊕ Recommend</button>
+            </div>
+          </div>
+          <div id="drill-rec-results" style="display:none;font-size:10px"></div>
+        </div>
+
+        <!-- Investigation Planning -->
+        <div class="proc-section">
+          <div class="proc-section-hdr">
+            <span>Investigation Planning</span>
+            <div style="display:flex;gap:4px;align-items:center">
+              <label style="font-size:10px;color:var(--text-mid)">N:</label>
+              <input type="number" id="drill-plan-n" value="5" min="1" max="20" step="1" class="cell-size-input" style="width:40px">
+              <button id="btn-drill-plan" class="btn-secondary btn-sm" disabled>⊕ Suggest</button>
+            </div>
+          </div>
+          <div id="drill-plan-results" style="display:none;margin-top:4px"></div>
+        </div>
+
+        <!-- Predictive BH Log -->
+        <div class="proc-section">
+          <div class="proc-section-hdr">
+            <span>Predictive Borehole Log</span>
+            <button onclick="_predictBoreholeLog()" class="btn-secondary btn-sm">⊙ Generate</button>
           </div>
           <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
-            <label style="font-size:10px;color:var(--text-mid);white-space:nowrap">Threshold ≥</label>
-            <input type="range" id="prob-vol-threshold" min="0" max="1" step="0.01" value="0.5" style="flex:1">
-            <span id="prob-vol-threshold-val" style="font-size:10px;font-family:var(--font-mono);color:var(--accent);width:30px;text-align:right">0.50</span>
+            <label style="font-size:10px;color:var(--text-mid);white-space:nowrap">X:</label>
+            <input type="number" id="pred-bh-x" step="1" placeholder="Easting" style="flex:1;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px">
+            <label style="font-size:10px;color:var(--text-mid);white-space:nowrap">Y:</label>
+            <input type="number" id="pred-bh-y" step="1" placeholder="Northing" style="flex:1;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px">
           </div>
-          <div id="prob-vol-stats" style="font-size:9px;color:var(--text-dim);font-family:var(--font-mono);margin-top:2px"></div>
+          <div id="pred-bh-output" style="display:none;margin-top:4px"></div>
         </div>
 
-        <div id="analysis-log" class="analysis-log">
-          <div class="log-entry log-info">Run AI Analysis to see results here.</div>
+        <!-- Concept-Annotated Cross-Section -->
+        <div class="proc-section">
+          <div class="proc-section-hdr">
+            <span>Concept-Annotated Section</span>
+            <button onclick="_generateCrossSection()" class="btn-secondary btn-sm">⊙ Generate</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+            <div>
+              <label style="font-size:9px;color:var(--text-dim)">Azimuth (° from N)</label>
+              <input type="number" id="xs-azimuth" value="90" min="0" max="359" step="5" style="width:100%;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:9px;color:var(--text-dim)">Length (m)</label>
+              <input type="number" id="xs-length" value="200" min="50" max="2000" step="10" style="width:100%;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:9px;color:var(--text-dim)">Mid X (blank=centre)</label>
+              <input type="number" id="xs-midx" placeholder="auto" style="width:100%;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:9px;color:var(--text-dim)">Mid Y (blank=centre)</label>
+              <input type="number" id="xs-midy" placeholder="auto" style="width:100%;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px;box-sizing:border-box">
+            </div>
+          </div>
+          <canvas id="xs-canvas" style="display:none;border-radius:4px;image-rendering:pixelated;margin-bottom:4px"></canvas>
+          <div id="xs-output" style="display:none;font-size:10px"></div>
         </div>
 
-        <div id="status-log" class="status-log" aria-live="polite">
-          <div class="log-entry log-info">Ready — drop files or load a sample site.</div>
+        <!-- ── Geotechnical Calculations ── -->
+        <div class="settings-divider">Geotechnical Calculations</div>
+
+        <!-- Settlement -->
+        <div class="proc-section">
+          <div class="proc-section-hdr">
+            <span>Settlement Estimate</span>
+            <button id="btn-calc-settlement" class="btn-secondary btn-sm">∑ Calculate</button>
+          </div>
+          <div style="display:flex;gap:4px;align-items:center">
+            <label style="font-size:10px;color:var(--text-mid)">FD Z (mAOD)</label>
+            <input type="number" id="sett-found-level" placeholder="mAOD" step="0.5" class="cell-size-input" style="flex:1">
+            <label style="font-size:10px;color:var(--text-mid)">q (kPa)</label>
+            <input type="number" id="sett-load" placeholder="kPa" step="5" value="50" class="cell-size-input" style="width:52px">
+          </div>
+          <div id="settlement-results" class="settlement-results"></div>
         </div>
-      </div><!-- /tab-build -->
+
+        <!-- Bearing Capacity -->
+        <div class="proc-section">
+          <div class="proc-section-hdr">
+            <span>Bearing Capacity</span>
+            <button id="btn-calc-bearing" class="btn-secondary btn-sm">⊕ Calculate</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;margin-bottom:4px">
+            <div><label style="font-size:8px;color:var(--text-dim)">Z (mAOD)</label><input type="number" id="bear-found-level" placeholder="Z" step="0.5" class="cell-size-input" style="width:100%"></div>
+            <div><label style="font-size:8px;color:var(--text-dim)">B (m)</label><input type="number" id="bear-width" value="2" min="0.1" step="0.5" class="cell-size-input" style="width:100%"></div>
+            <div><label style="font-size:8px;color:var(--text-dim)">L (m)</label><input type="number" id="bear-length" value="2" min="0.1" step="0.5" class="cell-size-input" style="width:100%"></div>
+            <div><label style="font-size:8px;color:var(--text-dim)">z (m)</label><input type="number" id="bear-depth" value="1" min="0" step="0.25" class="cell-size-input" style="width:100%"></div>
+            <div><label style="font-size:8px;color:var(--text-dim)">FS</label><input type="number" id="bear-fs" value="3" min="1" step="0.5" class="cell-size-input" style="width:100%"></div>
+          </div>
+          <div id="bearing-results" class="bearing-results"></div>
+        </div>
+
+        <!-- Pile Capacity -->
+        <div class="proc-section">
+          <div class="proc-section-hdr">
+            <span>Pile Capacity</span>
+            <button id="btn-calc-pile" class="btn-secondary btn-sm">⊕ Calculate</button>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:3px;margin-bottom:4px">
+            <div><label style="font-size:8px;color:var(--text-dim)">Head (mAOD)</label><input type="number" id="pile-head-level" placeholder="mAOD" step="0.5" class="cell-size-input" style="width:100%"></div>
+            <div><label style="font-size:8px;color:var(--text-dim)">Toe (mAOD)</label><input type="number" id="pile-toe-level" placeholder="mAOD" step="0.5" class="cell-size-input" style="width:100%"></div>
+            <div><label style="font-size:8px;color:var(--text-dim)">D (m)</label><input type="number" id="pile-diameter" value="0.45" min="0.1" step="0.05" class="cell-size-input" style="width:100%"></div>
+            <div><label style="font-size:8px;color:var(--text-dim)">FS</label><input type="number" id="pile-fs" value="2.5" min="1" step="0.5" class="cell-size-input" style="width:100%"></div>
+          </div>
+          <div id="pile-results" class="bearing-results"></div>
+        </div>
+
+        <!-- Slope Stability -->
+        <div class="proc-section">
+          <div class="proc-section-hdr">
+            <span>Slope Stability (Bishop)</span>
+            <button id="btn-slope-stability" class="btn-secondary btn-sm" disabled>⚖ Run</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-bottom:4px">
+            <div><label style="font-size:9px;color:var(--text-dim)">c′ (kPa)</label><input type="number" id="slope-cprime" placeholder="auto" step="1" class="cell-size-input" min="0" style="width:100%"></div>
+            <div><label style="font-size:9px;color:var(--text-dim)">φ (°)</label><input type="number" id="slope-phi" placeholder="auto" step="1" class="cell-size-input" min="0" max="50" style="width:100%"></div>
+            <div><label style="font-size:9px;color:var(--text-dim)">GWT (m)</label><input type="number" id="slope-gwt" placeholder="dry" step="0.5" class="cell-size-input" min="0" style="width:100%"></div>
+          </div>
+          <div id="slope-results" style="font-size:11px"></div>
+        </div>
+
+        <!-- Seismic Liquefaction -->
+        <div class="proc-section">
+          <div class="proc-section-hdr">
+            <span>Seismic Liquefaction (CPT)</span>
+            <button id="btn-liquefaction" class="btn-secondary btn-sm" disabled>⚡ Run</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+            <label style="font-size:9px;color:var(--text-mid)">PGA (g)<input id="liq-amax" type="number" class="props-input" style="width:100%;margin-top:2px" value="0.15" min="0.01" max="1" step="0.01"></label>
+            <label style="font-size:9px;color:var(--text-mid)">Mw<input id="liq-mw" type="number" class="props-input" style="width:100%;margin-top:2px" value="7.0" min="5" max="9" step="0.1"></label>
+            <label style="font-size:9px;color:var(--text-mid)">GWT (m)<input id="liq-gwt" type="number" class="props-input" style="width:100%;margin-top:2px" value="2.0" min="0" step="0.5"></label>
+            <label style="font-size:9px;color:var(--text-mid)">γ (kN/m³)<input id="liq-gamma" type="number" class="props-input" style="width:100%;margin-top:2px" value="18" min="14" max="22" step="0.5"></label>
+          </div>
+          <div id="liq-summary" style="font-size:10px;margin-bottom:4px"></div>
+          <div id="liq-profiles" style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center"></div>
+        </div>
+
+        <!-- Mohr-Coulomb -->
+        <div class="proc-section">
+          <div class="proc-section-hdr">
+            <span>Mohr-Coulomb</span>
+            <button id="btn-mohr" class="btn-secondary btn-sm">◎ Draw</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+            <label style="font-size:9px;color:var(--text-mid)">Unit<select id="mohr-unit" class="isopach-select" style="width:100%;margin-top:2px;font-size:10px"><option value="">— select —</option></select></label>
+            <label style="font-size:9px;color:var(--text-mid)">Depth (m)<input id="mohr-depth" type="number" class="props-input" style="width:100%;margin-top:2px" value="5" min="0" step="0.5"></label>
+            <label style="font-size:9px;color:var(--text-mid)">GWT (m)<input id="mohr-gwt" type="number" class="props-input" style="width:100%;margin-top:2px" value="2" min="0" step="0.5"></label>
+            <label style="font-size:9px;color:var(--text-mid)">Δσ (kPa)<input id="mohr-dsigma" type="number" class="props-input" style="width:100%;margin-top:2px" value="50" min="0" step="10"></label>
+          </div>
+          <div style="margin-bottom:4px"><label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:4px"><input id="mohr-undrained" type="checkbox"> Undrained (Cu)</label></div>
+          <div id="mohr-result"></div>
+        </div>
+
+        <!-- Foundation Design Grid -->
+        <div class="proc-section" id="foundation-panel">
+          <div class="proc-section-hdr">
+            <span>Foundation Design Grid</span>
+            <button id="btn-foundation-export" class="btn-secondary btn-sm">⬇ CSV</button>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <label style="font-size:10px;color:var(--text-mid)">FD depth (m bgl)<input type="number" id="foundation-depth" class="input-sm" value="1.5" min="0.1" step="0.1" style="width:60px;margin-left:4px"></label>
+            <label style="font-size:10px;color:var(--text-mid)">Δσ (kPa)<input type="number" id="foundation-load" class="input-sm" value="100" min="0" step="10" style="width:60px;margin-left:4px"></label>
+          </div>
+        </div>
+
+        <!-- ── Export ── -->
+        <div class="settings-divider">Export 3D Model</div>
+        <div class="panel-section export-section" style="border:none;padding:0 8px 8px">
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px">
+            <button id="btn-export-gltf" class="btn-secondary btn-sm" disabled>⬇ GLTF</button>
+            <button id="btn-export-obj"  class="btn-secondary btn-sm" disabled>⬇ OBJ</button>
+            <button id="btn-export-json" class="btn-secondary btn-sm" disabled>⬇ JSON</button>
+            <button id="btn-export-vtk"  class="btn-secondary btn-sm" disabled>⬇ VTK</button>
+          </div>
+          <div class="settings-divider" style="margin:4px 0">Analysis Data</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px">
+            <button id="btn-export-contacts"  class="btn-secondary btn-sm" disabled>⬇ Formation Contacts CSV</button>
+            <button id="btn-export-surfaces"  class="btn-secondary btn-sm" disabled>⬇ Formation Surfaces OBJ</button>
+            <button id="btn-export-stl"       class="btn-secondary btn-sm" disabled>⬇ Surfaces STL</button>
+            <button id="btn-export-bh-csv"    class="btn-secondary btn-sm" disabled>⬇ BH Logs CSV</button>
+            <button id="btn-export-las"       class="btn-secondary btn-sm" disabled>⬇ LAS 2.0</button>
+            <button id="btn-export-ags"       class="btn-secondary btn-sm" disabled>⬇ AGS 4.x</button>
+          </div>
+          <div class="settings-divider" style="margin:4px 0">GIS / Analysis</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px">
+            <button id="btn-export-pointcloud"  class="btn-secondary btn-sm" disabled>⬇ Point Cloud CSV</button>
+            <button id="btn-export-stats"        class="btn-secondary btn-sm" disabled>⬇ Model Stats CSV</button>
+            <button id="btn-export-qty-report"   class="btn-secondary btn-sm" disabled>⬇ Qty Takeoff HTML</button>
+            <button id="btn-export-blockmodel"   class="btn-secondary btn-sm" disabled>⬇ Block Model CSV</button>
+            <button id="btn-export-geojson"      class="btn-secondary btn-sm" disabled>⬇ GeoJSON</button>
+            <button id="btn-export-geojson-tops" class="btn-secondary btn-sm" disabled>⬇ Formation Tops GeoJSON</button>
+          </div>
+          <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
+            <input type="number" id="geojson-depth" class="cell-size-input" value="5" min="0" step="0.5" title="Depth (m bgl) for plan-slice GeoJSON export" style="width:52px" placeholder="depth">
+            <span style="font-size:9px;color:var(--text-dim)">m bgl for GeoJSON slice</span>
+          </div>
+          <div class="settings-divider" style="margin:4px 0">Unit Properties</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px">
+            <button id="btn-export-props-rp"  class="btn-secondary btn-sm" disabled>⬇ Unit Properties CSV</button>
+          </div>
+          <!-- Coordinate Tools (compact) -->
+          <div class="settings-divider" style="margin:4px 0">Coordinate Converter (BNG ↔ WGS84)</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+            <div><div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">Easting (m BNG)</div><input type="number" id="crs-easting" class="cell-size-input" placeholder="e.g. 530000" style="width:100%"></div>
+            <div><div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">Northing (m BNG)</div><input type="number" id="crs-northing" class="cell-size-input" placeholder="e.g. 180000" style="width:100%"></div>
+            <div><div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">Latitude (°N)</div><input type="number" id="crs-lat" class="cell-size-input" placeholder="e.g. 51.5" step="0.000001" style="width:100%"></div>
+            <div><div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">Longitude (°E)</div><input type="number" id="crs-lon" class="cell-size-input" placeholder="e.g. -0.12" step="0.000001" style="width:100%"></div>
+          </div>
+          <div style="display:flex;gap:4px;margin-bottom:4px">
+            <button id="btn-bng-to-wgs84" class="btn-secondary btn-sm" style="flex:1">BNG → WGS84</button>
+            <button id="btn-wgs84-to-bng" class="btn-secondary btn-sm" style="flex:1">WGS84 → BNG</button>
+          </div>
+          <div id="crs-result" style="font-size:10px;color:var(--text-mid);font-family:var(--font-mono);min-height:14px"></div>
+          <div style="margin-top:4px">
+            <div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">OS Grid Reference</div>
+            <input type="text" id="crs-gridref" class="cell-size-input" placeholder="e.g. TQ 30000 80000" style="width:100%;font-family:monospace" readonly>
+          </div>
+        </div>
+
+      </div><!-- /tab-process -->
     </aside>
 
     <div class="panel-resize-handle" id="resize-left" title="Drag to resize"></div>
@@ -1605,44 +1851,31 @@
         <div id="model-qc-content" style="font-size:10px"></div>
       </div>
 
-      <!-- AI Borehole Gap Analysis -->
-      <div id="borehole-gap-panel" class="panel-section" hidden>
-        <h3>AI Borehole Planner <span class="badge-opt">where to drill next</span></h3>
-        <p class="hint" style="font-size:10px;margin-bottom:6px">
-          Identifies data-sparse, concept-active zones where a new borehole would most reduce model uncertainty.
-        </p>
-        <button id="btn-borehole-gap-analysis" class="btn btn-secondary btn-sm" style="width:100%;font-size:10px">
-          ✦ Suggest new borehole locations
-        </button>
-        <div id="borehole-gap-results" style="display:none;margin-top:6px"></div>
-      </div>
-
       <div class="panel-section">
         <h3>Parameter View</h3>
-        <p class="hint" style="margin-bottom:6px;font-size:10px">Color voxels by an engineering parameter rather than geological unit.</p>
         <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
           <select id="param-select" style="flex:1;font-size:11px;background:var(--bg-deep);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:3px 5px">
             <option value="">— select —</option>
-            <option value="cu">Cu — undrained shear strength (kPa)</option>
-            <option value="phi">φ′ — friction angle (°)</option>
-            <option value="Cc">Cc — compression index</option>
-            <option value="E">E — stiffness modulus (MPa)</option>
-            <option value="gamma">γ — unit weight (kN/m³)</option>
-            <option value="N_spt">SPT N — blow count</option>
-            <option value="boundary">Boundary uncertainty (blend ratio)</option>
-            <option value="entropy">Classification entropy (information uncertainty)</option>
-            <option value="concept_influence">Concept semantic influence</option>
-            <option value="coverage_density">Borehole coverage density</option>
+            <option value="cu">Cu (kPa)</option>
+            <option value="phi">φ′ (°)</option>
+            <option value="Cc">Cc</option>
+            <option value="E">E (MPa)</option>
+            <option value="gamma">γ (kN/m³)</option>
+            <option value="N_spt">SPT N</option>
+            <option value="boundary">Boundary uncertainty</option>
+            <option value="entropy">Entropy</option>
+            <option value="concept_influence">Concept influence</option>
+            <option value="coverage_density">Coverage density</option>
             <option value="dominant_concept">Dominant concept</option>
-            <option value="geological_age">Geological age (ICS period)</option>
+            <option value="geological_age">Geological age</option>
           </select>
         </div>
         <div style="display:flex;gap:4px;margin-top:5px">
           <button id="btn-param-apply" class="btn-secondary btn-sm" disabled style="flex:1">Apply</button>
           <button id="btn-param-reset" class="btn-secondary btn-sm" disabled style="flex:1">Reset</button>
         </div>
-        <div id="param-colorscale" style="display:none;margin-top:8px">
-          <div style="height:12px;border-radius:3px;background:linear-gradient(to right,#0000ff,#00ffff,#00ff00,#ffff00,#ff0000)"></div>
+        <div id="param-colorscale" style="display:none;margin-top:6px">
+          <div style="height:10px;border-radius:3px;background:linear-gradient(to right,#0000ff,#00ffff,#00ff00,#ffff00,#ff0000)"></div>
           <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-mid);margin-top:2px">
             <span id="param-scale-min">0</span>
             <span id="param-scale-mid"></span>
@@ -1654,8 +1887,7 @@
 
       <div class="panel-section">
         <h3>Grade Shell</h3>
-        <p class="hint" style="margin-bottom:6px;font-size:10px">Highlight voxels above / below a threshold for any parameter. Useful for locating stiff/soft zones, high SPT regions, or geometry boundaries.</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;align-items:center;margin-bottom:5px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;align-items:center;margin-bottom:4px">
           <select id="grade-param" class="param-input" style="font-size:10px">
             <option value="">— parameter —</option>
             <option value="cu">Cu (kPa)</option>
@@ -1663,51 +1895,31 @@
             <option value="E">E (MPa)</option>
             <option value="gamma">γ (kN/m³)</option>
             <option value="N_spt">SPT N</option>
-            <option value="certainty">Certainty (0–1)</option>
+            <option value="certainty">Certainty</option>
             <option value="depth">Depth (m bgl)</option>
           </select>
           <select id="grade-mode" class="param-input" style="font-size:10px">
             <option value="above">Above threshold</option>
             <option value="below">Below threshold</option>
-            <option value="between">Between (min–max)</option>
+            <option value="between">Between</option>
           </select>
         </div>
-        <div style="display:flex;gap:4px;align-items:center;margin-bottom:5px">
+        <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
           <input type="number" id="grade-threshold-min" class="cell-size-input" placeholder="Min / threshold" step="1" style="width:75px">
           <span id="grade-max-wrap" style="display:flex;gap:3px;align-items:center">
             <span style="font-size:10px;color:var(--text-dim)">–</span>
             <input type="number" id="grade-threshold-max" class="cell-size-input" placeholder="Max" step="1" style="width:62px">
           </span>
         </div>
-        <div style="display:flex;gap:4px;margin-bottom:5px">
-          <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:3px">
-            Highlight colour:
-            <input type="color" id="grade-color" value="#ff4040" style="width:28px;height:20px;border:none;cursor:pointer;padding:0">
-          </label>
-          <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:3px;margin-left:auto">
-            <input type="checkbox" id="grade-dim-rest" checked> Dim others
-          </label>
+        <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center">
+          <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:3px">Colour:<input type="color" id="grade-color" value="#ff4040" style="width:24px;height:18px;border:none;cursor:pointer;padding:0;margin-left:3px"></label>
+          <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:3px;margin-left:auto"><input type="checkbox" id="grade-dim-rest" checked> Dim others</label>
         </div>
         <div style="display:flex;gap:4px">
           <button id="btn-grade-apply" class="btn-secondary btn-sm" disabled style="flex:1">Show Shell</button>
           <button id="btn-grade-clear" class="btn-ghost btn-sm" style="flex:1">Clear</button>
         </div>
         <div id="grade-stats" style="font-size:10px;color:var(--text-mid);margin-top:4px"></div>
-      </div>
-
-      <div class="panel-section" id="foundation-panel" style="display:none">
-        <h3>Foundation Design Grid</h3>
-        <p class="hint" style="margin-bottom:6px;font-size:10px">Export a 2-D grid of bearing capacity and settlement values at a specified foundation depth.</p>
-        <div class="field-group">
-          <label for="foundation-depth">Foundation depth (m bgl)</label>
-          <input type="number" id="foundation-depth" class="input-sm" value="1.5" min="0.1" step="0.1" style="width:70px">
-        </div>
-        <div class="field-group">
-          <label for="foundation-load">Applied stress Δσ (kPa)</label>
-          <input type="number" id="foundation-load" class="input-sm" value="100" min="0" step="10" style="width:70px">
-          <p class="hint">Used for consolidation settlement estimate.</p>
-        </div>
-        <button id="btn-foundation-export" class="btn-secondary btn-sm" style="width:100%">Export CSV</button>
       </div>
 
       <div class="panel-section">
@@ -1788,9 +2000,6 @@
         <div id="unit-volumes" class="unit-volumes">
           <p class="hint">Build model to see volumes</p>
         </div>
-        <button id="btn-isopach" class="btn-secondary btn-sm" disabled style="margin-top:8px;width:100%">⊞ Isopach Map</button>
-        <button id="btn-plan-view" class="btn-secondary btn-sm" disabled style="margin-top:4px;width:100%">⊟ Plan View</button>
-        <button id="btn-strat-corr" class="btn-secondary btn-sm" disabled style="margin-top:4px;width:100%" title="Stratigraphic correlation panel — BH logs side by side with connecting lines">⊟ Correlation Panel</button>
       </div>
 
       <div class="panel-section">
@@ -1814,318 +2023,7 @@
         <h3>Model Quality</h3>
         <canvas id="coverage-canvas" class="coverage-canvas"></canvas>
         <div id="quality-stats" class="quality-stats"></div>
-        <button id="btn-model-report" class="btn-secondary btn-sm" disabled style="margin-top:8px;width:100%">⬇ Export Report HTML</button>
-        <button id="btn-ai-narrative" class="btn-secondary btn-sm" disabled style="margin-top:6px;width:100%;background:linear-gradient(135deg,var(--accent-cyan) 0%,#2a6aad 100%);color:#fff;border:none" title="Generate professional geotechnical narrative using Claude AI">✦ AI Geotechnical Narrative</button>
-        <div id="ai-narrative-output" style="display:none;margin-top:8px;background:var(--bg-surface);border-radius:6px;padding:10px;border:1px solid var(--border)"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Model Validation</h3>
-        <p class="hint" style="font-size:10px;margin-bottom:6px">Compares predicted voxel units against observed BH layer positions.</p>
-        <button id="btn-validate-model" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:6px">⚙ Validate vs BH Data</button>
-        <div id="validation-results" class="quality-stats"></div>
-        <div style="margin-top:6px">
-          <button id="btn-loocv" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:4px"
-            title="Leave-one-out cross-validation: remove each BH one at a time and check prediction accuracy. Uses IDW for speed. Takes ~N × build time.">
-            ⚙ LOO Cross-Validate (IDW)
-          </button>
-          <div id="loocv-results" style="display:none;margin-top:4px"></div>
-        </div>
-        <div style="margin-top:4px">
-          <button id="btn-compare-methods" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:4px" title="Run all interpolation methods and compare accuracy">⚡ Compare All Methods</button>
-          <div id="method-comparison-results" style="display:none;margin-top:4px"></div>
-        </div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Unit Similarity</h3>
-        <p class="hint" style="font-size:10px;margin-bottom:6px">Flags geological units with similar descriptions that may be duplicates or sub-divisions of the same material.</p>
-        <button id="btn-unit-similarity" class="btn-secondary btn-sm" style="width:100%;margin-bottom:6px" title="Compare all unit descriptions and flag likely duplicates or near-duplicates">⊛ Analyse Unit Similarity</button>
-        <div id="unit-similarity-results" style="display:none;font-size:10px"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Formation Pinch-outs</h3>
-        <p class="hint" style="font-size:10px;margin-bottom:6px">Detects where formations wedge out laterally — columns where a unit is present adjacent to columns where it is absent.</p>
-        <button id="btn-detect-pinchouts" class="btn-secondary btn-sm" style="width:100%;margin-bottom:6px" title="Detect formation pinch-out edges in the current voxel model">⊙ Detect Formation Pinch-outs</button>
-        <div id="pinchout-results" style="display:none;font-size:10px"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Optimal Drilling Recommendation</h3>
-        <p class="hint" style="font-size:10px;margin-bottom:6px">Identifies the most informative borehole locations by combining model uncertainty with concept-geometry predictions and existing BH coverage.</p>
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
-          <label style="font-size:10px;color:var(--text-mid)">Locations</label>
-          <input type="number" id="drill-rec-n" value="5" min="1" max="12" step="1" style="width:42px;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px">
-        </div>
-        <button id="btn-recommend-drilling" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:4px" title="Recommend optimal drilling locations using uncertainty + concept geometry">⊕ Recommend Drilling Locations</button>
-        <div id="drill-rec-results" style="display:none;font-size:10px"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Unit Concept Signature</h3>
-        <p class="hint" style="font-size:10px;margin-bottom:6px">For each geological unit, computes which concept axes most strongly characterise its spatial distribution in the trained model — the model's learned concept-to-unit association. Closes the loop: neural field → concept embedding space.</p>
-        <button onclick="_analyseUnitConceptSignatures()" class="btn-secondary btn-sm" style="width:100%;margin-bottom:4px">
-          ✦ Analyse Unit Concept Signatures
-        </button>
-        <div id="unit-concept-sig-output" style="display:none;margin-top:4px;font-size:10px"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Sequence Stratigraphy</h3>
-        <p class="hint" style="font-size:10px;margin-bottom:6px">Identifies geological sequence boundaries where temporally ordered concepts predict unit transitions. Derived from concept temporal ordering and model voxel contacts.</p>
-        <button id="btn-seq-surfaces" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:4px" title="Identify geological sequence surfaces from concept temporal ordering + model unit contacts">⊟ Identify Sequence Surfaces</button>
-        <div id="seq-surfaces-results" style="display:none;font-size:10px"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Predictive Borehole Log</h3>
-        <p class="hint" style="font-size:10px;margin-bottom:6px">Generate a synthetic borehole log at any plan location from the neural implicit field. Shows predicted unit sequence, certainty, and concept context at each depth. Compare to the nearest real borehole.</p>
-        <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">
-          <label style="font-size:10px;color:var(--text-mid);white-space:nowrap">X:</label>
-          <input type="number" id="pred-bh-x" step="1" placeholder="Easting"
-            style="flex:1;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px">
-          <label style="font-size:10px;color:var(--text-mid);white-space:nowrap">Y:</label>
-          <input type="number" id="pred-bh-y" step="1" placeholder="Northing"
-            style="flex:1;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px">
-        </div>
-        <button onclick="_predictBoreholeLog()" class="btn-secondary btn-sm" style="width:100%;margin-bottom:4px">
-          ⊙ Generate Predictive Log
-        </button>
-        <div id="pred-bh-output" style="display:none;margin-top:4px"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Concept-Annotated Cross-Section</h3>
-        <p class="hint" style="font-size:10px;margin-bottom:6px">Slice the 3D model at any azimuth. Concept embeddings are automatically projected onto the section plane — channel morphology adds a concave-up arc, fault geometry adds a stepped line, orientation axes annotate the cut direction.</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
-          <div>
-            <label style="font-size:9px;color:var(--text-dim)">Azimuth (° from N)</label>
-            <input type="number" id="xs-azimuth" value="90" min="0" max="359" step="5"
-              style="width:100%;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px;box-sizing:border-box">
-          </div>
-          <div>
-            <label style="font-size:9px;color:var(--text-dim)">Length (m)</label>
-            <input type="number" id="xs-length" value="200" min="50" max="2000" step="10"
-              style="width:100%;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px;box-sizing:border-box">
-          </div>
-          <div>
-            <label style="font-size:9px;color:var(--text-dim)">Mid X (blank=centre)</label>
-            <input type="number" id="xs-midx" placeholder="auto"
-              style="width:100%;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px;box-sizing:border-box">
-          </div>
-          <div>
-            <label style="font-size:9px;color:var(--text-dim)">Mid Y (blank=centre)</label>
-            <input type="number" id="xs-midy" placeholder="auto"
-              style="width:100%;font-size:10px;background:var(--bg-el);border:1px solid var(--border);color:var(--text);border-radius:3px;padding:2px 4px;box-sizing:border-box">
-          </div>
-        </div>
-        <button onclick="_generateCrossSection()" class="btn-secondary btn-sm" style="width:100%;margin-bottom:6px">
-          ⊙ Generate Section
-        </button>
-        <canvas id="xs-canvas" style="display:none;border-radius:4px;image-rendering:pixelated;margin-bottom:4px"></canvas>
-        <div id="xs-output" style="display:none;font-size:10px"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Concept-Inferred Geomechanics</h3>
-        <p class="hint" style="font-size:10px;margin-bottom:6px">Derives geomechanical parameter ranges (SPT N, Cu, φ′, unit weight) from concept axis values and their affinity to each geological unit. No borehole test data required — purely from the semantic concept embeddings.</p>
-        <button onclick="_inferGeomechanicalParameters()" class="btn-secondary btn-sm" style="width:100%;margin-bottom:4px">
-          ⚙ Infer Geomechanical Parameters
-        </button>
-        <div id="geomech-infer-output" style="display:none;margin-top:4px;font-size:10px"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Geotechnical Risk</h3>
-        <p class="hint" style="font-size:10px;margin-bottom:6px">Identifies settlement, bearing, liquefaction and uncertainty hazards from the model.</p>
-        <button id="btn-assess-risk" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:6px">⚠ Assess Risk Zones</button>
-        <div id="risk-results"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Investigation Planning</h3>
-        <p class="hint" style="font-size:10px;margin-bottom:6px">
-          Identify locations where new boreholes would most reduce model uncertainty.
-          Based on per-column classification entropy and distance from existing BH data.
-        </p>
-        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-          <label style="font-size:10px;color:var(--text-mid)">No. of locations:</label>
-          <input type="number" id="drill-plan-n" value="5" min="1" max="20" step="1" class="cell-size-input" style="width:48px">
-        </div>
-        <button id="btn-drill-plan" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:4px">
-          ⊕ Suggest Drill Locations
-        </button>
-        <div id="drill-plan-results" style="display:none;margin-top:4px"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Settlement Estimate</h3>
-        <div class="field-group">
-          <div class="cell-size-row" style="gap:6px">
-            <div class="cell-size-field" style="flex:1">
-              <span class="cell-size-lbl" title="Foundation level mAOD">FD Z</span>
-              <input type="number" id="sett-found-level" placeholder="mAOD" step="0.5" class="cell-size-input">
-            </div>
-            <div class="cell-size-field" style="flex:1">
-              <span class="cell-size-lbl" title="Net applied stress (kPa)">q</span>
-              <input type="number" id="sett-load" placeholder="kPa" step="5" value="50" class="cell-size-input">
-            </div>
-          </div>
-          <p class="hint">Uses Cc and e₀ from Props tab</p>
-        </div>
-        <button id="btn-calc-settlement" class="btn-secondary btn-sm" style="width:100%">∑ Calculate Settlement</button>
-        <div id="settlement-results" class="settlement-results"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Bearing Capacity</h3>
-        <div class="field-group">
-          <div class="cell-size-row" style="gap:4px;flex-wrap:wrap">
-            <div class="cell-size-field" style="flex:1;min-width:60px">
-              <span class="cell-size-lbl" title="Foundation level (mAOD)">Z</span>
-              <input type="number" id="bear-found-level" placeholder="mAOD" step="0.5" class="cell-size-input">
-            </div>
-            <div class="cell-size-field" style="flex:1;min-width:52px">
-              <span class="cell-size-lbl" title="Foundation width (m)">B</span>
-              <input type="number" id="bear-width" value="2" min="0.1" step="0.5" class="cell-size-input">
-            </div>
-            <div class="cell-size-field" style="flex:1;min-width:52px">
-              <span class="cell-size-lbl" title="Foundation length (m)">L</span>
-              <input type="number" id="bear-length" value="2" min="0.1" step="0.5" class="cell-size-input">
-            </div>
-            <div class="cell-size-field" style="flex:1;min-width:52px">
-              <span class="cell-size-lbl" title="Embedment depth (m)">z</span>
-              <input type="number" id="bear-depth" value="1" min="0" step="0.25" class="cell-size-input">
-            </div>
-            <div class="cell-size-field" style="flex:1;min-width:52px">
-              <span class="cell-size-lbl" title="Factor of safety">FS</span>
-              <input type="number" id="bear-fs" value="3" min="1" step="0.5" class="cell-size-input">
-            </div>
-          </div>
-          <p class="hint">Uses Cu and φ' from Props tab · Skempton + Meyerhof</p>
-        </div>
-        <button id="btn-calc-bearing" class="btn-secondary btn-sm" style="width:100%">⊕ Calculate Bearing Capacity</button>
-        <div id="bearing-results" class="bearing-results"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Pile Capacity</h3>
-        <div class="field-group">
-          <div class="cell-size-row" style="gap:4px;flex-wrap:wrap">
-            <div class="cell-size-field" style="flex:1;min-width:64px">
-              <span class="cell-size-lbl" title="Pile head elevation (mAOD)">Head</span>
-              <input type="number" id="pile-head-level" placeholder="mAOD" step="0.5" class="cell-size-input">
-            </div>
-            <div class="cell-size-field" style="flex:1;min-width:64px">
-              <span class="cell-size-lbl" title="Pile toe elevation (mAOD)">Toe</span>
-              <input type="number" id="pile-toe-level" placeholder="mAOD" step="0.5" class="cell-size-input">
-            </div>
-            <div class="cell-size-field" style="flex:1;min-width:56px">
-              <span class="cell-size-lbl" title="Pile diameter (m)">D (m)</span>
-              <input type="number" id="pile-diameter" value="0.45" min="0.1" step="0.05" class="cell-size-input">
-            </div>
-            <div class="cell-size-field" style="flex:1;min-width:44px">
-              <span class="cell-size-lbl" title="Factor of safety">FS</span>
-              <input type="number" id="pile-fs" value="2.5" min="1" step="0.5" class="cell-size-input">
-            </div>
-          </div>
-          <p class="hint">α-method (Cu) + β-method (φ') · model centre column</p>
-        </div>
-        <button id="btn-calc-pile" class="btn-secondary btn-sm" style="width:100%">⊕ Calculate Pile Capacity</button>
-        <div id="pile-results" class="bearing-results"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Surface Orientations</h3>
-        <p class="hint" style="font-size:10px;margin-bottom:6px">Dip/strike of geological unit top surfaces derived from elevation gradients. Schmidt equal-area lower hemisphere (left) + bidirectional strike rose (right).</p>
-        <div style="display:flex;gap:4px;margin-bottom:6px;align-items:center">
-          <select id="stereonet-unit" class="isopach-select" style="flex:1;font-size:10px">
-            <option value="">All units</option>
-          </select>
-          <button id="btn-stereonet" class="btn-secondary btn-sm" disabled>Compute</button>
-        </div>
-        <div style="display:flex;gap:4px">
-          <canvas id="stereonet-canvas" width="120" height="120"
-            style="flex:1;background:var(--bg-deep);border-radius:4px"></canvas>
-          <canvas id="rose-canvas" width="120" height="120"
-            style="flex:1;background:var(--bg-deep);border-radius:4px"></canvas>
-        </div>
-        <div id="stereonet-stats" style="font-size:9px;color:var(--text-mid);margin-top:4px;font-family:monospace;line-height:1.6"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Slope Stability (Bishop)</h3>
-        <p class="hint" style="font-size:10px;margin-bottom:6px">Bishop simplified circular slip analysis using dominant unit properties. Grid searches for minimum Factor of Safety.</p>
-        <div class="field-group">
-          <div class="cell-size-row" style="gap:6px;flex-wrap:wrap">
-            <div class="cell-size-field" style="flex:1;min-width:56px">
-              <span class="cell-size-lbl" title="Effective cohesion (kPa)">c′</span>
-              <input type="number" id="slope-cprime" placeholder="auto" step="1" class="cell-size-input" min="0">
-            </div>
-            <div class="cell-size-field" style="flex:1;min-width:52px">
-              <span class="cell-size-lbl" title="Friction angle (°)">φ</span>
-              <input type="number" id="slope-phi" placeholder="auto" step="1" class="cell-size-input" min="0" max="50">
-            </div>
-            <div class="cell-size-field" style="flex:1;min-width:64px">
-              <span class="cell-size-lbl" title="GWT depth below surface (m)">GWT m</span>
-              <input type="number" id="slope-gwt" placeholder="dry" step="0.5" class="cell-size-input" min="0">
-            </div>
-          </div>
-          <p class="hint" style="font-size:9px;margin-top:3px">Leave blank to auto-read from Props tab</p>
-        </div>
-        <button id="btn-slope-stability" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:6px">⚖ Run Bishop Analysis</button>
-        <div id="slope-results" style="font-size:11px"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Seismic Liquefaction (CPT)</h3>
-        <p class="hint" style="font-size:9px;margin-bottom:6px">Robertson &amp; Wride (1998) — requires CPT data loaded.</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px">
-          <label style="font-size:10px;color:var(--text-mid)">PGA (g)
-            <input id="liq-amax" type="number" class="props-input" style="width:100%;margin-top:2px" value="0.15" min="0.01" max="1" step="0.01">
-          </label>
-          <label style="font-size:10px;color:var(--text-mid)">Mw
-            <input id="liq-mw" type="number" class="props-input" style="width:100%;margin-top:2px" value="7.0" min="5" max="9" step="0.1">
-          </label>
-          <label style="font-size:10px;color:var(--text-mid)">GWT depth (m)
-            <input id="liq-gwt" type="number" class="props-input" style="width:100%;margin-top:2px" value="2.0" min="0" step="0.5">
-          </label>
-          <label style="font-size:10px;color:var(--text-mid)">γ (kN/m³)
-            <input id="liq-gamma" type="number" class="props-input" style="width:100%;margin-top:2px" value="18" min="14" max="22" step="0.5">
-          </label>
-        </div>
-        <button id="btn-liquefaction" class="btn-secondary btn-sm" disabled style="width:100%;margin-bottom:6px">⚡ Run Liquefaction Assessment</button>
-        <div id="liq-summary" style="font-size:10px;margin-bottom:4px"></div>
-        <div id="liq-profiles" style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Mohr-Coulomb Analysis</h3>
-        <p class="hint" style="font-size:9px;margin-bottom:6px">Stress state and failure envelope from unit parameters.</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px">
-          <label style="font-size:10px;color:var(--text-mid)">Unit
-            <select id="mohr-unit" class="isopach-select" style="width:100%;margin-top:2px;font-size:10px">
-              <option value="">— select —</option>
-            </select>
-          </label>
-          <label style="font-size:10px;color:var(--text-mid)">Depth (m)
-            <input id="mohr-depth" type="number" class="props-input" style="width:100%;margin-top:2px" value="5" min="0" step="0.5">
-          </label>
-          <label style="font-size:10px;color:var(--text-mid)">GWT depth (m)
-            <input id="mohr-gwt" type="number" class="props-input" style="width:100%;margin-top:2px" value="2" min="0" step="0.5">
-          </label>
-          <label style="font-size:10px;color:var(--text-mid)">Δσ (kPa)
-            <input id="mohr-dsigma" type="number" class="props-input" style="width:100%;margin-top:2px" value="50" min="0" step="10">
-          </label>
-        </div>
-        <div style="display:flex;gap:6px;margin-bottom:6px">
-          <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:4px">
-            <input id="mohr-undrained" type="checkbox"> Undrained (Cu)
-          </label>
-        </div>
-        <button id="btn-mohr" class="btn-secondary btn-sm" style="width:100%;margin-bottom:6px">◎ Draw Mohr Circle</button>
-        <div id="mohr-result"></div>
+        <p class="hint" style="font-size:9.5px;margin-top:4px;color:var(--accent)">→ Full validation &amp; reports in Process tab</p>
       </div>
 
       <div class="panel-section">
@@ -2134,14 +2032,10 @@
           <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:4px;cursor:pointer">
             <input type="checkbox" id="strat-manual-lock"> Lock order
           </label>
-          <span class="hint" style="font-size:9px;margin:0" title="Drag rows to set geological event order from youngest (top) to oldest (bottom). Lock to prevent auto-detection overriding your order on rebuild.">Drag to reorder ↕</span>
+          <span class="hint" style="font-size:9px;margin:0">Drag to reorder ↕</span>
         </div>
         <ol id="strat-order-list" class="strat-order-list"></ol>
         <p class="hint" id="strat-hint">Add units and build model to see stratigraphy</p>
-        <div style="display:flex;gap:4px;margin-top:4px">
-          <button id="btn-infer-strat-order" class="btn-secondary btn-sm" style="flex:1" title="Infer stratigraphic order from borehole data — ranks units by how often they appear above vs below each other">⇅ Infer from BHs</button>
-          <button id="btn-apply-strat-order" class="btn btn-sm" style="flex:1" title="Apply stratigraphic order as a constraint — corrects impossible unit intersections in the built model. Cannot undo without rebuilding." disabled>✓ Enforce Order</button>
-        </div>
         <div id="strat-confidence" style="font-size:9px;color:var(--text-muted);margin-top:4px;display:none"></div>
       </div>
 
@@ -2149,65 +2043,6 @@
         <h3>Unit Statistics (BH Data)</h3>
         <p class="hint" style="font-size:10px;margin-bottom:4px">Mean ± σ from measured BH layer data.</p>
         <div id="bh-unit-stats"></div>
-      </div>
-
-      <div class="panel-section export-section">
-        <h3>Export 3D Model</h3>
-        <button id="btn-export-gltf" class="btn-secondary" disabled>⬇ GLTF</button>
-        <button id="btn-export-obj"  class="btn-secondary" disabled>⬇ OBJ</button>
-        <button id="btn-export-json" class="btn-secondary" disabled>⬇ JSON</button>
-        <button id="btn-export-vtk"  class="btn-secondary" disabled>⬇ VTK (Paraview)</button>
-        <div class="settings-divider">Analysis Data</div>
-        <button id="btn-export-contacts" class="btn-secondary" disabled>⬇ Formation Contacts CSV</button>
-        <button id="btn-export-surfaces" class="btn-secondary" disabled title="Export the top surface of each geological unit as a 3D OBJ mesh">⬇ Formation Surfaces OBJ</button>
-        <button id="btn-export-stl" class="btn-secondary" disabled title="Export formation top surfaces as binary STL — for Plaxis, Abaqus, FreeCAD, Blender">⬇ Formation Surfaces STL</button>
-        <button id="btn-export-bh-csv" class="btn-secondary" disabled>⬇ BH Logs CSV</button>
-        <button id="btn-export-las" class="btn-secondary" disabled title="Export each borehole as a LAS 2.0 wireline log file (ZIP archive)">⬇ LAS 2.0</button>
-        <button id="btn-export-ags" class="btn-secondary" disabled title="Export classified boreholes in AGS 4.x format (LOCA, GEOL, ISPT groups)">⬇ AGS 4.x</button>
-        <div class="settings-divider">GIS / Analysis</div>
-        <button id="btn-export-pointcloud" class="btn-secondary" disabled>⬇ Point Cloud CSV</button>
-        <button id="btn-export-stats" class="btn-secondary" disabled>⬇ Model Statistics CSV</button>
-        <button id="btn-export-qty-report" class="btn-secondary" disabled title="Printable HTML material quantity takeoff — volume, mass, area, thickness per unit">⬇ Quantity Takeoff HTML</button>
-        <button id="btn-export-blockmodel" class="btn-secondary" disabled title="Full voxel block model with centroids, unit codes and engineering parameters — compatible with Leapfrog, Vulcan, Datamine">⬇ Block Model CSV</button>
-        <div style="display:flex;gap:4px;align-items:center;margin-top:3px">
-          <button id="btn-export-geojson" class="btn-secondary" disabled title="Export geological unit boundaries at a specified depth as GeoJSON polygons (for QGIS, ArcGIS, Mapbox)">⬇ GeoJSON</button>
-          <input type="number" id="geojson-depth" class="cell-size-input" value="5" min="0" step="0.5" title="Depth (m bgl) for plan-slice export" style="width:52px" placeholder="depth">
-          <span style="font-size:9px;color:var(--text-dim)">m bgl</span>
-        </div>
-        <button id="btn-export-geojson-tops" class="btn-secondary" disabled title="Export formation top elevations as GeoJSON FeatureCollection with unit code and depth-to-top attributes">⬇ Formation Tops GeoJSON</button>
-        <div class="settings-divider">Unit Properties</div>
-        <button id="btn-export-props-rp" class="btn-secondary" disabled>⬇ Unit Properties CSV</button>
-        <div class="settings-divider">Coordinate Tools</div>
-        <p class="hint" style="font-size:10px;margin-bottom:6px">Convert between British National Grid (OSGB36) and WGS84 lat/lon. Accuracy ~1 m using Helmert 7-parameter transformation.</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
-          <div>
-            <div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">Easting (m BNG)</div>
-            <input type="number" id="crs-easting" class="cell-size-input" placeholder="e.g. 530000" style="width:100%">
-          </div>
-          <div>
-            <div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">Northing (m BNG)</div>
-            <input type="number" id="crs-northing" class="cell-size-input" placeholder="e.g. 180000" style="width:100%">
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
-          <div>
-            <div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">Latitude (°N)</div>
-            <input type="number" id="crs-lat" class="cell-size-input" placeholder="e.g. 51.5" step="0.000001" style="width:100%">
-          </div>
-          <div>
-            <div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">Longitude (°E)</div>
-            <input type="number" id="crs-lon" class="cell-size-input" placeholder="e.g. -0.12" step="0.000001" style="width:100%">
-          </div>
-        </div>
-        <div style="display:flex;gap:4px;margin-bottom:4px">
-          <button id="btn-bng-to-wgs84" class="btn-secondary btn-sm" style="flex:1">BNG → WGS84</button>
-          <button id="btn-wgs84-to-bng" class="btn-secondary btn-sm" style="flex:1">WGS84 → BNG</button>
-        </div>
-        <div id="crs-result" style="font-size:10px;color:var(--text-mid);font-family:var(--font-mono);min-height:14px"></div>
-        <div style="margin-top:6px">
-          <div style="font-size:9px;color:var(--text-dim);margin-bottom:2px">OS Grid Reference</div>
-          <input type="text" id="crs-gridref" class="cell-size-input" placeholder="e.g. TQ 30000 80000" style="width:100%;font-family:monospace" readonly>
-        </div>
       </div>
 
     </aside>
