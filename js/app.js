@@ -1039,7 +1039,7 @@ async function loadDemoSite(demoName) {
       y: bh.y,
       groundLevel: bh.ground_level,
       depth: bh.depth,
-      layers: bh.layers.map(l => ({
+      layers: (bh.layers ?? []).map(l => ({
         top: l.top,
         base: l.base,
         description: l.description,
@@ -1050,7 +1050,7 @@ async function loadDemoSite(demoName) {
       classified: true,
     }));
 
-    AppState.geoUnits = data.geological_units.map(u => ({
+    AppState.geoUnits = (data.geological_units ?? []).map(u => ({
       id: u.id,
       code: u.code,
       name: u.name,
@@ -1530,14 +1530,14 @@ function initInterpretGeology() {
 
       // Show interpretation in analysis log
       analysisLog('Geological Interpretation',
-        result.interpretation_summary + '\n\n' +
+        (result.interpretation_summary ?? '') + '\n\n' +
         `Stratigraphic order (top to bottom): ${(result.stratigraphic_order ?? []).join(' › ')}\n` +
         (result.interpolation_advice ? `\nAdvice: ${result.interpolation_advice}` : ''), 'ai');
 
       // Show hazards
       if (result.hazards?.length) {
         analysisLog('Geohazards',
-          result.hazards.map(h => `⚠ ${h.type.toUpperCase()}: ${h.description}`).join('\n'), 'warn');
+          result.hazards.map(h => `⚠ ${(h.type ?? 'unknown').toUpperCase()}: ${h.description ?? ''}`).join('\n'), 'warn');
       }
 
       // Auto-populate constraints textarea
