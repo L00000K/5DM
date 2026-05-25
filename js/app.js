@@ -1786,31 +1786,35 @@ function initAutoParams() {
     log(`Auto-inferring parameters for ${AppState.geoUnits.length} unit(s)${demoMode ? ' (demo)' : ' via Claude'}…`, 'info');
 
     let updated = 0;
-    for (const unit of AppState.geoUnits) {
-      try {
-        const p = await inferUnitParameters(unit, AppState.apiKey, demoMode);
-        if (!unit.params) unit.params = {};
-        // Map inferred fields → unit.params, only filling gaps (don't overwrite lab data)
-        const MAP = {
-          gamma_kNm3: 'gamma', cu_kPa: 'cu', phi_deg: 'phi',
-          cprime_kPa: 'cprime', E_MPa: 'E', Cc: 'Cc', e0: 'e0', N_spt: 'N_spt',
-        };
-        for (const [src, dst] of Object.entries(MAP)) {
-          if (p[src] != null && unit.params[dst] == null) {
-            unit.params[dst] = p[src];
+    try {
+      for (const unit of AppState.geoUnits) {
+        try {
+          const p = await inferUnitParameters(unit, AppState.apiKey, demoMode);
+          if (!unit.params) unit.params = {};
+          // Map inferred fields → unit.params, only filling gaps (don't overwrite lab data)
+          const MAP = {
+            gamma_kNm3: 'gamma', cu_kPa: 'cu', phi_deg: 'phi',
+            cprime_kPa: 'cprime', E_MPa: 'E', Cc: 'Cc', e0: 'e0', N_spt: 'N_spt',
+          };
+          for (const [src, dst] of Object.entries(MAP)) {
+            if (p[src] != null && unit.params[dst] == null) {
+              unit.params[dst] = p[src];
+            }
           }
+          if (p.notes) unit._autoParamNotes = p.notes;
+          updated++;
+        } catch (err) {
+          log(`Auto-params failed for ${unit.code}: ${err.message}`, 'warn');
         }
-        if (p.notes) unit._autoParamNotes = p.notes;
-        updated++;
-      } catch (err) {
-        log(`Auto-params failed for ${unit.code}: ${err.message}`, 'warn');
       }
+      renderPropertiesTable(AppState.geoUnits, () => updateLegend());
+      log(`Auto-params: ${updated}/${AppState.geoUnits.length} unit(s) updated.`, 'ok');
+    } catch (err) {
+      log(`Auto-params error: ${err.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🧠 Auto Params';
     }
-
-    renderPropertiesTable(AppState.geoUnits, () => updateLegend());
-    btn.disabled = false;
-    btn.textContent = '🧠 Auto Params';
-    log(`Auto-params: ${updated}/${AppState.geoUnits.length} unit(s) updated.`, 'ok');
   });
 }
 
@@ -3343,70 +3347,75 @@ function initModelReport() {
     const perBH = [];
     let totalCorrect = 0, totalLayers = 0;
 
-    for (let i = 0; i < realBHs.length; i++) {
-      const testBH = realBHs[i];
-      // Training set: all boreholes except testBH (include synthetic)
-      const trainBHs = AppState.classifiedBH.filter(b => b !== testBH);
-      if (trainBHs.filter(b => !b.synthetic).length === 0) continue;
+    try {
+      for (let i = 0; i < realBHs.length; i++) {
+        const testBH = realBHs[i];
+        // Training set: all boreholes except testBH (include synthetic)
+        const trainBHs = AppState.classifiedBH.filter(b => b !== testBH);
+        if (trainBHs.filter(b => !b.synthetic).length === 0) continue;
 
-      await new Promise(r => setTimeout(r, 0)); // yield to UI
-      try {
-        const g = await buildVoxelGrid(trainBHs, AppState.geoUnits, AppState.cellSizeH, opts);
-        const { nx, ny, nz, origin: O, cellSize: cs, cellHeight: ch, unitIds, certainty } = g;
-        const ix = Math.max(0, Math.min(nx - 1, Math.round((testBH.x - O.x) / cs - 0.5)));
-        const iy = Math.max(0, Math.min(ny - 1, Math.round((testBH.y - O.z) / cs - 0.5)));
-        let bhCorrect = 0, bhTotal = 0;
-        for (const layer of testBH.layers) {
-          if (!layer.unitCode) continue;
-          const elev = (testBH.groundLevel ?? 0) - (layer.top + layer.base) / 2;
-          const iz   = Math.max(0, Math.min(nz - 1, Math.round((elev - O.y) / ch - 0.5)));
-          const flat = ix + iy * nx + iz * nx * ny;
-          const pred = unitById[unitIds[flat]];
-          bhTotal++;
-          if (pred?.code === layer.unitCode) bhCorrect++;
+        await new Promise(r => setTimeout(r, 0)); // yield to UI
+        try {
+          const g = await buildVoxelGrid(trainBHs, AppState.geoUnits, AppState.cellSizeH, opts);
+          const { nx, ny, nz, origin: O, cellSize: cs, cellHeight: ch, unitIds, certainty } = g;
+          const ix = Math.max(0, Math.min(nx - 1, Math.round((testBH.x - O.x) / cs - 0.5)));
+          const iy = Math.max(0, Math.min(ny - 1, Math.round((testBH.y - O.z) / cs - 0.5)));
+          let bhCorrect = 0, bhTotal = 0;
+          for (const layer of testBH.layers) {
+            if (!layer.unitCode) continue;
+            const elev = (testBH.groundLevel ?? 0) - (layer.top + layer.base) / 2;
+            const iz   = Math.max(0, Math.min(nz - 1, Math.round((elev - O.y) / ch - 0.5)));
+            const flat = ix + iy * nx + iz * nx * ny;
+            const pred = unitById[unitIds[flat]];
+            bhTotal++;
+            if (pred?.code === layer.unitCode) bhCorrect++;
+          }
+          const acc = bhTotal > 0 ? (bhCorrect / bhTotal * 100).toFixed(0) : '—';
+          perBH.push({ id: testBH.id, correct: bhCorrect, total: bhTotal, acc: +acc });
+          totalCorrect += bhCorrect;
+          totalLayers  += bhTotal;
+          if (out) out.innerHTML = `<p class="hint" style="font-size:10px">Running… ${i + 1}/${realBHs.length} done</p>`;
+        } catch (err) {
+          perBH.push({ id: testBH.id, correct: 0, total: 0, acc: NaN, err: err.message });
         }
-        const acc = bhTotal > 0 ? (bhCorrect / bhTotal * 100).toFixed(0) : '—';
-        perBH.push({ id: testBH.id, correct: bhCorrect, total: bhTotal, acc: +acc });
-        totalCorrect += bhCorrect;
-        totalLayers  += bhTotal;
-        if (out) out.innerHTML = `<p class="hint" style="font-size:10px">Running… ${i + 1}/${realBHs.length} done</p>`;
-      } catch (err) {
-        perBH.push({ id: testBH.id, correct: 0, total: 0, acc: NaN, err: err.message });
       }
+
+      const loocvAcc = totalLayers > 0 ? (totalCorrect / totalLayers * 100).toFixed(1) : '0';
+      const colOk  = +loocvAcc >= 70 ? 'var(--green)' : +loocvAcc >= 50 ? '#c8a855' : '#d04040';
+
+      const rows = perBH.map(r => {
+        const bar = isNaN(r.acc) ? '—' : `${'▓'.repeat(Math.round(r.acc/10))}${'░'.repeat(10-Math.round(r.acc/10))}`;
+        const c   = r.acc >= 80 ? 'var(--green)' : r.acc >= 50 ? '#c8a855' : '#d04040';
+        return `<tr style="border-top:1px solid var(--border)">
+          <td style="padding:2px 4px;font-weight:600;color:var(--accent)">${r.id}</td>
+          <td style="padding:2px 4px;font-family:var(--font-mono);font-size:9px">${bar}</td>
+          <td style="padding:2px 4px;font-weight:600;color:${c}">${isNaN(r.acc) ? '—' : r.acc+'%'}</td>
+          <td style="padding:2px 4px;color:var(--text-muted)">${r.correct}/${r.total}</td>
+        </tr>`;
+      }).join('');
+
+      if (out) out.innerHTML = `
+        <div style="font-size:11px;font-weight:700;color:${colOk};margin-bottom:4px">
+          LOO accuracy: ${loocvAcc}% <span style="font-weight:400;color:var(--text-mid);font-size:10px">(${totalLayers} samples)</span>
+        </div>
+        <table style="width:100%;font-size:10px;border-collapse:collapse">
+          <thead><tr style="color:var(--text-muted)">
+            <th style="text-align:left;padding:2px 4px">BH</th>
+            <th></th>
+            <th style="padding:2px 4px">Acc</th>
+            <th style="padding:2px 4px">n</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <p class="hint" style="font-size:9px;margin-top:4px">Each BH removed from training set in turn; IDW prediction compared to actual layers. High values = model generalises well.</p>`;
+
+      log(`LOO cross-validation: ${loocvAcc}% overall (${realBHs.length} BHs, ${totalLayers} layer samples).`,
+        +loocvAcc >= 70 ? 'ok' : 'warn');
+    } catch (err) {
+      log(`LOO cross-validation failed: ${err.message}`, 'error');
+    } finally {
+      if (btn) btn.disabled = false;
     }
-
-    const loocvAcc = totalLayers > 0 ? (totalCorrect / totalLayers * 100).toFixed(1) : '0';
-    const colOk  = +loocvAcc >= 70 ? 'var(--green)' : +loocvAcc >= 50 ? '#c8a855' : '#d04040';
-
-    const rows = perBH.map(r => {
-      const bar = isNaN(r.acc) ? '—' : `${'▓'.repeat(Math.round(r.acc/10))}${'░'.repeat(10-Math.round(r.acc/10))}`;
-      const c   = r.acc >= 80 ? 'var(--green)' : r.acc >= 50 ? '#c8a855' : '#d04040';
-      return `<tr style="border-top:1px solid var(--border)">
-        <td style="padding:2px 4px;font-weight:600;color:var(--accent)">${r.id}</td>
-        <td style="padding:2px 4px;font-family:var(--font-mono);font-size:9px">${bar}</td>
-        <td style="padding:2px 4px;font-weight:600;color:${c}">${isNaN(r.acc) ? '—' : r.acc+'%'}</td>
-        <td style="padding:2px 4px;color:var(--text-muted)">${r.correct}/${r.total}</td>
-      </tr>`;
-    }).join('');
-
-    if (out) out.innerHTML = `
-      <div style="font-size:11px;font-weight:700;color:${colOk};margin-bottom:4px">
-        LOO accuracy: ${loocvAcc}% <span style="font-weight:400;color:var(--text-mid);font-size:10px">(${totalLayers} samples)</span>
-      </div>
-      <table style="width:100%;font-size:10px;border-collapse:collapse">
-        <thead><tr style="color:var(--text-muted)">
-          <th style="text-align:left;padding:2px 4px">BH</th>
-          <th></th>
-          <th style="padding:2px 4px">Acc</th>
-          <th style="padding:2px 4px">n</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-      <p class="hint" style="font-size:9px;margin-top:4px">Each BH removed from training set in turn; IDW prediction compared to actual layers. High values = model generalises well.</p>`;
-
-    log(`LOO cross-validation: ${loocvAcc}% overall (${realBHs.length} BHs, ${totalLayers} layer samples).`,
-      +loocvAcc >= 70 ? 'ok' : 'warn');
-    if (btn) btn.disabled = false;
   });
 
   document.getElementById('btn-compare-methods')?.addEventListener('click', async () => {
@@ -3420,6 +3429,7 @@ function initModelReport() {
     const results = [];
     const siteHistory = document.getElementById('input-site-history')?.value ?? '';
 
+    try {
     for (const method of METHODS) {
       try {
         log(`Comparing method: ${method.toUpperCase()}…`, 'info');
@@ -3477,7 +3487,11 @@ function initModelReport() {
     </table><p class="hint" style="font-size:9px;margin-top:4px">★ Best accuracy — consider switching to this method</p>`;
 
     log(`Method comparison complete. Best: ${results[0]?.method?.toUpperCase() ?? '—'} (${results[0]?.accuracy ?? 0}%)`, 'ok');
-    if (btn) btn.disabled = false;
+    } catch (err) {
+      log(`Method comparison failed: ${err.message}`, 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   });
 }
 

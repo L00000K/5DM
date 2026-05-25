@@ -869,7 +869,7 @@ class SceneManager {
     if (titleEl)    titleEl.textContent    = title;
     if (subtitleEl) subtitleEl.textContent = subtitle;
 
-    const totalThick = layers.reduce((s, l) => s + l.thick, 0);
+    const totalThick = Math.max(1e-9, layers.reduce((s, l) => s + l.thick, 0));
     const LOG_H = 260;
 
     const strips = popup.querySelector('#log-strips');
