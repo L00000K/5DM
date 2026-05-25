@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-25 (batch 22 — Process tab UI: all action/processing buttons moved to dedicated 4th tab grouped by category; duplicate HTML IDs resolved; right-panel simplified)
+> Last updated: 2026-05-25 (batch 26 — Defensive null guards: ConceptStore.deserialize() normalises missing confidence/embedding/unitAffinity; analyseBoreholeGaps confidence fallback; Process tab delegation sync fixes)
 
 ---
 

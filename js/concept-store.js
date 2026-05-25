@@ -495,8 +495,10 @@ export class ConceptStore {
       store._nextId   = d.nextId ?? 1;
       store._concepts = (d.concepts ?? []).map(c => ({
         ...c,
-        embedding: new Float32Array(c.embedding),
+        embedding: c.embedding?.length ? new Float32Array(c.embedding) : new Float32Array(32),
+        confidence: c.confidence ?? 0.7,
         domain: c.domain ?? { type: 'global' },
+        unitAffinity: c.unitAffinity ?? [],
       }));
     } catch { /* ignore */ }
     return store;

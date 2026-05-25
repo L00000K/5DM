@@ -1603,7 +1603,7 @@ export async function analyseBoreholeGaps(grid, classifiedBH, geoUnits, conceptS
 
   const conceptSummary = conceptStore?.concepts.length
     ? conceptStore.concepts.map(c =>
-        `  "${c.description}" (conf=${c.confidence.toFixed(2)}, domain=${c.domain?.type ?? 'global'})`
+        `  "${c.description}" (conf=${(c.confidence ?? 0.7).toFixed(2)}, domain=${c.domain?.type ?? 'global'})`
       ).join('\n')
     : '  None';
 
