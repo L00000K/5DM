@@ -210,7 +210,7 @@ export class ConceptStore {
       }
     }
 
-    if (c.domain.type === 'global') return base;
+    if (!c.domain || c.domain.type === 'global') return base;
     if (c.domain.type === 'bbox') {
       const { minX = 0, maxX = 0, minY = 0, maxY = 0, sigma = 50 } = c.domain;
       const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
@@ -494,7 +494,9 @@ export class ConceptStore {
       const d = JSON.parse(json);
       store._nextId   = d.nextId ?? 1;
       store._concepts = (d.concepts ?? []).map(c => ({
-        ...c, embedding: new Float32Array(c.embedding),
+        ...c,
+        embedding: new Float32Array(c.embedding),
+        domain: c.domain ?? { type: 'global' },
       }));
     } catch { /* ignore */ }
     return store;
