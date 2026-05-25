@@ -6376,7 +6376,7 @@ async function init() {
               </div>`;
             }).join('');
             sensEl.innerHTML = `<div style="font-size:9px;color:var(--text-mid);margin-bottom:4px">
-              ∂P(${dominantUnitCode ?? '?'}) / ∂axis (base P=${(basePDom * 100).toFixed(0)}%) — how each axis shifts the dominant unit probability
+              ∂P(${escHtml(dominantUnitCode ?? '?')}) / ∂axis (base P=${(basePDom * 100).toFixed(0)}%) — how each axis shifts the dominant unit probability
             </div>${bars}`;
           } catch (err) {
             if (sensEl) sensEl.innerHTML = `<span style="color:var(--red);font-size:9px">Sensitivity scan failed: ${escHtml(err.message)}</span>`;
@@ -10289,7 +10289,7 @@ function _renderAttribution(attr, unitCode) {
           <div class="trace-bar-wrap">
             <div class="trace-bar-fill" style="width:${(b.weight * 100).toFixed(0)}%;background:var(--text-mid)"></div>
           </div>
-          <span class="trace-label">${b.id}</span>
+          <span class="trace-label">${escHtml(b.id)}</span>
           <span class="trace-weight">${(b.weight * 100).toFixed(0)}%</span>
         </div>`).join('')
     : '<div class="trace-row"><span class="trace-label" style="color:var(--text-dim)">No boreholes nearby</span></div>';
@@ -10445,7 +10445,7 @@ function _renderModelQC() {
       const col = s.sum / s.cnt > 0.65 ? 'var(--accent)' : s.sum / s.cnt > 0.45 ? '#d4a843' : 'var(--red)';
       return `<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
         <span style="width:8px;height:8px;border-radius:2px;background:${u.color};flex-shrink:0"></span>
-        <span style="flex:1;font-size:9.5px;color:var(--text-mid)">${u.code}</span>
+        <span style="flex:1;font-size:9.5px;color:var(--text-mid)">${escHtml(u.code)}</span>
         <div style="width:60px;height:5px;background:var(--bg-deep);border-radius:2px;overflow:hidden">
           <div style="width:${pct}%;height:100%;background:${col}"></div>
         </div>

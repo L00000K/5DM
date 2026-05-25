@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-25 (batch 36 — escHtml() for borehole IDs in LOOCV/liquefaction rows; unit code/name in strat column and similarity panel; scenario/concept names; orientation filter codes; slope stability unitName; gap analysis priority; hazard map borehole SVG title; concept list unitAffinity)
+> Last updated: 2026-05-25 (batch 37 — escHtml for bh ID in traceability bhRows and neural sensitivity dominant unit; escHtml for u.code in model QC unit rows; _esc helper + escaping for unit codes/names/BH IDs in confusion matrix and mismatches in report.js)
 
 ---
 

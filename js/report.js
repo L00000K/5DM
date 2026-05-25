@@ -1,5 +1,7 @@
 // ── Model Quality & Coverage Report ───────────────────────────────────────────
 
+const _esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
 export class ModelReport {
   constructor() {
     this._canvas  = document.getElementById('coverage-canvas');
@@ -300,17 +302,17 @@ export class ModelReport {
       matrix += `<tr><td style="padding:2px;font-size:8px;color:var(--text-dim)">Act.↓Pred.→</td>`;
       for (const pred of allCodes) {
         const unit = geoUnits.find(u => u.code === pred);
-        matrix += `<td style="padding:2px;text-align:center;font-weight:600;font-family:var(--font-mono);width:${cellW}px;max-width:${cellW}px;overflow:hidden;border-bottom:1px solid #2e3a4a" title="${unit?.name ?? pred}">${pred.slice(0,4)}</td>`;
+        matrix += `<td style="padding:2px;text-align:center;font-weight:600;font-family:var(--font-mono);width:${cellW}px;max-width:${cellW}px;overflow:hidden;border-bottom:1px solid #2e3a4a" title="${_esc(unit?.name ?? pred)}">${_esc(pred.slice(0,4))}</td>`;
       }
       matrix += '</tr>';
 
       for (const obs of allCodes) {
         const unit = geoUnits.find(u => u.code === obs);
-        matrix += `<tr><td style="padding:2px 4px 2px 0;font-weight:600;font-family:var(--font-mono);white-space:nowrap;border-right:1px solid #2e3a4a;color:var(--accent)" title="${unit?.name ?? obs}">${obs}</td>`;
+        matrix += `<tr><td style="padding:2px 4px 2px 0;font-weight:600;font-family:var(--font-mono);white-space:nowrap;border-right:1px solid #2e3a4a;color:var(--accent)" title="${_esc(unit?.name ?? obs)}">${_esc(obs)}</td>`;
         for (const pred of allCodes) {
           const n = confMat[obs]?.[pred] ?? 0;
           const style = cellStyle(obs, pred, n);
-          matrix += `<td style="${style};padding:2px;text-align:center;font-family:var(--font-mono);width:${cellW}px;min-width:${cellW}px;border:1px solid #1a2230" title="${n} ${obs}→${pred}">${n || ''}</td>`;
+          matrix += `<td style="${style};padding:2px;text-align:center;font-family:var(--font-mono);width:${cellW}px;min-width:${cellW}px;border:1px solid #1a2230" title="${n} ${_esc(obs)}→${_esc(pred)}">${n || ''}</td>`;
         }
         matrix += '</tr>';
       }
@@ -322,8 +324,8 @@ export class ModelReport {
       html += `<div style="margin:8px 0 4px;font-size:11px;color:var(--text-mid);font-weight:600">Mismatches (first 10):</div>`;
       mismatches.slice(0, 10).forEach(m => {
         html += `<div class="quality-row" style="font-size:10px">
-          <span style="color:var(--text-dim)">${m.bh} @${m.depth}m</span>
-          <span><span style="color:#d04040">${m.observed}</span> → <span style="color:var(--green)">${m.predicted}</span></span>
+          <span style="color:var(--text-dim)">${_esc(m.bh)} @${m.depth}m</span>
+          <span><span style="color:#d04040">${_esc(m.observed)}</span> → <span style="color:var(--green)">${_esc(m.predicted)}</span></span>
         </div>`;
       });
     } else if (total > 0) {
