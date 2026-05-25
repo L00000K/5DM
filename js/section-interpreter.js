@@ -185,7 +185,8 @@ export async function parseSectionFromText(text, geoUnits, fence, apiKey, demoMo
   const raw   = data.content?.[0]?.text ?? '';
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('No JSON in Claude response');
-  return JSON.parse(match[0]);
+  try { return JSON.parse(match[0]); }
+  catch (e) { throw new Error(`Malformed JSON in Claude response: ${e.message}`); }
 }
 
 // ── Section → virtual boreholes ───────────────────────────────────────────────

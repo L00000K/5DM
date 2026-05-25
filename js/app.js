@@ -4125,7 +4125,9 @@ function _openBHEditor(bhid, wrap) {
 
   layerWrap.addEventListener('click', e => {
     if (!e.target.classList.contains('bhe-del')) return;
-    const idx = parseInt(e.target.closest('tr').dataset.layeridx);
+    const row = e.target.closest('tr');
+    if (!row) return;
+    const idx = parseInt(row.dataset.layeridx);
     bh.layers.splice(idx, 1);
     layerWrap.innerHTML = buildTable();
   });
@@ -6141,6 +6143,26 @@ async function init() {
   tryInit(initSectionInterpreter, 'initSectionInterpreter');
   tryInit(initConceptPanel,       'initConceptPanel');
   tryInit(initProbVolPanel,       'initProbVolPanel');
+
+  // Mirror disabled state of canonical buttons to their Process-tab alias copies.
+  // Process tab shows action buttons as clickable proxies; their disabled state must
+  // stay in sync with the canonical element that actually holds the click handler.
+  (function syncButtonAliases() {
+    const pairs = [
+      ['btn-auto-params',        'proc-btn-auto-params'],
+      ['btn-build-isosurfaces',  'proc-btn-build-isosurfaces'],
+      ['btn-uncertainty-surface','proc-btn-uncertainty-surface'],
+      ['toc-launch-fence',       'proc-toc-launch-fence'],
+    ];
+    for (const [srcId, aliasId] of pairs) {
+      const src = document.getElementById(srcId);
+      const alias = document.getElementById(aliasId);
+      if (!src || !alias) continue;
+      alias.disabled = src.disabled;
+      new MutationObserver(() => { alias.disabled = src.disabled; })
+        .observe(src, { attributes: true, attributeFilter: ['disabled'] });
+    }
+  })();
 
   // Sample tile buttons (left panel)
   document.querySelectorAll('.sample-tile').forEach(btn => {

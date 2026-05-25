@@ -987,11 +987,11 @@
         <div class="settings-divider">Views &amp; Maps</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:0 8px 6px">
           <button id="btn-plan-view" class="btn-secondary btn-sm" disabled>⊟ Plan View</button>
-          <button class="btn-secondary btn-sm" onclick="document.getElementById('toc-launch-fence')?.click()" title="Open cross-section">⊞ Cross-Section</button>
+          <button id="proc-toc-launch-fence" class="btn-secondary btn-sm" disabled onclick="document.getElementById('toc-launch-fence')?.click()" title="Open cross-section">⊞ Cross-Section</button>
           <button id="btn-isopach" class="btn-secondary btn-sm" disabled>⊠ Isopach Map</button>
           <button id="btn-strat-corr" class="btn-secondary btn-sm" disabled title="Stratigraphic correlation panel">⊟ Stratigraphy</button>
-          <button class="btn-secondary btn-sm" onclick="document.getElementById('btn-build-isosurfaces')?.click()" title="Build smooth 3D unit solids (marching cubes)">⬡ Isosurfaces</button>
-          <button class="btn-secondary btn-sm" style="color:#e8a020" onclick="document.getElementById('btn-uncertainty-surface')?.click()" title="Show isosurface of high model uncertainty">◈ Uncertainty</button>
+          <button id="proc-btn-build-isosurfaces" class="btn-secondary btn-sm" disabled onclick="document.getElementById('btn-build-isosurfaces')?.click()" title="Build smooth 3D unit solids (marching cubes)">⬡ Isosurfaces</button>
+          <button id="proc-btn-uncertainty-surface" class="btn-secondary btn-sm" style="color:#e8a020" disabled onclick="document.getElementById('btn-uncertainty-surface')?.click()" title="Show isosurface of high model uncertainty">◈ Uncertainty</button>
         </div>
 
         <!-- ── Uncertainty ── -->
@@ -1181,7 +1181,7 @@
           <div id="geomech-infer-output" style="display:none;font-size:10px"></div>
           <button id="btn-assess-risk" class="btn-secondary btn-sm" disabled style="width:100%" title="Identifies settlement, bearing, liquefaction and uncertainty hazards">⚠ Assess Geotechnical Risk Zones</button>
           <div id="risk-results"></div>
-          <button onclick="document.getElementById('btn-auto-params')?.click()" class="btn-secondary btn-sm" disabled style="width:100%" title="Use Claude to fill in missing geotechnical parameters">🧠 Auto Geotechnical Params</button>
+          <button id="proc-btn-auto-params" onclick="document.getElementById('btn-auto-params')?.click()" class="btn-secondary btn-sm" disabled style="width:100%" title="Use Claude to fill in missing geotechnical parameters">🧠 Auto Geotechnical Params</button>
           <button id="btn-ai-narrative-unit" style="display:none" class="btn btn-ghost proc-btn">✦ Unit narrative</button>
         </div>
 
