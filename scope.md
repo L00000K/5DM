@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-25 (batch 35 — escHtml() for geo-event name/unitCodes in _renderGeoEventList; escHtml() for unitAffinity and Number() coercion for temporalOrder in _renderCompiledRules)
+> Last updated: 2026-05-25 (batch 36 — escHtml() for borehole IDs in LOOCV/liquefaction rows; unit code/name in strat column and similarity panel; scenario/concept names; orientation filter codes; slope stability unitName; gap analysis priority; hazard map borehole SVG title; concept list unitAffinity)
 
 ---
 

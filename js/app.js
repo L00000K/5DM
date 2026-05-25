@@ -3390,7 +3390,7 @@ function initModelReport() {
         const bar = isNaN(r.acc) ? '—' : `${'▓'.repeat(Math.round(r.acc/10))}${'░'.repeat(10-Math.round(r.acc/10))}`;
         const c   = r.acc >= 80 ? 'var(--green)' : r.acc >= 50 ? '#c8a855' : '#d04040';
         return `<tr style="border-top:1px solid var(--border)">
-          <td style="padding:2px 4px;font-weight:600;color:var(--accent)">${r.id}</td>
+          <td style="padding:2px 4px;font-weight:600;color:var(--accent)">${escHtml(r.id)}</td>
           <td style="padding:2px 4px;font-family:var(--font-mono);font-size:9px">${bar}</td>
           <td style="padding:2px 4px;font-weight:600;color:${c}">${isNaN(r.acc) ? '—' : r.acc+'%'}</td>
           <td style="padding:2px 4px;color:var(--text-muted)">${r.correct}/${r.total}</td>
@@ -3574,8 +3574,8 @@ function updateStratColumn() {
     li.innerHTML = `
       <span class="strat-drag-handle" title="Drag to reorder">⠿</span>
       <span class="strat-swatch" style="background:${unit.color}"></span>
-      <span class="strat-code">${unit.code}</span>
-      <span class="strat-name">${unit.name.slice(0, 20)}</span>
+      <span class="strat-code">${escHtml(unit.code)}</span>
+      <span class="strat-name">${escHtml(unit.name.slice(0, 20))}</span>
       ${thickStr ? `<span class="strat-thick">${thickStr}</span>` : ''}
     `;
     list.appendChild(li);
@@ -3663,7 +3663,7 @@ function initStratOrderButtons() {
         const col  = pct >= 80 ? 'var(--green)' : pct >= 50 ? '#c8a855' : '#d04040';
         const bar  = '▓'.repeat(Math.round(pct / 10)) + '░'.repeat(10 - Math.round(pct / 10));
         return `<div style="display:flex;align-items:center;gap:4px;margin-bottom:1px">
-          <span style="font-family:var(--font-mono);width:46px;color:var(--accent)">${r.code}</span>
+          <span style="font-family:var(--font-mono);width:46px;color:var(--accent)">${escHtml(r.code)}</span>
           <span style="font-family:var(--font-mono);font-size:8px;letter-spacing:-0.5px;color:${col}">${bar}</span>
           <span style="color:${col};width:28px">${pct}%</span>
         </div>`;
@@ -4247,10 +4247,10 @@ function initScenarioManager() {
     }
     listEl.innerHTML = scenarios.map((sc, i) => {
       const date = new Date(sc.createdAt).toLocaleString('en-GB', { dateStyle:'short', timeStyle:'short' });
-      const unitCodes = sc.geoUnits.map(u => `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${u.color};margin-right:2px;vertical-align:middle"></span>${u.code}`).join(' ');
+      const unitCodes = sc.geoUnits.map(u => `<span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${u.color};margin-right:2px;vertical-align:middle"></span>${escHtml(u.code)}`).join(' ');
       return `<div style="display:flex;align-items:center;gap:6px;padding:7px 8px;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:5px;background:var(--bg-surface)">
         <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:12px;margin-bottom:2px">${sc.name}</div>
+          <div style="font-weight:600;font-size:12px;margin-bottom:2px">${escHtml(sc.name)}</div>
           <div style="font-size:10px;color:var(--text-mid)">${date} · ${sc.classifiedBH?.length ?? 0} BHs · ${unitCodes}</div>
         </div>
         <button data-idx="${i}" class="btn-scenario-load btn-secondary btn-sm" style="white-space:nowrap">Switch</button>
@@ -5089,10 +5089,10 @@ function initRiskAssessment() {
           const pct = Math.round(p.similarity * 100);
           const col = pct >= 88 ? 'var(--error)' : pct >= 72 ? 'var(--warn)' : 'var(--text-mid)';
           return `<div style="border-left:3px solid ${col};padding:4px 6px;margin-bottom:5px;background:var(--bg-surface)">
-            <div style="font-weight:600;color:${col}">${p.codeA} ↔ ${p.codeB} <span style="font-weight:400;float:right">${pct}%</span></div>
-            <div style="color:var(--text-mid);margin-top:2px">${p.nameA} / ${p.nameB}</div>
-            ${p.sharedTokens?.length ? `<div style="color:var(--text-muted);font-size:9px;margin-top:2px">Shared: ${p.sharedTokens.slice(0, 6).join(', ')}</div>` : ''}
-            <div style="color:var(--text-dim);font-style:italic;margin-top:2px;font-size:9px">${p.suggestion}</div>
+            <div style="font-weight:600;color:${col}">${escHtml(p.codeA)} ↔ ${escHtml(p.codeB)} <span style="font-weight:400;float:right">${pct}%</span></div>
+            <div style="color:var(--text-mid);margin-top:2px">${escHtml(p.nameA)} / ${escHtml(p.nameB)}</div>
+            ${p.sharedTokens?.length ? `<div style="color:var(--text-muted);font-size:9px;margin-top:2px">Shared: ${escHtml(p.sharedTokens.slice(0, 6).join(', '))}</div>` : ''}
+            <div style="color:var(--text-dim);font-style:italic;margin-top:2px;font-size:9px">${escHtml(p.suggestion)}</div>
           </div>`;
         }).join('');
         log(`Unit similarity: ${pairs.length} similar pair(s) found — highest ${Math.round(pairs[0].similarity * 100)}% (${pairs[0].codeA} ↔ ${pairs[0].codeB})`, pairs[0].similarity > 0.88 ? 'warn' : 'info');
@@ -5130,7 +5130,7 @@ function initRiskAssessment() {
       const col = unit?.color ?? '#888';
       rows.push(`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
         <span style="width:10px;height:10px;border-radius:2px;background:${col};flex-shrink:0"></span>
-        <span style="flex:1"><strong>${code}</strong></span>
+        <span style="flex:1"><strong>${escHtml(code)}</strong></span>
         <span style="color:#ccc">${pct}% coverage</span>
         <span style="color:#f5a623">${edgeCount} edge col${edgeCount !== 1 ? 's' : ''}</span>
       </div>`);
@@ -6525,10 +6525,10 @@ function initStereonet() {
     if (statsEl) {
       if (filterCode && stats[filterCode]) {
         const s = stats[filterCode];
-        statsEl.innerHTML = `${filterCode}: mean dip ${s.meanDip}° → ${s.meanDipDir}° · σ=${s.stdDip}° · n=${s.n}`;
+        statsEl.innerHTML = `${escHtml(filterCode)}: mean dip ${s.meanDip}° → ${s.meanDipDir}° · σ=${s.stdDip}° · n=${s.n}`;
       } else {
         const lines = Object.entries(stats).map(([code, s]) =>
-          `${code}: ${s.meanDip}°/${s.meanDipDir}°`).join(' | ');
+          `${escHtml(code)}: ${s.meanDip}°/${s.meanDipDir}°`).join(' | ');
         statsEl.innerHTML = lines || 'No orientation data';
       }
     }
@@ -6613,7 +6613,7 @@ function initSlopeStability() {
           const svg = renderSlopeSection(result, results.clientWidth || 360, 180);
           results.innerHTML = svg;
           const color = result.Fs < 1.2 ? '#e84040' : result.Fs < 1.5 ? '#e8924a' : '#4ae87a';
-          results.innerHTML += `<p style="margin:4px 0 0;font-size:10px;font-family:monospace;color:${color}">Fs = ${result.Fs.toFixed(2)} · ${result.unitName} · c′=${result.params.cPrime.toFixed(0)}kPa · φ=${result.params.phiDeg}° · γ=${result.params.gamma}kN/m³</p>`;
+          results.innerHTML += `<p style="margin:4px 0 0;font-size:10px;font-family:monospace;color:${color}">Fs = ${result.Fs.toFixed(2)} · ${escHtml(result.unitName)} · c′=${result.params.cPrime.toFixed(0)}kPa · φ=${result.params.phiDeg}° · γ=${result.params.gamma}kN/m³</p>`;
           log(`Bishop: Fs = ${result.Fs.toFixed(2)} (${result.Fs < 1.2 ? 'UNSAFE' : result.Fs < 1.5 ? 'MARGINAL' : 'STABLE'})`, result.Fs < 1.2 ? 'error' : result.Fs < 1.5 ? 'warn' : 'ok');
         }
       } catch (err) {
@@ -6668,7 +6668,7 @@ function initLiquefaction() {
               <th style="color:var(--text-mid);padding:2px">Rating</th>
               <th style="color:var(--text-mid);padding:2px">Min FS</th></tr>
           ${results.map(r => `<tr>
-            <td style="padding:2px;color:var(--text-primary)">${r.log.id}</td>
+            <td style="padding:2px;color:var(--text-primary)">${escHtml(r.log.id)}</td>
             <td style="padding:2px;text-align:right;color:${r.lpiCol};font-weight:bold">${r.result.lpi.toFixed(1)}</td>
             <td style="padding:2px;text-align:center;color:${r.lpiCol}">${r.result.lpiRating}</td>
             <td style="padding:2px;text-align:right;color:var(--text-mid)">${isFinite(r.minFS) ? r.minFS.toFixed(2) : '—'}</td>
@@ -6677,7 +6677,7 @@ function initLiquefaction() {
 
         profiles.innerHTML = results.map(r =>
           `<div style="text-align:center">
-            <div style="font-size:9px;color:var(--text-mid);margin-bottom:2px">${r.log.id}</div>
+            <div style="font-size:9px;color:var(--text-mid);margin-bottom:2px">${escHtml(r.log.id)}</div>
             ${renderLiquefactionProfile(r.result, 180, 260)}
           </div>`
         ).join('');
@@ -8193,7 +8193,7 @@ function _renderScenarioList() {
     const dt = new Date(sc.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const store = ConceptStore.deserialize(sc.json);
     return `<div class="scenario-entry">
-      <button class="scenario-load" onclick="_loadConceptScenario(${i})" title="Load this scenario">${sc.name}</button>
+      <button class="scenario-load" onclick="_loadConceptScenario(${i})" title="Load this scenario">${escHtml(sc.name)}</button>
       <span class="scenario-meta">${store.concepts.length}c · ${dt}</span>
       <button class="scenario-del" onclick="_deleteConceptScenario(${i})" title="Delete">×</button>
     </div>`;
@@ -8989,7 +8989,7 @@ export function _renderConceptList() {
       </div>`;
     }).join('');
     const dom       = c.domain?.type === 'bbox' ? '⬛ bbox' : '🌐 global';
-    const affText   = c.unitAffinity?.length ? ` · ${c.unitAffinity.join(',')}` : '';
+    const affText   = c.unitAffinity?.length ? ` · ${escHtml(c.unitAffinity.join(','))}` : '';
     const depthText = (c.domain?.minZ !== undefined || c.domain?.maxZ !== undefined)
       ? ` · Z [${c.domain.minZ ?? '?'}..${c.domain.maxZ ?? '?'}]m`
       : '';
@@ -9689,7 +9689,7 @@ window._showConceptHazardMap = function() {
   const bhDots = (AppState.classifiedBH ?? []).filter(b => !b.synthetic && isFinite(b.x) && isFinite(b.y)).map(bh => {
     const cx = ((bh.x - minX) / (maxX - minX) * SVG_W).toFixed(1);
     const cy = ((bh.y - minY) / (maxY - minY) * SVG_H).toFixed(1);
-    return `<circle cx="${cx}" cy="${cy}" r="2.5" fill="white" stroke="#222" stroke-width="0.8" opacity="0.9" title="${bh.id}"/>`;
+    return `<circle cx="${cx}" cy="${cy}" r="2.5" fill="white" stroke="#222" stroke-width="0.8" opacity="0.9" title="${escHtml(bh.id)}"/>`;
   });
 
   // Legend
@@ -10504,7 +10504,7 @@ function _renderModelQC() {
             const col = r.priority === 'high' ? 'var(--red)' : '#d4a843';
             return `<div style="border:1px solid var(--border);border-radius:4px;padding:5px 6px;margin-bottom:4px;font-size:10px">
               <div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">
-                <span style="font-size:9px;font-weight:700;color:${col};text-transform:uppercase;letter-spacing:.5px">${r.priority}</span>
+                <span style="font-size:9px;font-weight:700;color:${col};text-transform:uppercase;letter-spacing:.5px">${escHtml(r.priority)}</span>
                 <span style="font-size:10px;font-weight:600;color:var(--text-primary)">BH location ${i + 1}</span>
               </div>
               <div style="font-family:var(--font-mono);font-size:9px;color:var(--text-mid);margin-bottom:3px">
