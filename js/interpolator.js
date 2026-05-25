@@ -1827,7 +1827,7 @@ export function identifySequenceSurfaces(grid, geoUnits, conceptStore) {
         const flat  = ix + iy * nx + iz * nx * ny;
         const uid   = unitIds[flat];
         const code  = idToCode[uid];
-        if (!code) { prevCode = code; continue; }
+        if (!code) continue;
 
         if (prevCode && prevCode !== code) {
           const prevRank = temporalRank[prevCode] ?? -1;

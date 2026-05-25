@@ -1154,7 +1154,8 @@ export function analyzeBoreholeGeometry(boreholes, geoUnits) {
     }
 
     // ── Lateral continuity: is the unit consistently present? ─────────────────
-    const presentFraction = obs.length / boreholes.filter(b => b.layers?.length).length;
+    const validBHCount = boreholes.filter(b => b.layers?.length).length;
+    const presentFraction = validBHCount ? obs.length / validBHCount : 0;
     if (presentFraction > 0.6) {
       emb[9]  = 0.7;  // laterally continuous
       emb[27] = 0.5;  // lateral anisotropy

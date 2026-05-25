@@ -864,8 +864,10 @@ class SceneManager {
     const unitByCode = {};
     (this._modelBounds.geoUnits ?? []).forEach(u => { unitByCode[u.code] = u; });
 
-    popup.querySelector('#log-popup-title').textContent    = title;
-    popup.querySelector('#log-popup-subtitle').textContent = subtitle;
+    const titleEl    = popup.querySelector('#log-popup-title');
+    const subtitleEl = popup.querySelector('#log-popup-subtitle');
+    if (titleEl)    titleEl.textContent    = title;
+    if (subtitleEl) subtitleEl.textContent = subtitle;
 
     const totalThick = layers.reduce((s, l) => s + l.thick, 0);
     const LOG_H = 260;
@@ -873,6 +875,7 @@ class SceneManager {
     const strips = popup.querySelector('#log-strips');
     const labels = popup.querySelector('#log-labels');
     const sptDiv = popup.querySelector('#log-spt');
+    if (!strips || !labels) return;
     strips.innerHTML = '';
     labels.innerHTML = '';
     if (sptDiv) sptDiv.innerHTML = '';
@@ -1340,8 +1343,11 @@ class SceneManager {
   // ── Background ────────────────────────────────────────────────────────────
   setBackground(dark) {
     this._scene.background = new THREE.Color(dark ? 0x141820 : 0xf0f2f5);
-    document.getElementById('viewer-panel').style.background = dark ? '#141820' : '';
-    document.getElementById('three-canvas').style.background = dark ? '#141820' : '';
+    const bg = dark ? '#141820' : '';
+    const vp = document.getElementById('viewer-panel');
+    const tc = document.getElementById('three-canvas');
+    if (vp) vp.style.background = bg;
+    if (tc) tc.style.background = bg;
   }
 
   // ── Getters ───────────────────────────────────────────────────────────────

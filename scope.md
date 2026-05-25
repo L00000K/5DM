@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-25 (batch 26 — Defensive null guards: ConceptStore.deserialize() normalises missing confidence/embedding/unitAffinity; analyseBoreholeGaps confidence fallback; Process tab delegation sync fixes)
+> Last updated: 2026-05-25 (batch 27 — Null guard fixes: geo-implicit presentFraction division-by-zero; interpolator prevCode reset bug drops transitions; scene.js querySelector/getElementById null dereferences)
 
 ---
 
