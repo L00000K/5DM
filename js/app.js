@@ -126,6 +126,9 @@ export function analysisLog(header, body, type = 'ai') {
 function escHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
+function escAttr(s) {
+  return escHtml(s).replace(/"/g, '&quot;');
+}
 
 // ── Welcome overlay ────────────────────────────────────────────────────────────
 function showWelcome() {
@@ -4054,7 +4057,7 @@ function _refreshDeviationUI() {
   sel.innerHTML = '<option value="">— Select borehole —</option>'
     + bhs.map(b => {
         const hasDev = b.deviation?.length >= 2;
-        return `<option value="${escHtml(b.id)}"${b.id === curVal ? ' selected' : ''}>${escHtml(b.id)}${hasDev ? ' ✓' : ''}</option>`;
+        return `<option value="${escAttr(b.id)}"${b.id === curVal ? ' selected' : ''}>${escHtml(b.id)}${hasDev ? ' ✓' : ''}</option>`;
       }).join('');
 
   const bhId = sel.value;
@@ -4112,14 +4115,14 @@ function _openBHEditor(bhid, wrap) {
 
   const buildTable = () => {
     const selOpts = AppState.geoUnits.map(u =>
-      `<option value="${escHtml(u.code)}">${escHtml(u.code)} — ${escHtml(u.name)}</option>`
+      `<option value="${escAttr(u.code)}">${escHtml(u.code)} — ${escHtml(u.name)}</option>`
     ).join('');
     let t = `<table class="bh-layer-edit-table">
       <thead><tr><th>Top(m)</th><th>Base(m)</th><th>Unit</th><th>Cert.</th><th></th></tr></thead>
       <tbody>`;
     bh.layers.forEach((l, i) => {
       const opts = AppState.geoUnits.map(u =>
-        `<option value="${escHtml(u.code)}"${u.code === l.unitCode ? ' selected' : ''}>${escHtml(u.code)}</option>`
+        `<option value="${escAttr(u.code)}"${u.code === l.unitCode ? ' selected' : ''}>${escHtml(u.code)}</option>`
       ).join('');
       t += `<tr data-layeridx="${i}">
         <td><input type="number" class="bhe-top cell-size-input" value="${l.top ?? ''}" step="0.1" style="width:48px"></td>
@@ -5737,7 +5740,7 @@ export function updateLegend() {
   if (affinitySel && AppState.geoUnits.length) {
     const prev = new Set(Array.from(affinitySel.selectedOptions).map(o => o.value));
     affinitySel.innerHTML = AppState.geoUnits.map(u =>
-      `<option value="${escHtml(u.code)}"${prev.has(u.code) ? ' selected' : ''}>${escHtml(u.code)} — ${escHtml(u.name)}</option>`
+      `<option value="${escAttr(u.code)}"${prev.has(u.code) ? ' selected' : ''}>${escHtml(u.code)} — ${escHtml(u.name)}</option>`
     ).join('');
   }
 
@@ -6883,7 +6886,7 @@ function initSectionInterpreter() {
     if (!unitSel || !AppState.geoUnits.length) return;
     unitSel.innerHTML = AppState.geoUnits
       .filter(u => u.code !== 'UNKN')
-      .map(u => `<option value="${escHtml(u.code)}" style="color:${u.color}">${escHtml(u.code)} — ${escHtml(u.name)}</option>`)
+      .map(u => `<option value="${escAttr(u.code)}" style="color:${u.color}">${escHtml(u.code)} — ${escHtml(u.name)}</option>`)
       .join('');
     if (sketch) sketch.setActiveUnit(AppState.geoUnits.find(u => u.code !== 'UNKN')?.code);
   };
@@ -8974,7 +8977,7 @@ window._showConceptCoherence = function() {
     const pct = (r.score * 100).toFixed(0);
     const col = r.score > 0.65 ? 'var(--accent)' : r.score > 0.4 ? '#f0b429' : 'var(--red)';
     return `<div class="coherence-row">
-      <span class="coherence-name" title="${escHtml(r.description ?? '')}">${escHtml((r.description ?? '').slice(0, 35))}…</span>
+      <span class="coherence-name" title="${escAttr(r.description ?? '')}">${escHtml((r.description ?? '').slice(0, 35))}…</span>
       <div class="coherence-bar-wrap"><div class="coherence-bar" style="width:${pct}%;background:${col}"></div></div>
       <span class="coherence-pct" style="color:${col}">${pct}%</span>
     </div>` +
@@ -9014,7 +9017,7 @@ export function _renderConceptList() {
       : '';
     return `<div class="concept-entry" data-id="${c.id}">
       <div class="concept-header">
-        <span class="concept-desc" title="${escHtml(c.description ?? '')}">${escHtml((c.description ?? '').slice(0, 55))}${(c.description ?? '').length > 55 ? '…' : ''}</span>
+        <span class="concept-desc" title="${escAttr(c.description ?? '')}">${escHtml((c.description ?? '').slice(0, 55))}${(c.description ?? '').length > 55 ? '…' : ''}</span>
         <div style="display:flex;gap:2px">
           <button class="concept-radar-btn" title="Show radar chart" onclick="_toggleConceptRadar('${c.id}', this)">◎</button>
           <button class="concept-hl-btn" title="Highlight this concept's influence in 3D" onclick="_highlightConcept3D('${c.id}', this)" style="font-size:10px;padding:1px 4px;background:none;border:1px solid var(--border);border-radius:3px;color:var(--text-dim);cursor:pointer">🔦</button>
@@ -9518,7 +9521,7 @@ window._showConceptSensitivity = function() {
     const pct = r.pctOfTotal.toFixed(1);
     const col = r.pctOfTotal > 30 ? 'var(--accent)' : r.pctOfTotal > 10 ? '#f0b429' : 'var(--text-mid)';
     return `<div class="coherence-row" style="margin-bottom:3px">
-      <span class="coherence-name" title="${escHtml(r.description ?? '')}">${escHtml((r.description ?? '').slice(0, 32))}…</span>
+      <span class="coherence-name" title="${escAttr(r.description ?? '')}">${escHtml((r.description ?? '').slice(0, 32))}…</span>
       <div class="coherence-bar-wrap"><div class="coherence-bar" style="width:${Math.min(100, r.pctOfTotal * 2)}%;background:${col}"></div></div>
       <span class="coherence-pct" style="color:${col}">${pct}%</span>
     </div>`;
@@ -9703,7 +9706,7 @@ window._showConceptHazardMap = function() {
   const bhDots = (AppState.classifiedBH ?? []).filter(b => !b.synthetic && isFinite(b.x) && isFinite(b.y)).map(bh => {
     const cx = ((bh.x - minX) / (maxX - minX) * SVG_W).toFixed(1);
     const cy = ((bh.y - minY) / (maxY - minY) * SVG_H).toFixed(1);
-    return `<circle cx="${cx}" cy="${cy}" r="2.5" fill="white" stroke="#222" stroke-width="0.8" opacity="0.9" title="${escHtml(bh.id)}"/>`;
+    return `<circle cx="${cx}" cy="${cy}" r="2.5" fill="white" stroke="#222" stroke-width="0.8" opacity="0.9" title="${escAttr(bh.id)}"/>`;
   });
 
   // Legend
@@ -10299,7 +10302,7 @@ function _renderAttribution(attr, unitCode) {
           <div class="trace-bar-wrap">
             <div class="trace-bar-fill" style="width:${(c.weight * 100).toFixed(0)}%"></div>
           </div>
-          <span class="trace-label" title="${escHtml(c.description ?? '')}">${escHtml((c.description ?? '').slice(0, 35))}${(c.description ?? '').length > 35 ? '…' : ''}</span>
+          <span class="trace-label" title="${escAttr(c.description ?? '')}">${escHtml((c.description ?? '').slice(0, 35))}${(c.description ?? '').length > 35 ? '…' : ''}</span>
           <span class="trace-weight">${(c.weight * 100).toFixed(0)}%</span>
         </div>`).join('')
     : '<div class="trace-row"><span class="trace-label" style="color:var(--text-dim)">No active concepts</span></div>';
@@ -11000,7 +11003,7 @@ window._calibrateConceptConfidences = function(applyUpdates = false) {
            </div>` : '';
       return `<div style="padding:4px 5px;border:1px solid var(--border);border-radius:4px;margin-bottom:3px;font-size:10px">
         <div style="display:flex;align-items:center;gap:4px">
-          <span style="flex:1;color:var(--text-mid);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.description)}">${escHtml(r.description.slice(0, 40))}</span>
+          <span style="flex:1;color:var(--text-mid);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escAttr(r.description)}">${escHtml(r.description.slice(0, 40))}</span>
           <span style="font-family:var(--font-mono);font-size:9px;color:var(--text-dim)">${(r.priorConf * 100).toFixed(0)}%→</span>
           <span style="font-family:var(--font-mono);font-size:9px;color:${col}">${(r.posteriorConf * 100).toFixed(0)}%</span>
           <span style="font-size:9px;color:${col}">(${sign}${(r.delta * 100).toFixed(0)}%)</span>
