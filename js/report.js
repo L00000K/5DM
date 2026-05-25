@@ -434,7 +434,7 @@ export class ModelReport {
       const py = y => (offY + (maxY - y) * sc).toFixed(1); // flip Y
 
       const dots = bhs.map(bh => {
-        const glStr = bh.groundLevel != null ? ` GL:${bh.groundLevel.toFixed(1)}mAOD` : '';
+        const glStr = bh.groundLevel != null && isFinite(bh.groundLevel) ? ` GL:${bh.groundLevel.toFixed(1)}mAOD` : '';
         const unitList = [...new Set(bh.layers.map(l=>l.unitCode).filter(Boolean))];
         const topUnit  = unitByCode[unitList[0]];
         const fill = topUnit?.color ?? '#6688aa';

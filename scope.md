@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-25 (batch 29 — Defensive null guards on Claude API responses: interpretation_summary, hazard.type, demo JSON bh.layers and geological_units)
+> Last updated: 2026-05-25 (batch 30 — report.js: guard groundLevel against NaN to prevent "GL:NaNmAOD" in SVG output)
 
 ---
 
