@@ -3077,7 +3077,7 @@ function _initCertaintyHistUnit() {
   const sel = document.getElementById('cert-hist-unit');
   if (!sel) return;
   sel.innerHTML = '<option value="__all__">All units</option>'
-    + AppState.geoUnits.map(u => `<option value="${u.id}">${u.code} — ${u.name}</option>`).join('');
+    + AppState.geoUnits.map(u => `<option value="${u.id}">${escHtml(u.code)} — ${escHtml(u.name)}</option>`).join('');
   sel.onchange = () => drawCertaintyHistogram();
 
   const wrap = document.getElementById('certainty-hist-wrap');
@@ -6831,7 +6831,7 @@ function initSectionInterpreter() {
       const kws = normStatements.map(s => s.statement).join(', ') || '—';
       parseResult.innerHTML =
         `<span style="color:#4ae87a">✓ ${vbhs.length} virtual boreholes · ${conceptIds.length} concepts encoded</span><br>
-         <span style="color:var(--text-mid)">Concepts: ${kws.slice(0,120)}</span><br>
+         <span style="color:var(--text-mid)">Concepts: ${escHtml(kws.slice(0,120))}</span><br>
          <span style="color:var(--text-mid)">Rebuild the 3D model to apply.</span>`;
       log(`Section parsed: ${vbhs.length} virtual BHs · ${conceptIds.length} concepts added to ConceptStore`, 'ok');
       setEnabled('btn-build-model', true);
@@ -6872,7 +6872,7 @@ function initSectionInterpreter() {
     if (!unitSel || !AppState.geoUnits.length) return;
     unitSel.innerHTML = AppState.geoUnits
       .filter(u => u.code !== 'UNKN')
-      .map(u => `<option value="${u.code}" style="color:${u.color}">${u.code} — ${u.name}</option>`)
+      .map(u => `<option value="${escHtml(u.code)}" style="color:${u.color}">${escHtml(u.code)} — ${escHtml(u.name)}</option>`)
       .join('');
     if (sketch) sketch.setActiveUnit(AppState.geoUnits.find(u => u.code !== 'UNKN')?.code);
   };
@@ -6937,7 +6937,7 @@ function initMohrCircle() {
     unitSel.innerHTML = '<option value="">— select unit —</option>' +
       AppState.geoUnits
         .filter(u => u.code !== 'UNKN')
-        .map(u => `<option value="${u.id}">${u.code} — ${u.name}</option>`)
+        .map(u => `<option value="${u.id}">${escHtml(u.code)} — ${escHtml(u.name)}</option>`)
         .join('');
   };
   window.addEventListener('geomodel:model-built', _populateUnits);
@@ -7661,7 +7661,7 @@ function initConceptPanel() {
               <div style="font-weight:600;color:var(--text-primary);margin-bottom:2px">${escHtml(c.description)}</div>
               <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
                 <span style="font-size:9px;color:var(--text-dim)">Confidence: ${(c.confidence * 100).toFixed(0)}%</span>
-                ${c.unitAffinity?.length ? `<span style="font-size:9px;color:var(--accent)">${c.unitAffinity.join(', ')}</span>` : ''}
+                ${c.unitAffinity?.length ? `<span style="font-size:9px;color:var(--accent)">${escHtml(c.unitAffinity.join(', '))}</span>` : ''}
               </div>
               <button class="btn-ghost btn-sm" style="font-size:9px;padding:1px 6px" data-ext-idx="${i}">+ Add to concepts</button>
             </div>
@@ -8323,7 +8323,7 @@ window._compareConceptScenarios = function() {
     const best = results.reduce((b, r) => (r.acc != null && (b == null || r.acc > b.acc)) ? r : b, null);
     for (const r of results) {
       const isBest = r === best;
-      const accStr = r.acc != null ? `${(r.acc * 100).toFixed(1)}%` : `error: ${r.error}`;
+      const accStr = r.acc != null ? `${(r.acc * 100).toFixed(1)}%` : `error: ${escHtml(r.error ?? '')}`;
       html += `<div style="display:flex;gap:6px;align-items:center;margin-bottom:3px;font-size:9px">
         <span style="flex:1;font-weight:${isBest ? 600 : 400};color:${isBest ? '#7fcfb0' : 'var(--text-primary)'}">${escHtml(r.name)}</span>
         <span style="font-family:var(--font-mono);color:${r.acc != null ? '#f5a623' : '#e05'}">BH acc: ${accStr}</span>
@@ -9734,6 +9734,8 @@ window._runConceptEnsemble = async function() {
     return;
   }
 
+  try {
+
   // Neural method: fast re-inference with concept confidence scaling
   if (AppState.trainedModel && store && !store.isEmpty) {
     const gridMeta = {
@@ -9822,6 +9824,11 @@ window._runConceptEnsemble = async function() {
       <b>Concept sensitivity proxy</b> — shown on model (green=stable, red=concept-sensitive).<br>
       For full ensemble use <b>neural-implicit</b> method.
     </div>`;
+  }
+
+  } catch (err) {
+    if (el) el.innerHTML = `<div style="font-size:10px;color:#e06c75">Concept ensemble failed: ${escHtml(err.message)}</div>`;
+    log(`Concept ensemble error: ${err.message}`, 'error');
   }
 };
 
@@ -11023,6 +11030,8 @@ window._runConceptContributionReport = async function() {
 
   el.innerHTML = '<div style="font-size:10px;color:var(--text-mid)">Running ablation study…</div>';
 
+  try {
+
   const gridMeta = {
     nx: grid.nx, ny: grid.ny, nz: grid.nz,
     cellSize: grid.cellSize, cellHeight: grid.cellHeight, origin: grid.origin,
@@ -11113,6 +11122,11 @@ window._runConceptContributionReport = async function() {
     (baselineAcc != null ? ` · baseline accuracy ${(baselineAcc * 100).toFixed(1)}%` : ''),
     'ok'
   );
+
+  } catch (err) {
+    el.innerHTML = `<div style="font-size:10px;color:#e06c75">Concept contribution failed: ${escHtml(err.message)}</div>`;
+    log(`Concept contribution error: ${err.message}`, 'error');
+  }
 };
 
 // Geological Knowledge Uncertainty — stochastic concept embedding sampling
@@ -11135,6 +11149,8 @@ window._runKnowledgeUncertainty = async function(K = 6, baseNoise = 0.12) {
   }
 
   el.innerHTML = `<div style="font-size:10px;color:var(--text-mid)">Sampling concept space… 0/${K}</div>`;
+
+  try {
 
   const gridMeta = {
     nx: grid.nx, ny: grid.ny, nz: grid.nz,
@@ -11229,6 +11245,11 @@ window._runKnowledgeUncertainty = async function(K = 6, baseNoise = 0.12) {
     </div>`;
 
   log(`Knowledge uncertainty: K=${K} realisations · mean entropy ${meanH.toFixed(3)} bits · ${pctHigh.toFixed(1)}% high-uncertainty voxels`, 'ok');
+
+  } catch (err) {
+    el.innerHTML = `<div style="font-size:10px;color:#e06c75">Knowledge uncertainty failed: ${escHtml(err.message)}</div>`;
+    log(`Knowledge uncertainty error: ${err.message}`, 'error');
+  }
 };
 
 // Predictive Borehole Log — render a synthetic log at any (x,y) from the voxel grid.
@@ -11627,6 +11648,10 @@ window._analyseUnitConceptSignatures = async function() {
   el.innerHTML = '<div style="font-size:10px;color:var(--text-mid)">Computing concept signatures…</div>';
   await new Promise(r => setTimeout(r, 0));
 
+  try {
+
+  window._sigEmbedStash = []; // Reset stash so button indices stay valid for this run
+
   const geoUnits = AppState.geoUnits;
   const { nx, ny, nz, cellSize, cellHeight, origin, unitIds, certainty } = grid;
   const nVox = unitIds.length;
@@ -11721,14 +11746,17 @@ window._analyseUnitConceptSignatures = async function() {
       `<span style="color:#e06c75">−${x.name.replace(/_/g, ' ')} (${x.v.toFixed(2)})</span>`
     ).join(', ');
 
-    const addEmbedding = JSON.stringify(Array.from(meanVecs[ui]).map(v => +v.toFixed(3)));
+    // Stash embedding by index so onclick doesn't embed user strings as JS args
+    window._sigEmbedStash = window._sigEmbedStash ?? [];
+    const stashIdx = window._sigEmbedStash.length;
+    window._sigEmbedStash.push({ code: unit.code, name: unit.name, emb: meanVecs[ui] });
 
     return `<div style="padding:5px;background:var(--bg-surface);border-radius:4px;margin-bottom:5px;border-left:3px solid ${unit.color ?? '#888'}">
       <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
         <div style="width:10px;height:10px;background:${unit.color ?? '#888'};border-radius:2px;flex-shrink:0"></div>
         <span style="font-size:9.5px;font-weight:600;color:var(--text)">${escHtml(unit.code)}</span>
         <span style="font-size:9px;color:var(--text-dim);flex:1">${escHtml(unit.name)}</span>
-        <button onclick="_addSignatureAsConcept('${escHtml(unit.code)}', '${escHtml(unit.name)}', ${escHtml(addEmbedding)})"
+        <button onclick="_addSignatureAsConcept(${stashIdx})"
           style="font-size:8px;padding:1px 5px;border-radius:3px;cursor:pointer;border:1px solid var(--accent);color:var(--accent);background:transparent">+ Add</button>
       </div>
       <div style="display:flex;align-items:flex-end;height:24px;gap:0.5px;margin-bottom:3px">${bars}</div>
@@ -11749,6 +11777,11 @@ window._analyseUnitConceptSignatures = async function() {
     </div>`;
 
   log(`Unit concept signatures: ${geoUnits.length} units analysed`, 'ok');
+
+  } catch (err) {
+    el.innerHTML = `<div style="font-size:10px;color:#e06c75">Signature analysis failed: ${escHtml(err.message)}</div>`;
+    log(`Unit concept signatures error: ${err.message}`, 'error');
+  }
 };
 
 // Concept Completeness Scanner
@@ -12038,19 +12071,20 @@ window._inferGeomechanicalParameters = function() {
 };
 
 // Helper: add a unit's concept signature as a new concept in the store
-window._addSignatureAsConcept = function(unitCode, unitName, embArray) {
+window._addSignatureAsConcept = function(stashIdx) {
   const store = AppState.conceptStore;
   if (!store) return;
-  const emb = new Float32Array(embArray);
+  const entry = window._sigEmbedStash?.[stashIdx];
+  if (!entry) { log('Signature stash expired — re-run analysis first.', 'warn'); return; }
   store.add({
-    description: `Inferred concept signature for ${unitCode} — ${unitName}`,
-    embedding: emb,
+    description: `Inferred concept signature for ${entry.code} — ${entry.name}`,
+    embedding: new Float32Array(entry.emb),
     confidence: 0.65,
     domain: { type: 'global' },
-    unitAffinity: [unitCode],
+    unitAffinity: [entry.code],
   });
   _renderConceptList?.();
   _updateConceptInfluenceBar?.();
   _saveConceptStore?.();
-  log(`Concept signature for "${unitCode}" added to store`, 'ok');
+  log(`Concept signature for "${entry.code}" added to store`, 'ok');
 };

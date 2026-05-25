@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-25 (batch 37 — escHtml for bh ID in traceability bhRows and neural sensitivity dominant unit; escHtml for u.code in model QC unit rows; _esc helper + escaping for unit codes/names/BH IDs in confusion matrix and mismatches in report.js)
+> Last updated: 2026-05-25 (batch 38 — try-catch error handling added to all 4 async window functions: _runConceptContributionReport, _runConceptEnsemble, _analyseUnitConceptSignatures, _runKnowledgeUncertainty; _addSignatureAsConcept refactored to use stash index to avoid user strings in onclick args; escHtml applied to section parse result keyword summary, sketch unit selector options, Mohr-circle unit selector options, certainty histogram selector options, extracted concept unit affinities, and scenario comparison error string)
 
 ---
 
