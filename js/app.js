@@ -8398,8 +8398,8 @@ function _renderGeoEventList() {
     li.innerHTML = `
       <span class="geo-event-drag" title="Drag to reorder">⠿</span>
       <span class="geo-event-type-icon" title="${typeInfo.label}">${typeInfo.icon}</span>
-      <span class="geo-event-name-text">${evt.name || typeInfo.label}</span>
-      ${evt.unitCodes?.length ? `<span class="geo-event-units-text">${evt.unitCodes.join(',')}</span>` : ''}
+      <span class="geo-event-name-text">${escHtml(evt.name || typeInfo.label)}</span>
+      ${evt.unitCodes?.length ? `<span class="geo-event-units-text">${escHtml(evt.unitCodes.join(','))}</span>` : ''}
       <button class="geo-event-del" title="Remove" data-id="${evt.id}">×</button>
     `;
     list.appendChild(li);
@@ -10636,9 +10636,9 @@ function _renderCompiledRules(rules, container) {
       ? (r.domain.minZ !== undefined || r.domain.maxZ !== undefined
           ? `Depth ${r.domain.minZ ?? '?'}–${r.domain.maxZ ?? '?'} m AOD` : 'Global')
       : `Spatial bbox`;
-    const affinityStr = r.unitAffinity?.length ? ` · Units: ${r.unitAffinity.join(', ')}` : '';
+    const affinityStr = r.unitAffinity?.length ? ` · Units: ${escHtml(r.unitAffinity.join(', '))}` : '';
     const tempStr = r.temporalOrder !== null && r.temporalOrder !== undefined
-      ? ` · Temporal rank ${r.temporalOrder}` : '';
+      ? ` · Temporal rank ${Number(r.temporalOrder)}` : '';
 
     // Embedding sparkline
     const bars = Array.from(r.embedding).map((v, ai) => {

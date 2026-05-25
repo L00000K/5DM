@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-25 (batch 34 — concept description always coerced to String in ConceptStore.add(); escHtml() + null guards for concept descriptions throughout concept list, coherence, sensitivity, contribution report, and corrections panel rendering)
+> Last updated: 2026-05-25 (batch 35 — escHtml() for geo-event name/unitCodes in _renderGeoEventList; escHtml() for unitAffinity and Number() coercion for temporalOrder in _renderCompiledRules)
 
 ---
 
