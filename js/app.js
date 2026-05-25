@@ -1958,11 +1958,14 @@ function initUnitEditor() {
     row.dataset.uid = unit.id;
     row.innerHTML = `
       <input type="color" class="ue-color" value="${_hslToHex(unit.color ?? '#888888')}" title="Unit colour">
-      <input type="text"  class="ue-code input-sm" value="${unit.code ?? ''}" placeholder="Code" maxlength="8" title="Short code">
-      <input type="text"  class="ue-name input-sm" value="${unit.name ?? ''}" placeholder="Name" style="flex:1" title="Full name">
-      <input type="text"  class="ue-desc input-sm" value="${unit.description ?? ''}" placeholder="Description (optional)" style="flex:2" title="Description">
+      <input type="text"  class="ue-code input-sm" placeholder="Code" maxlength="8" title="Short code">
+      <input type="text"  class="ue-name input-sm" placeholder="Name" style="flex:1" title="Full name">
+      <input type="text"  class="ue-desc input-sm" placeholder="Description (optional)" style="flex:2" title="Description">
       <button class="btn-ghost btn-sm ue-del" title="Delete unit">✕</button>
     `;
+    row.querySelector('.ue-code').value = unit.code ?? '';
+    row.querySelector('.ue-name').value = unit.name ?? '';
+    row.querySelector('.ue-desc').value = unit.description ?? '';
     row.querySelector('.ue-del').addEventListener('click', () => {
       draft = draft.filter(u => u.id !== unit.id);
       row.remove();
@@ -5096,7 +5099,7 @@ function initRiskAssessment() {
       }
     } catch (e) {
       resEl.style.display = '';
-      resEl.innerHTML = `<p style="color:var(--error);font-size:10px">Error: ${e.message}</p>`;
+      resEl.innerHTML = `<p style="color:var(--error);font-size:10px">Error: ${escHtml(e.message)}</p>`;
       log(`Unit similarity error: ${e.message}`, 'error');
     } finally {
       if (btn) btn.textContent = '⊛ Analyse Unit Similarity';
@@ -5723,7 +5726,7 @@ export function updateLegend() {
   if (affinitySel && AppState.geoUnits.length) {
     const prev = new Set(Array.from(affinitySel.selectedOptions).map(o => o.value));
     affinitySel.innerHTML = AppState.geoUnits.map(u =>
-      `<option value="${u.code}"${prev.has(u.code) ? ' selected' : ''}>${u.code} — ${u.name}</option>`
+      `<option value="${escHtml(u.code)}"${prev.has(u.code) ? ' selected' : ''}>${escHtml(u.code)} — ${escHtml(u.name)}</option>`
     ).join('');
   }
 
@@ -6376,7 +6379,7 @@ async function init() {
               ∂P(${dominantUnitCode ?? '?'}) / ∂axis (base P=${(basePDom * 100).toFixed(0)}%) — how each axis shifts the dominant unit probability
             </div>${bars}`;
           } catch (err) {
-            if (sensEl) sensEl.innerHTML = `<span style="color:var(--red);font-size:9px">Sensitivity scan failed: ${err.message}</span>`;
+            if (sensEl) sensEl.innerHTML = `<span style="color:var(--red);font-size:9px">Sensitivity scan failed: ${escHtml(err.message)}</span>`;
           }
         }, 20);
       });
@@ -6614,7 +6617,7 @@ function initSlopeStability() {
           log(`Bishop: Fs = ${result.Fs.toFixed(2)} (${result.Fs < 1.2 ? 'UNSAFE' : result.Fs < 1.5 ? 'MARGINAL' : 'STABLE'})`, result.Fs < 1.2 ? 'error' : result.Fs < 1.5 ? 'warn' : 'ok');
         }
       } catch (err) {
-        results.innerHTML = `<p class="hint" style="color:#e84040">Error: ${err.message}</p>`;
+        results.innerHTML = `<p class="hint" style="color:#e84040">Error: ${escHtml(err.message)}</p>`;
         log(`Slope stability error: ${err.message}`, 'error');
       } finally {
         btn.disabled = false; btn.textContent = '⚖ Run Bishop Analysis';
@@ -6681,7 +6684,7 @@ function initLiquefaction() {
 
         log(`Liquefaction complete — max LPI ${maxLPI.toFixed(1)}, ${nLiquefy} at-risk CPT logs`, nLiquefy ? 'warn' : 'ok');
       } catch (err) {
-        summary.innerHTML = `<p class="hint" style="color:#e84040">Error: ${err.message}</p>`;
+        summary.innerHTML = `<p class="hint" style="color:#e84040">Error: ${escHtml(err.message)}</p>`;
         log(`Liquefaction error: ${err.message}`, 'error');
       } finally {
         btn.disabled = false; btn.textContent = '⚡ Run Liquefaction Assessment';
@@ -6834,7 +6837,7 @@ function initSectionInterpreter() {
       setEnabled('btn-build-model', true);
 
     } catch (err) {
-      parseResult.innerHTML = `<span style="color:#e84040">Error: ${err.message}</span>`;
+      parseResult.innerHTML = `<span style="color:#e84040">Error: ${escHtml(err.message)}</span>`;
       log(`Section parse error: ${err.message}`, 'error');
     } finally {
       parseBtn.disabled = false;
@@ -6962,7 +6965,7 @@ function initMohrCircle() {
       log(`Mohr circle: ${unit.code} at ${depth}m — FS = ${isFinite(mc.Fs)?mc.Fs.toFixed(2):'∞'} (${mc.mode})`,
           mc.Fs < 1.0 ? 'error' : mc.Fs < 1.5 ? 'warn' : 'ok');
     } catch (err) {
-      result.innerHTML = `<p class="hint" style="color:#e84040">Error: ${err.message}</p>`;
+      result.innerHTML = `<p class="hint" style="color:#e84040">Error: ${escHtml(err.message)}</p>`;
     }
   });
 
@@ -10275,7 +10278,7 @@ function _renderAttribution(attr, unitCode) {
           <div class="trace-bar-wrap">
             <div class="trace-bar-fill" style="width:${(c.weight * 100).toFixed(0)}%"></div>
           </div>
-          <span class="trace-label" title="${c.description}">${c.description.slice(0, 35)}${c.description.length > 35 ? '…' : ''}</span>
+          <span class="trace-label" title="${escHtml(c.description ?? '')}">${escHtml((c.description ?? '').slice(0, 35))}${(c.description ?? '').length > 35 ? '…' : ''}</span>
           <span class="trace-weight">${(c.weight * 100).toFixed(0)}%</span>
         </div>`).join('')
     : '<div class="trace-row"><span class="trace-label" style="color:var(--text-dim)">No active concepts</span></div>';
@@ -10734,7 +10737,7 @@ function _renderConceptRefinements(suggestions, container) {
         _saveConceptStore?.();
         log(`Applied refinement: "${s.description.slice(0, 60)}"`, 'ok');
         btn.textContent = '✓ Applied';
-      } catch (e) { log(`Apply refinement failed: ${e.message}`, 'error'); btn.textContent = '✗'; }
+      } catch (e) { log(`Apply refinement failed: ${e.message}`, 'error'); btn.textContent = '+ Apply this refinement'; btn.disabled = false; }
     });
   });
 }
