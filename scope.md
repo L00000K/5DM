@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-25 (batch 38 — try-catch error handling added to all 4 async window functions: _runConceptContributionReport, _runConceptEnsemble, _analyseUnitConceptSignatures, _runKnowledgeUncertainty; _addSignatureAsConcept refactored to use stash index to avoid user strings in onclick args; escHtml applied to section parse result keyword summary, sketch unit selector options, Mohr-circle unit selector options, certainty histogram selector options, extracted concept unit affinities, and scenario comparison error string)
+> Last updated: 2026-05-25 (batch 39 — global unhandledrejection safety net added; try-catch added to axis-perturbation live preview (inferGeoImplicit call); all inferGeoImplicit call sites audited and confirmed protected; JSON.parse and dataset.code access patterns reviewed; no additional escHtml issues found in this pass)
 
 ---
 

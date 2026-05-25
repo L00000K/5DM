@@ -39,6 +39,17 @@ import { FourierEncoder, measureConceptGeometry, analyzeBoreholeGeometry } from 
 import { ConceptStore, CONCEPT_AXES, warpPoint, computeWarpedBounds } from './concept-store.js';
 import { encodeGeologicalConcept, refineConceptsWithClaude, extractConceptsFromText, analyseBoreholeGaps, setupConceptsFromSiteDescription, analyseUnitSimilarity, compileGeologicalRules, recommendDrillingLocations } from './claude-client.js';
 
+// ── Global error safety net ───────────────────────────────────────────────────
+// Catches async functions called from onclick that lack try-catch.
+// Shows a brief status-log entry rather than a silent failure.
+window.addEventListener('unhandledrejection', evt => {
+  const msg = evt.reason?.message ?? String(evt.reason ?? 'Unknown error');
+  // Suppress "Script error" cross-origin noise
+  if (msg === 'Script error.' || msg === 'Script error') return;
+  try { log(`Unhandled error: ${msg}`, 'error'); } catch { /* log not ready */ }
+  evt.preventDefault();
+});
+
 // ── Global application state ──────────────────────────────────────────────────
 export const AppState = {
   apiKey: null,
@@ -8006,7 +8017,10 @@ function _initAxisPerturbation() {
       cellHeight: ch * (grid.nz / MINI_NZ),
       origin: { x: grid.origin.x, y: grid.origin.y, z: centreY },
     };
-    const result = inferGeoImplicit(AppState.trainedModel, miniGrid, AppState.geoUnits, modStore);
+    let result;
+    try {
+      result = inferGeoImplicit(AppState.trainedModel, miniGrid, AppState.geoUnits, modStore);
+    } catch { return; }
     if (!result?.unitIds) return;
 
     // Render to canvas: columns are E-W, rows are depth (top=shallow)
