@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-25 (batch 31 — try/catch/finally around isosurface and uncertainty surface builders to prevent permanently-disabled buttons on WebGL errors)
+> Last updated: 2026-05-25 (batch 32 — try/catch/finally for auto-params, LOO-CV, method-comparison handlers; totalThick NaN guard in scene.js borehole log popup for zero-thickness layers)
 
 ---
 
