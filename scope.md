@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-25 (batch 32 — try/catch/finally for auto-params, LOO-CV, method-comparison handlers; totalThick NaN guard in scene.js borehole log popup for zero-thickness layers)
+> Last updated: 2026-05-25 (batch 33 — HTML injection guards: unit editor uses DOM .value instead of innerHTML attribute injection; escHtml() added to option elements, error messages, and concept description in traceability panel; concept refinement apply button re-enabled on error)
 
 ---
 
