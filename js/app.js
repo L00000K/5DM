@@ -1128,12 +1128,15 @@ async function loadDemoSite(demoName) {
     log(`${data.site?.name ?? demoName} — ${AppState.rawBoreholes.length} boreholes loaded.`, 'ok');
 
     // Show boreholes immediately in 3D, before model is built
+    let _tbTries = 0;
     const triggerBuild = () => {
       if (AppState.scene) {
         AppState.scene.showBoreholes(AppState.classifiedBH, AppState.geoUnits);
-        document.getElementById('btn-build-model').click();
-      } else {
+        document.getElementById('btn-build-model')?.click();
+      } else if (++_tbTries < 40) {
         setTimeout(triggerBuild, 50);
+      } else {
+        log('3D scene unavailable — build model manually when ready.', 'warn');
       }
     };
     setTimeout(triggerBuild, 200);
@@ -2097,7 +2100,7 @@ function initUnitEditor() {
       if (!corrections.length) {
         out.innerHTML = '<p style="font-size:10px;color:var(--green);padding:4px">✓ All descriptions correctly classified.</p>';
       } else {
-        out.innerHTML = corrections.map(c => `
+        out.innerHTML = corrections.map((c, ci) => `
           <div class="corr-row" style="font-size:10px;border:1px solid var(--border);border-radius:4px;padding:5px 7px;margin-bottom:4px;background:var(--bg-deep)">
             <div style="color:var(--text-mid);margin-bottom:2px;line-height:1.3">"${escHtml((c.description ?? '').slice(0, 70))}"</div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -2105,10 +2108,13 @@ function initUnitEditor() {
               <span>→</span>
               <span style="color:var(--green);font-weight:600">${escHtml(c.recommendedCode)}</span>
               <span style="color:var(--text-dim);font-size:9px">${escHtml(c.reason ?? '')} (${((c.confidence ?? 0)*100).toFixed(0)}%)</span>
-              <button class="btn-ghost btn-sm" style="font-size:9px;padding:1px 5px;margin-left:auto"
-                onclick="window._applyCorr('${escHtml(c.currentCode)}','${escHtml(c.recommendedCode)}', this)">Apply</button>
+              <button class="btn-ghost btn-sm corr-apply" data-ci="${ci}" style="font-size:9px;padding:1px 5px;margin-left:auto">Apply</button>
             </div>
           </div>`).join('');
+        out.querySelectorAll('.corr-apply').forEach(applyBtn => {
+          const c = corrections[+applyBtn.dataset.ci];
+          applyBtn.addEventListener('click', () => window._applyCorr(c.currentCode, c.recommendedCode, applyBtn));
+        });
       }
     } catch (e) {
       out.style.display = 'block';
@@ -6087,9 +6093,23 @@ function initWelcomeOverlay() {
         }
       }
     });
-    welcomeDrop.addEventListener('click', () => document.getElementById('file-bh')?.click());
+    welcomeDrop.addEventListener('click', () => {
+      const fi = document.getElementById('file-bh');
+      if (fi) {
+        // Dismiss overlay as soon as the user commits to selecting a file —
+        // drag-drop already does this immediately; click-to-browse must too.
+        fi.addEventListener('change', () => hideWelcome(), { once: true });
+        fi.click();
+      }
+    });
     welcomeDrop.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') document.getElementById('file-bh')?.click();
+      if (e.key === 'Enter' || e.key === ' ') {
+        const fi = document.getElementById('file-bh');
+        if (fi) {
+          fi.addEventListener('change', () => hideWelcome(), { once: true });
+          fi.click();
+        }
+      }
     });
   }
 
@@ -8414,7 +8434,7 @@ function _renderGeoEventList() {
     li.dataset.stateIdx = stateIdx;
     li.innerHTML = `
       <span class="geo-event-drag" title="Drag to reorder">⠿</span>
-      <span class="geo-event-type-icon" title="${typeInfo.label}">${typeInfo.icon}</span>
+      <span class="geo-event-type-icon" title="${escAttr(typeInfo.label)}">${typeInfo.icon}</span>
       <span class="geo-event-name-text">${escHtml(evt.name || typeInfo.label)}</span>
       ${evt.unitCodes?.length ? `<span class="geo-event-units-text">${escHtml(evt.unitCodes.join(','))}</span>` : ''}
       <button class="geo-event-del" title="Remove" data-id="${evt.id}">×</button>
@@ -11124,7 +11144,7 @@ window._runConceptContributionReport = async function() {
   el.innerHTML = `
     <div style="font-size:10px;font-weight:600;margin-bottom:6px">
       Baseline accuracy: ${baseAccStr}
-      <span style="font-weight:400;color:var(--text-muted)"> (${realBHs.length} BHs)</span>
+      <span style="font-weight:400;color:var(--text-muted)"> (${AppState.classifiedBH.filter(b => !b.synthetic && b.layers?.length).length} BHs)</span>
     </div>
     ${rowsHtml}
     <p style="font-size:9px;color:var(--text-muted);margin-top:4px;font-style:italic">
