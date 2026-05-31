@@ -6116,7 +6116,22 @@ function initWelcomeOverlay() {
   document.querySelectorAll('.welcome-sample-btn').forEach(btn => {
     btn.addEventListener('click', () => loadDemoSite(btn.dataset.demo));
   });
+
+  // Escape key or click on the dark backdrop (not the card) dismisses the overlay
+  const overlay = document.getElementById('welcome-overlay');
+  if (overlay) {
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) hideWelcome();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && !overlay.classList.contains('hidden')) hideWelcome();
+    }, { once: false });
+  }
 }
+
+// Expose loadDemoSite globally so demo buttons work even if initWelcomeOverlay
+// hasn't fired yet (e.g. very fast click before init() completes).
+window._loadDemoSite = function(name) { loadDemoSite(name); };
 
 // ── Main init ──────────────────────────────────────────────────────────────────
 function tryInit(fn, name) {
