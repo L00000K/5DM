@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-31 (batch 40 — welcome overlay now dismisses on click-to-browse (was only dismissing on drag-drop or successful parse); triggerBuild retry loop capped at 40 attempts; _applyCorr onclick escaping fixed (single-quote injection via escHtml); realBHs ReferenceError in _runConceptContributionReport fixed; typeInfo.label title attr uses escAttr; _bhAccuracy ReferenceError in _compareConceptScenarios fixed)
+> Last updated: 2026-05-31 (batch 41 — CRITICAL FIX: ECMAScript syntax error in geo-shapes.js (`-(r / hw) ** 2` → `-((r / hw) ** 2)`) caused the entire module graph to fail silently, leaving every button and tab non-functional while native HTML checkboxes/sliders still worked; also wrapped pre-init() top-level calls in try-catch so future errors in initLayerControls/initExporter cannot block init())
 
 ---
 
