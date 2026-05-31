@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-25 (batch 39 — global unhandledrejection safety net added; try-catch added to axis-perturbation live preview (inferGeoImplicit call); all inferGeoImplicit call sites audited and confirmed protected; JSON.parse and dataset.code access patterns reviewed; no additional escHtml issues found in this pass)
+> Last updated: 2026-05-31 (batch 40 — welcome overlay now dismisses on click-to-browse (was only dismissing on drag-drop or successful parse); triggerBuild retry loop capped at 40 attempts; _applyCorr onclick escaping fixed (single-quote injection via escHtml); realBHs ReferenceError in _runConceptContributionReport fixed; typeInfo.label title attr uses escAttr; _bhAccuracy ReferenceError in _compareConceptScenarios fixed)
 
 ---
 
