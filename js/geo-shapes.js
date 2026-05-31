@@ -358,7 +358,7 @@ function _hillSDF(feat, wx, wy, wz) {
   const amp  = feat.amplitude_m ?? 5;
   const hw   = feat.half_width_m ?? 30;
   const r    = Math.sqrt((wx - cx) ** 2 + (wz - cz) ** 2);
-  const zSurf = gl - amp * (1 - Math.exp(-(r / hw) ** 2));
+  const zSurf = gl - amp * (1 - Math.exp(-((r / hw) ** 2)));
   return Math.tanh((wy - zSurf) / Math.max(0.5, amp * 0.3));
 }
 

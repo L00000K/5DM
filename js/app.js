@@ -7029,8 +7029,8 @@ function initMohrCircle() {
   });
 }
 
-initLayerControls();
-initExporter();
+try { initLayerControls(); } catch (e) { console.error('initLayerControls failed:', e); }
+try { initExporter(); } catch (e) { console.error('initExporter failed:', e); }
 init();
 
 // ── Conceptual Model Panel ────────────────────────────────────────────────────
