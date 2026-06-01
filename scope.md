@@ -1,7 +1,7 @@
 # GeoModel AI — Project Scope
 
 > Living document. Updated as features are designed, discussed, and built.
-> Last updated: 2026-05-31 (batch 41 — CRITICAL FIX: ECMAScript syntax error in geo-shapes.js (`-(r / hw) ** 2` → `-((r / hw) ** 2)`) caused the entire module graph to fail silently, leaving every button and tab non-functional while native HTML checkboxes/sliders still worked; also wrapped pre-init() top-level calls in try-catch so future errors in initLayerControls/initExporter cannot block init())
+> Last updated: 2026-06-01 (batch 42 — Major UI restructure: center viewer now has a tab strip (3D Model | Plan | Section | Isopach | Strat.) so 2D analysis panels open as full-area tabs instead of floating side panels; right panel restructured with Layers / Model / Tools tabs; per-layer property cog (⚙) on each TOC row expands a drawer for opacity/certainty/clip controls; initUITabs() wires all three systems with _switchViewTab() global and MutationObserver sync)
 
 ---
 
