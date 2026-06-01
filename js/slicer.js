@@ -306,11 +306,19 @@ export class SlicerTool {
   _initPanel() {
     document.getElementById('btn-open-slicer')
       ?.addEventListener('click', () => {
-        document.getElementById('slicer-panel').hidden = false;
+        const p = document.getElementById('slicer-panel');
+        p.hidden = false;
+        p.classList.remove('minimised');
+      });
+    document.getElementById('slicer-minimise')
+      ?.addEventListener('click', () => {
+        document.getElementById('slicer-panel')?.classList.toggle('minimised');
       });
     document.getElementById('slicer-close')
       ?.addEventListener('click', () => {
-        document.getElementById('slicer-panel').hidden = true;
+        const p = document.getElementById('slicer-panel');
+        p.hidden = true;
+        p.classList.remove('minimised');
       });
     document.getElementById('slicer-draw-btn')
       ?.addEventListener('click', () => this.startDraw());

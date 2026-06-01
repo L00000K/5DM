@@ -1620,7 +1620,10 @@
       <div id="slicer-panel" class="slicer-panel" hidden>
         <div class="slicer-panel-hdr">
           <span>Section Slice</span>
-          <button id="slicer-close" class="slicer-close-btn">✕</button>
+          <div style="display:flex;gap:2px">
+            <button id="slicer-minimise" class="slicer-close-btn" title="Minimise">−</button>
+            <button id="slicer-close" class="slicer-close-btn" title="Close">✕</button>
+          </div>
         </div>
         <div class="slicer-hint" id="slicer-hint">Press D for plan view, then click Draw Line</div>
         <div class="slicer-modes">

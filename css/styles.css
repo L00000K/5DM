@@ -925,6 +925,9 @@ input[type="range"] {
   color: var(--text-dim);
 }
 
+.slicer-panel.minimised > *:not(.slicer-panel-hdr) { display: none !important; }
+.slicer-panel.minimised { gap: 0; }
+
 .slicer-close-btn {
   background: none;
   border: none;
