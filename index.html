@@ -1432,8 +1432,18 @@
 
     <div class="panel-resize-handle" id="resize-left" title="Drag to resize"></div>
 
-    <!-- ── 3D VIEWER (always visible) ── -->
+    <!-- ── 3D VIEWER ── -->
     <section id="viewer-panel">
+      <!-- View tab strip -->
+      <div id="view-tab-strip">
+        <button class="view-tab active" data-view="3d">⬡ 3D Model</button>
+        <button class="view-tab" data-view="plan">⊟ Plan</button>
+        <button class="view-tab" data-view="section">⊞ Section</button>
+        <button class="view-tab" data-view="isopach">⊠ Isopach</button>
+        <button class="view-tab" data-view="strat">⊟ Strat.</button>
+      </div>
+      <!-- Viewer content area (all absolute-positioned children live here) -->
+      <div id="viewer-content">
       <canvas id="three-canvas"></canvas>
       <canvas id="slicer-overlay" class="slicer-overlay" hidden></canvas>
 
@@ -1490,8 +1500,8 @@
         </div>
       </div>
 
-      <!-- Plan View panel -->
-      <div id="plan-view-panel" class="fence-panel" hidden>
+      <!-- Plan View panel (tab content) -->
+      <div id="plan-view-panel" class="view-panel-2d" hidden>
         <div class="fence-panel-hdr">
           <span class="fence-title">Plan View</span>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -1523,7 +1533,7 @@
               <input type="checkbox" id="plan-contours"> Contours
             </label>
             <button id="plan-view-export" class="btn-ghost btn-sm" title="Export PNG">⬇ PNG</button>
-            <button id="plan-view-close" class="slicer-close-btn" title="Close">✕</button>
+            <button id="plan-view-close" class="slicer-close-btn" title="Back to 3D" onclick="window._switchViewTab?.('3d')">⬅ 3D</button>
           </div>
         </div>
         <div class="fence-canvas-wrap">
@@ -1531,8 +1541,8 @@
         </div>
       </div>
 
-      <!-- Isopach / thickness map panel -->
-      <div id="isopach-panel" class="isopach-panel fence-panel" hidden>
+      <!-- Isopach / thickness map panel (tab content) -->
+      <div id="isopach-panel" class="view-panel-2d" hidden>
         <div class="fence-panel-hdr">
           <span class="fence-title">Map View</span>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -1555,7 +1565,7 @@
             </span>
             <button id="isopach-export" class="btn-ghost btn-sm" title="Export as PNG">⬇ PNG</button>
             <button id="isopach-export-csv" class="btn-ghost btn-sm" title="Export data as CSV">⬇ CSV</button>
-            <button id="isopach-close" class="slicer-close-btn" title="Close">✕</button>
+            <button id="isopach-close" class="slicer-close-btn" title="Back to 3D" onclick="window._switchViewTab?.('3d')">⬅ 3D</button>
           </div>
         </div>
         <div class="fence-canvas-wrap">
@@ -1563,8 +1573,8 @@
         </div>
       </div>
 
-      <!-- Stratigraphic correlation panel -->
-      <div id="strat-corr-panel" class="fence-panel" hidden>
+      <!-- Stratigraphic correlation panel (tab content) -->
+      <div id="strat-corr-panel" class="view-panel-2d" hidden>
         <div class="fence-panel-hdr">
           <span class="fence-title">Stratigraphic Correlation</span>
           <div style="display:flex;gap:6px;align-items:center">
@@ -1575,7 +1585,7 @@
               <input type="checkbox" id="strat-corr-lines" checked> Correlation lines
             </label>
             <button id="strat-corr-export" class="btn-ghost btn-sm" title="Export as PNG">⬇ PNG</button>
-            <button id="strat-corr-close" class="slicer-close-btn" title="Close">✕</button>
+            <button id="strat-corr-close" class="slicer-close-btn" title="Back to 3D" onclick="window._switchViewTab?.('3d')">⬅ 3D</button>
           </div>
         </div>
         <div class="fence-canvas-wrap" style="overflow-x:auto">
@@ -1583,8 +1593,8 @@
         </div>
       </div>
 
-      <!-- Fence / cross-section panel -->
-      <div id="fence-panel" class="fence-panel" hidden>
+      <!-- Fence / cross-section panel (tab content) -->
+      <div id="fence-panel" class="view-panel-2d" hidden>
         <div class="fence-panel-hdr">
           <span id="fence-title" class="fence-title">Geological Cross-Section</span>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
@@ -1608,7 +1618,7 @@
             </label>
             <button id="fence-export" class="btn-ghost btn-sm" title="Export as PNG">⬇ PNG</button>
             <button id="fence-export-dxf" class="btn-ghost btn-sm" title="Export cross-section as DXF for AutoCAD">⬇ DXF</button>
-            <button id="fence-close" class="slicer-close-btn" title="Close">✕</button>
+            <button id="fence-close" class="slicer-close-btn" title="Back to 3D" onclick="window._switchViewTab?.('3d')">⬅ 3D</button>
           </div>
         </div>
         <div class="fence-canvas-wrap">
@@ -1732,26 +1742,31 @@
 
       <div id="voxel-tooltip" class="tooltip" hidden></div>
       <div id="measure-tooltip" class="tooltip measure-tooltip" hidden></div>
+      </div><!-- /viewer-content -->
     </section>
 
     <div class="panel-resize-handle" id="resize-right" title="Drag to resize"></div>
 
-    <!-- ── RIGHT PANEL: Layer TOC & Legend ── -->
+    <!-- ── RIGHT PANEL: Layers / Model / Tools ── -->
     <aside id="right-panel">
 
-      <!-- ── LAYER TABLE OF CONTENTS ── -->
-      <div id="layer-toc" class="layer-toc">
-        <div class="toc-header">
-          <span class="toc-title">Layers</span>
-        </div>
+      <!-- Right panel tab strip -->
+      <div class="rp-tab-strip">
+        <button class="rp-tab active" data-rp="layers">Layers</button>
+        <button class="rp-tab" data-rp="model">Model</button>
+        <button class="rp-tab" data-rp="tools">Tools</button>
+      </div>
 
-        <!-- Geological Model group -->
+      <!-- ── LAYERS TAB ── -->
+      <div class="rp-pane" id="rp-layers">
+
+        <!-- Geological Model objects -->
         <div class="toc-group">
           <div class="toc-group-hdr" data-toc-group="geomodel">
-            <span class="toc-group-arrow">▾</span>
-            <span>Geological Model</span>
+            <span class="toc-group-arrow">▾</span><span>Geological Model</span>
           </div>
           <div class="toc-group-body" id="toc-group-geomodel">
+
             <div class="toc-item" id="toc-voxels">
               <button class="toc-eye active" id="toc-eye-voxels" title="Toggle voxels">👁</button>
               <span class="toc-item-label">Voxels</span>
@@ -1762,37 +1777,82 @@
                 <option value="cu">Cu</option>
                 <option value="N_spt">SPT N</option>
               </select>
+              <button class="toc-cog" data-target="toc-props-voxels" title="Properties">⚙</button>
             </div>
+            <div class="toc-props" id="toc-props-voxels" hidden>
+              <div class="toc-prop-row">
+                <label>Certainty ≥</label>
+                <input type="range" id="certainty-threshold" min="0" max="95" value="0" step="5" style="flex:1">
+                <span id="certainty-val" class="range-readout" style="width:28px">0%</span>
+              </div>
+              <div class="toc-prop-row">
+                <label>Opacity</label>
+                <input type="range" id="global-alpha" min="0" max="100" value="100" style="flex:1">
+                <span id="global-alpha-val" class="range-readout" style="width:28px">100%</span>
+              </div>
+              <label class="inline-check" style="padding:2px 0">
+                <input type="checkbox" id="transp-enable">
+                <span>Certainty opacity</span>
+              </label>
+              <div class="range-row transp-slider-row" id="transp-slider-row">
+                <input type="range" id="transp-amount" min="0" max="100" value="80">
+                <span id="transp-val" class="range-readout">80%</span>
+              </div>
+              <label class="inline-check" style="padding:2px 0">
+                <input type="checkbox" id="color-fade-enable">
+                <span>Certainty colour fade</span>
+              </label>
+              <div class="range-row transp-slider-row" id="color-fade-row">
+                <input type="range" id="color-fade-amount" min="0" max="100" value="80">
+                <span id="color-fade-val" class="range-readout">80%</span>
+              </div>
+            </div>
+
             <div class="toc-item" id="toc-surfaces">
               <button class="toc-eye active" id="toc-eye-surfaces" title="Toggle surfaces">👁</button>
               <span class="toc-item-label">Surfaces</span>
-              <input type="range" id="toc-surface-opacity" class="toc-opacity" min="0" max="100" value="55" title="Surface opacity">
+              <button class="toc-cog" data-target="toc-props-surfaces" title="Properties">⚙</button>
             </div>
+            <div class="toc-props" id="toc-props-surfaces" hidden>
+              <div class="toc-prop-row">
+                <label>Opacity</label>
+                <input type="range" id="toc-surface-opacity" class="toc-opacity" min="0" max="100" value="55" title="Surface opacity" style="flex:1">
+                <span class="range-readout" id="toc-surface-opacity-val">55%</span>
+              </div>
+            </div>
+
             <div class="toc-item" id="toc-uncertainty-layer">
               <button class="toc-eye" id="toc-eye-uncertainty" title="Toggle uncertainty surface">👁</button>
               <span class="toc-item-label">Uncertainty</span>
-              <input type="range" id="toc-uncertainty-threshold" class="toc-opacity" min="10" max="90" value="60" title="Entropy threshold">
+              <button class="toc-cog" data-target="toc-props-uncertainty" title="Properties">⚙</button>
             </div>
-          </div>
-        </div>
+            <div class="toc-props" id="toc-props-uncertainty" hidden>
+              <div class="toc-prop-row">
+                <label>Threshold</label>
+                <input type="range" id="toc-uncertainty-threshold" class="toc-opacity" min="10" max="90" value="60" title="Entropy threshold" style="flex:1">
+                <span class="range-readout" id="toc-uncertainty-threshold-val">60%</span>
+              </div>
+            </div>
 
-        <!-- Analysis group -->
-        <div class="toc-group">
-          <div class="toc-group-hdr" data-toc-group="analysis">
-            <span class="toc-group-arrow">▾</span>
-            <span>Analysis</span>
           </div>
-          <div class="toc-group-body" id="toc-group-analysis">
+        </div><!-- /geomodel group -->
+
+        <!-- Views group: launch analysis views as tabs -->
+        <div class="toc-group">
+          <div class="toc-group-hdr" data-toc-group="views">
+            <span class="toc-group-arrow">▾</span><span>Views</span>
+          </div>
+          <div class="toc-group-body" id="toc-group-views">
             <div class="toc-item toc-action-item" id="toc-planview">
               <button class="toc-launch" id="toc-launch-planview" disabled title="Open Plan View">⊟</button>
               <span class="toc-item-label">Plan View</span>
             </div>
             <div class="toc-item toc-action-item" id="toc-fence">
-              <button class="toc-launch" id="toc-launch-fence" disabled title="Open Cross-Section / Fence">⊞</button>
+              <button class="toc-launch" id="toc-launch-fence" disabled title="Open Cross-Section">⊞</button>
               <span class="toc-item-label">Cross-Section</span>
             </div>
             <div class="toc-item toc-action-item" id="toc-isopach">
-              <button class="toc-launch" id="toc-launch-isopach" disabled title="Open Isopach / Map View">⊠</button>
+              <button class="toc-launch" id="toc-launch-isopach" disabled title="Open Isopach Map">⊠</button>
               <span class="toc-item-label">Isopach Map</span>
             </div>
             <div class="toc-item toc-action-item" id="toc-stratcorr">
@@ -1802,62 +1862,133 @@
           </div>
         </div>
 
-        <!-- Data group -->
+        <!-- Data objects -->
         <div class="toc-group">
           <div class="toc-group-hdr" data-toc-group="datalay">
-            <span class="toc-group-arrow">▾</span>
-            <span>Data</span>
+            <span class="toc-group-arrow">▾</span><span>Data</span>
           </div>
           <div class="toc-group-body" id="toc-group-datalay">
+
             <div class="toc-item" id="toc-boreholes">
               <button class="toc-eye active" id="toc-eye-boreholes" title="Toggle borehole sticks">👁</button>
               <span class="toc-item-label">Boreholes</span>
+              <button class="toc-cog" data-target="toc-props-boreholes" title="Properties">⚙</button>
             </div>
+            <div class="toc-props" id="toc-props-boreholes" hidden>
+              <label class="inline-check"><input type="checkbox" id="show-bh-sticks" checked><span>Log sticks</span></label>
+              <label class="inline-check"><input type="checkbox" id="show-orient-symbols" checked><span>Dip/strike symbols</span></label>
+            </div>
+
             <div class="toc-item" id="toc-topo-layer">
               <button class="toc-eye active" id="toc-eye-topo" title="Toggle topography surface">👁</button>
               <span class="toc-item-label">Topography</span>
+              <button class="toc-cog" data-target="toc-props-topo" title="Properties">⚙</button>
             </div>
+            <div class="toc-props" id="toc-props-topo" hidden>
+              <label class="inline-check" id="topo-clip-row"><input type="checkbox" id="topo-clip"><span>Clip voxels to topo</span></label>
+            </div>
+
             <div class="toc-item" id="toc-gwt-layer">
               <button class="toc-eye" id="toc-eye-gwt" title="Toggle groundwater table">👁</button>
               <span class="toc-item-label">Groundwater</span>
-              <input type="number" id="toc-gwt-elev" class="toc-gwt-input" placeholder="mAOD" step="0.5" title="GWT elevation (mAOD)">
+              <button class="toc-cog" data-target="toc-props-gwt" title="Properties">⚙</button>
             </div>
+            <div class="toc-props" id="toc-props-gwt" hidden>
+              <div class="toc-prop-row">
+                <label>Level (mAOD)</label>
+                <input type="number" id="gwt-elevation" placeholder="e.g. 2.5" step="0.5" class="cell-size-input" style="width:72px">
+                <input type="number" id="toc-gwt-elev" placeholder="mAOD" step="0.5" class="toc-gwt-input" style="display:none">
+                <button id="btn-gwt-clear" class="btn-ghost btn-sm" title="Clear GWT">✕</button>
+              </div>
+              <button id="btn-gwt-interpolate" class="btn-secondary btn-sm" disabled style="width:100%;margin-top:4px"
+                title="Interpolate GWT surface from BH water strike data">≈ Interpolate from BH Data</button>
+              <p class="hint" style="margin-top:2px;font-size:9px"><span id="gwt-bh-count" style="color:var(--accent)"></span></p>
+            </div>
+
+          </div>
+        </div><!-- /data group -->
+
+        <!-- Display quick toggles -->
+        <div class="panel-section toc-display-row">
+          <label class="inline-check"><input type="checkbox" id="dark-background"><span>Dark background</span></label>
+        </div>
+
+        <!-- Unit Legend -->
+        <div class="panel-section">
+          <h3>Unit Legend</h3>
+          <div id="unit-legend" class="unit-legend">
+            <p class="hint">Units appear after model is built</p>
           </div>
         </div>
-      </div><!-- /layer-toc -->
 
-      <!-- Certainty filter (always visible) -->
-      <div class="panel-section toc-controls-section">
-        <div class="toc-control-row">
-          <label style="font-size:10px;color:var(--text-mid);white-space:nowrap">Certainty ≥</label>
-          <input type="range" id="certainty-threshold" min="0" max="95" value="0" step="5" style="flex:1">
-          <span id="certainty-val" class="range-readout" style="width:28px">0%</span>
+      </div><!-- /rp-layers -->
+
+      <!-- ── MODEL TAB ── -->
+      <div class="rp-pane" id="rp-model" hidden>
+
+        <div class="panel-section">
+          <h3>Model Info</h3>
+          <dl id="model-info" class="model-info">
+            <dt>Boreholes</dt><dd id="info-bh-count">—</dd>
+            <dt>Voxels</dt><dd id="info-voxel-count">—</dd>
+            <dt>Grid</dt><dd id="info-grid-size">—</dd>
+            <dt>Cell size</dt><dd id="info-cell-size">—</dd>
+          </dl>
         </div>
-        <div class="toc-control-row" style="margin-top:4px">
-          <label style="font-size:10px;color:var(--text-mid);white-space:nowrap">Opacity</label>
-          <input type="range" id="global-alpha" min="0" max="100" value="100" style="flex:1">
-          <span id="global-alpha-val" class="range-readout" style="width:28px">100%</span>
+
+        <div class="panel-section">
+          <h3>Model Quality</h3>
+          <canvas id="coverage-canvas" class="coverage-canvas"></canvas>
+          <div id="quality-stats" class="quality-stats"></div>
+          <p class="hint" style="font-size:9.5px;margin-top:4px;color:var(--accent)">→ Full validation in Process tab</p>
         </div>
-      </div>
 
-      <!-- Unit Legend -->
-      <div class="panel-section">
-        <h3>Unit Legend</h3>
-        <div id="unit-legend" class="unit-legend">
-          <p class="hint">Units appear after model is built</p>
+        <div id="model-qc-panel" class="panel-section" hidden>
+          <h3>QC Dashboard</h3>
+          <div id="model-qc-content" style="font-size:10px"></div>
         </div>
-      </div>
 
-      <!-- Model QC Dashboard — auto-populated after every build -->
-      <div id="model-qc-panel" class="panel-section" hidden>
-        <h3>Model Quality</h3>
-        <div id="model-qc-content" style="font-size:10px"></div>
-      </div>
+        <div class="panel-section">
+          <h3>Unit Volumes</h3>
+          <div id="unit-volumes" class="unit-volumes">
+            <p class="hint">Build model to see volumes</p>
+          </div>
+        </div>
 
-      <div class="panel-section">
-        <h3>Parameter View</h3>
-        <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
-          <select id="param-select" style="flex:1;font-size:11px;background:var(--bg-deep);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:3px 5px">
+        <div class="panel-section">
+          <h3>Unit Statistics</h3>
+          <div id="unit-stats" class="unit-stats">
+            <p class="hint">Build model to see statistics</p>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <h3>Stratigraphy</h3>
+          <div class="strat-order-controls" style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:4px;cursor:pointer">
+              <input type="checkbox" id="strat-manual-lock"> Lock order
+            </label>
+            <span class="hint" style="font-size:9px;margin:0">Drag ↕</span>
+          </div>
+          <ol id="strat-order-list" class="strat-order-list"></ol>
+          <p class="hint" id="strat-hint">Build model to see stratigraphy</p>
+          <div id="strat-confidence" style="font-size:9px;color:var(--text-muted);margin-top:4px;display:none"></div>
+        </div>
+
+        <div class="panel-section">
+          <h3>BH Data Statistics</h3>
+          <p class="hint" style="font-size:10px;margin-bottom:4px">Mean ± σ from BH layer data.</p>
+          <div id="bh-unit-stats"></div>
+        </div>
+
+      </div><!-- /rp-model -->
+
+      <!-- ── TOOLS TAB ── -->
+      <div class="rp-pane" id="rp-tools" hidden>
+
+        <div class="panel-section">
+          <h3>Parameter View</h3>
+          <select id="param-select" style="width:100%;font-size:11px;background:var(--bg-deep);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);padding:3px 5px;margin-bottom:5px">
             <option value="">— select —</option>
             <option value="cu">Cu (kPa)</option>
             <option value="phi">φ′ (°)</option>
@@ -1872,181 +2003,72 @@
             <option value="dominant_concept">Dominant concept</option>
             <option value="geological_age">Geological age</option>
           </select>
-        </div>
-        <div style="display:flex;gap:4px;margin-top:5px">
-          <button id="btn-param-apply" class="btn-secondary btn-sm" disabled style="flex:1">Apply</button>
-          <button id="btn-param-reset" class="btn-secondary btn-sm" disabled style="flex:1">Reset</button>
-        </div>
-        <div id="param-colorscale" style="display:none;margin-top:6px">
-          <div style="height:10px;border-radius:3px;background:linear-gradient(to right,#0000ff,#00ffff,#00ff00,#ffff00,#ff0000)"></div>
-          <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-mid);margin-top:2px">
-            <span id="param-scale-min">0</span>
-            <span id="param-scale-mid"></span>
-            <span id="param-scale-max">100</span>
+          <div style="display:flex;gap:4px">
+            <button id="btn-param-apply" class="btn-secondary btn-sm" disabled style="flex:1">Apply</button>
+            <button id="btn-param-reset" class="btn-secondary btn-sm" disabled style="flex:1">Reset</button>
           </div>
-          <p id="param-scale-label" style="font-size:10px;color:var(--text-mid);margin:2px 0 0;text-align:center"></p>
-        </div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Grade Shell</h3>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;align-items:center;margin-bottom:4px">
-          <select id="grade-param" class="param-input" style="font-size:10px">
-            <option value="">— parameter —</option>
-            <option value="cu">Cu (kPa)</option>
-            <option value="phi">φ′ (°)</option>
-            <option value="E">E (MPa)</option>
-            <option value="gamma">γ (kN/m³)</option>
-            <option value="N_spt">SPT N</option>
-            <option value="certainty">Certainty</option>
-            <option value="depth">Depth (m bgl)</option>
-          </select>
-          <select id="grade-mode" class="param-input" style="font-size:10px">
-            <option value="above">Above threshold</option>
-            <option value="below">Below threshold</option>
-            <option value="between">Between</option>
-          </select>
-        </div>
-        <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
-          <input type="number" id="grade-threshold-min" class="cell-size-input" placeholder="Min / threshold" step="1" style="width:75px">
-          <span id="grade-max-wrap" style="display:flex;gap:3px;align-items:center">
-            <span style="font-size:10px;color:var(--text-dim)">–</span>
-            <input type="number" id="grade-threshold-max" class="cell-size-input" placeholder="Max" step="1" style="width:62px">
-          </span>
-        </div>
-        <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center">
-          <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:3px">Colour:<input type="color" id="grade-color" value="#ff4040" style="width:24px;height:18px;border:none;cursor:pointer;padding:0;margin-left:3px"></label>
-          <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:3px;margin-left:auto"><input type="checkbox" id="grade-dim-rest" checked> Dim others</label>
-        </div>
-        <div style="display:flex;gap:4px">
-          <button id="btn-grade-apply" class="btn-secondary btn-sm" disabled style="flex:1">Show Shell</button>
-          <button id="btn-grade-clear" class="btn-ghost btn-sm" style="flex:1">Clear</button>
-        </div>
-        <div id="grade-stats" style="font-size:10px;color:var(--text-mid);margin-top:4px"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>View Options</h3>
-
-        <label class="inline-check">
-          <input type="checkbox" id="transp-enable">
-          <span>Certainty-based opacity</span>
-        </label>
-        <div class="range-row transp-slider-row" id="transp-slider-row">
-          <input type="range" id="transp-amount" min="0" max="100" value="80">
-          <span id="transp-val" class="range-readout">80%</span>
-        </div>
-
-        <label class="inline-check" style="margin-top:6px">
-          <input type="checkbox" id="color-fade-enable">
-          <span>Certainty colour fade</span>
-        </label>
-        <div class="range-row transp-slider-row" id="color-fade-row">
-          <input type="range" id="color-fade-amount" min="0" max="100" value="80">
-          <span id="color-fade-val" class="range-readout">80%</span>
-        </div>
-        <p class="hint">Full certainty = vivid · low certainty → white</p>
-
-        <label class="inline-check" style="margin-top:8px">
-          <input type="checkbox" id="show-bh-sticks" checked>
-          <span>Show BH log sticks</span>
-        </label>
-
-        <label class="inline-check" style="margin-top:8px">
-          <input type="checkbox" id="show-orient-symbols" checked>
-          <span>Show dip/strike symbols</span>
-        </label>
-
-        <label class="inline-check" style="margin-top:8px">
-          <input type="checkbox" id="dark-background">
-          <span>Dark background</span>
-        </label>
-
-        <label class="inline-check" style="margin-top:8px" id="topo-clip-row" title="Remove voxels above ground surface">
-          <input type="checkbox" id="topo-clip">
-          <span>Clip to topography</span>
-        </label>
-
-        <div class="field-group" style="margin-top:10px">
-          <label>Groundwater Table <span class="unit-hint">(mAOD)</span></label>
-          <div style="display:flex;gap:6px;align-items:center">
-            <input type="number" id="gwt-elevation" placeholder="e.g. 2.5"
-              step="0.5" style="flex:1" class="cell-size-input">
-            <button id="btn-gwt-clear" class="btn-ghost btn-sm" title="Clear GWT">✕</button>
+          <div id="param-colorscale" style="display:none;margin-top:6px">
+            <div style="height:10px;border-radius:3px;background:linear-gradient(to right,#0000ff,#00ffff,#00ff00,#ffff00,#ff0000)"></div>
+            <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-mid);margin-top:2px">
+              <span id="param-scale-min">0</span><span id="param-scale-mid"></span><span id="param-scale-max">100</span>
+            </div>
+            <p id="param-scale-label" style="font-size:10px;color:var(--text-mid);margin:2px 0 0;text-align:center"></p>
           </div>
-          <p class="hint">Shows transparent blue plane at GWT elevation</p>
         </div>
 
-        <div class="field-group" style="margin-top:6px">
-          <button id="btn-gwt-interpolate" class="btn-secondary btn-sm" disabled style="width:100%"
-            title="Interpolate a 3D GWT surface from per-borehole water strike depths (WSTB)">
-            ≈ Interpolate GWT Surface from BH Data
-          </button>
-          <p class="hint" style="font-size:10px;margin-top:3px">
-            Uses GWT depths from AGS WSTB group or CSV <code>gwt_depth</code> column.
-            <span id="gwt-bh-count" style="color:var(--accent)"></span>
-          </p>
-        </div>
-
-        <div class="field-group" style="margin-top:10px">
-          <label>Surface Opacity</label>
-          <div class="range-row">
-            <input type="range" id="surface-opacity" min="0" max="100" value="55">
-            <span id="surface-opacity-val" class="range-readout">55%</span>
+        <div class="panel-section">
+          <h3>Grade Shell</h3>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+            <select id="grade-param" class="param-input" style="font-size:10px">
+              <option value="">— parameter —</option>
+              <option value="cu">Cu (kPa)</option>
+              <option value="phi">φ′ (°)</option>
+              <option value="E">E (MPa)</option>
+              <option value="gamma">γ (kN/m³)</option>
+              <option value="N_spt">SPT N</option>
+              <option value="certainty">Certainty</option>
+              <option value="depth">Depth (m bgl)</option>
+            </select>
+            <select id="grade-mode" class="param-input" style="font-size:10px">
+              <option value="above">Above</option>
+              <option value="below">Below</option>
+              <option value="between">Between</option>
+            </select>
           </div>
-          <p class="hint">Applies to formation surfaces view</p>
+          <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
+            <input type="number" id="grade-threshold-min" class="cell-size-input" placeholder="Min / threshold" step="1" style="width:75px">
+            <span id="grade-max-wrap" style="display:flex;gap:3px;align-items:center">
+              <span style="font-size:10px;color:var(--text-dim)">–</span>
+              <input type="number" id="grade-threshold-max" class="cell-size-input" placeholder="Max" step="1" style="width:62px">
+            </span>
+          </div>
+          <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center">
+            <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:3px">
+              Colour:<input type="color" id="grade-color" value="#ff4040" style="width:24px;height:18px;border:none;cursor:pointer;padding:0;margin-left:3px">
+            </label>
+            <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:3px;margin-left:auto">
+              <input type="checkbox" id="grade-dim-rest" checked> Dim others
+            </label>
+          </div>
+          <div style="display:flex;gap:4px">
+            <button id="btn-grade-apply" class="btn-secondary btn-sm" disabled style="flex:1">Show Shell</button>
+            <button id="btn-grade-clear" class="btn-ghost btn-sm" style="flex:1">Clear</button>
+          </div>
+          <div id="grade-stats" style="font-size:10px;color:var(--text-mid);margin-top:4px"></div>
         </div>
-      </div>
 
-      <div class="panel-section">
-        <h3>Unit Volumes</h3>
-        <div id="unit-volumes" class="unit-volumes">
-          <p class="hint">Build model to see volumes</p>
+        <div class="panel-section">
+          <h3>Display</h3>
+          <div class="field-group">
+            <label>Surface Opacity</label>
+            <div class="range-row">
+              <input type="range" id="surface-opacity" min="0" max="100" value="55">
+              <span id="surface-opacity-val" class="range-readout">55%</span>
+            </div>
+          </div>
         </div>
-      </div>
 
-      <div class="panel-section">
-        <h3>Model Info</h3>
-        <dl id="model-info" class="model-info">
-          <dt>Boreholes</dt><dd id="info-bh-count">—</dd>
-          <dt>Voxels</dt><dd id="info-voxel-count">—</dd>
-          <dt>Grid (nx×ny×nz)</dt><dd id="info-grid-size">—</dd>
-          <dt>Cell size</dt><dd id="info-cell-size">—</dd>
-        </dl>
-      </div>
-
-      <div class="panel-section">
-        <h3>Unit Statistics</h3>
-        <div id="unit-stats" class="unit-stats">
-          <p class="hint">Build model to see statistics</p>
-        </div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Model Quality</h3>
-        <canvas id="coverage-canvas" class="coverage-canvas"></canvas>
-        <div id="quality-stats" class="quality-stats"></div>
-        <p class="hint" style="font-size:9.5px;margin-top:4px;color:var(--accent)">→ Full validation &amp; reports in Process tab</p>
-      </div>
-
-      <div class="panel-section">
-        <h3>Stratigraphy</h3>
-        <div class="strat-order-controls" style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
-          <label style="font-size:10px;color:var(--text-mid);display:flex;align-items:center;gap:4px;cursor:pointer">
-            <input type="checkbox" id="strat-manual-lock"> Lock order
-          </label>
-          <span class="hint" style="font-size:9px;margin:0">Drag to reorder ↕</span>
-        </div>
-        <ol id="strat-order-list" class="strat-order-list"></ol>
-        <p class="hint" id="strat-hint">Add units and build model to see stratigraphy</p>
-        <div id="strat-confidence" style="font-size:9px;color:var(--text-muted);margin-top:4px;display:none"></div>
-      </div>
-
-      <div class="panel-section">
-        <h3>Unit Statistics (BH Data)</h3>
-        <p class="hint" style="font-size:10px;margin-bottom:4px">Mean ± σ from measured BH layer data.</p>
-        <div id="bh-unit-stats"></div>
-      </div>
+      </div><!-- /rp-tools -->
 
     </aside>
   </main>

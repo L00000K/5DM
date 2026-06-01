@@ -6217,6 +6217,7 @@ async function init() {
   tryInit(initSectionInterpreter, 'initSectionInterpreter');
   tryInit(initConceptPanel,       'initConceptPanel');
   tryInit(initProbVolPanel,       'initProbVolPanel');
+  tryInit(initUITabs,             'initUITabs');
 
   // Mirror disabled state of canonical buttons to their Process-tab alias copies.
   // Process tab shows action buttons as clickable proxies; their disabled state must
@@ -7026,6 +7027,102 @@ function initMohrCircle() {
   });
   document.getElementById('mohr-undrained')?.addEventListener('change', () => {
     if (unitSel.value) btn.click();
+  });
+}
+
+// ── Center view tabs + right panel tabs + layer property cog drawers ────────
+function initUITabs() {
+  // ── Center view tab switching ───────────────────────────────────────────────
+  const VIEW_PANELS = {
+    plan:    'plan-view-panel',
+    section: 'fence-panel',
+    isopach: 'isopach-panel',
+    strat:   'strat-corr-panel',
+  };
+
+  window._switchViewTab = function(name) {
+    document.querySelectorAll('.view-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === name);
+    });
+    if (name === '3d') {
+      Object.values(VIEW_PANELS).forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.hidden = true;
+      });
+      AppState.planView?.hide();
+      AppState.fenceSection?.hide();
+      AppState.isopachMap?.hide();
+      AppState.stratCorr?.hide();
+    }
+  };
+
+  // Sync tab strip whenever a 2D panel shows or hides
+  for (const [tabName, panelId] of Object.entries(VIEW_PANELS)) {
+    const el = document.getElementById(panelId);
+    if (!el) continue;
+    new MutationObserver(mutations => {
+      for (const m of mutations) {
+        if (m.attributeName !== 'hidden') continue;
+        if (!el.hidden) {
+          document.querySelectorAll('.view-tab').forEach(b => {
+            b.classList.toggle('active', b.dataset.view === tabName);
+          });
+        } else {
+          const activeTab = document.querySelector('.view-tab.active');
+          if (activeTab?.dataset.view === tabName) {
+            document.querySelectorAll('.view-tab').forEach(b => {
+              b.classList.toggle('active', b.dataset.view === '3d');
+            });
+          }
+        }
+      }
+    }).observe(el, { attributes: true, attributeFilter: ['hidden'] });
+  }
+
+  document.querySelectorAll('.view-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const view = btn.dataset.view;
+      if (view === '3d') {
+        window._switchViewTab('3d');
+      } else if (view === 'plan') {
+        document.getElementById('btn-plan-view')?.click();
+      } else if (view === 'section') {
+        if (AppState.fenceSection?._lastArgs) {
+          AppState.fenceSection.show();
+          if (AppState.fenceSection.visible) AppState.fenceSection._redraw?.();
+        } else {
+          log('Draw a section line with the Slicer tool first.', 'warn');
+        }
+      } else if (view === 'isopach') {
+        document.getElementById('btn-isopach')?.click();
+      } else if (view === 'strat') {
+        document.getElementById('btn-strat-corr')?.click();
+      }
+    });
+  });
+
+  // ── Right panel tab switching ───────────────────────────────────────────────
+  document.querySelectorAll('.rp-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.rp;
+      document.querySelectorAll('.rp-tab').forEach(b => {
+        b.classList.toggle('active', b.dataset.rp === target);
+      });
+      document.querySelectorAll('.rp-pane').forEach(pane => {
+        pane.hidden = pane.id !== `rp-${target}`;
+      });
+    });
+  });
+
+  // ── Layer property cog drawers ──────────────────────────────────────────────
+  document.querySelectorAll('.toc-cog').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const drawer = document.getElementById(btn.dataset.target);
+      if (!drawer) return;
+      const open = drawer.hidden;
+      drawer.hidden = !open;
+      btn.classList.toggle('active', open);
+    });
   });
 }
 
